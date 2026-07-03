@@ -31024,6 +31024,17 @@ var RateLimitError = class extends Error {
     this.retryAfterSeconds = retryAfterSeconds;
   }
 };
+var DEFAULT_RETRY_AFTER_SECONDS = 60;
+function parseRetryAfterSeconds(header) {
+  if (!header) return DEFAULT_RETRY_AFTER_SECONDS;
+  const asSeconds = Number(header);
+  if (Number.isFinite(asSeconds) && asSeconds >= 0) return asSeconds;
+  const asDate = Date.parse(header);
+  if (!Number.isNaN(asDate)) {
+    return Math.max(0, Math.round((asDate - Date.now()) / 1e3));
+  }
+  return DEFAULT_RETRY_AFTER_SECONDS;
+}
 async function withRateLimitBackoff(fn, sleep, attempt = 0) {
   try {
     return await fn();
@@ -31038,7 +31049,7 @@ async function withRateLimitBackoff(fn, sleep, attempt = 0) {
 async function handleResponse(res) {
   const retryAfter = res.headers.get("retry-after");
   if (res.status === 429 || res.status === 403 && retryAfter !== null) {
-    throw new RateLimitError(retryAfter ? Number(retryAfter) : 60);
+    throw new RateLimitError(parseRetryAfterSeconds(retryAfter));
   }
   if (!res.ok) {
     const text2 = await res.text();

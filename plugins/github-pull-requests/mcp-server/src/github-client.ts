@@ -97,6 +97,24 @@ class RateLimitError extends Error {
   }
 }
 
+const DEFAULT_RETRY_AFTER_SECONDS = 60;
+
+/** RFC 9110 permits Retry-After as either a number of seconds or an
+ * HTTP-date; Number() on a date string produces NaN, which would make
+ * sleep(NaN) resolve near-instantly (Copilot review finding) instead of
+ * backing off -- exactly wrong during a real rate limit. Parses both forms,
+ * falling back to a sane default for anything else. */
+function parseRetryAfterSeconds(header: string | null): number {
+  if (!header) return DEFAULT_RETRY_AFTER_SECONDS;
+  const asSeconds = Number(header);
+  if (Number.isFinite(asSeconds) && asSeconds >= 0) return asSeconds;
+  const asDate = Date.parse(header);
+  if (!Number.isNaN(asDate)) {
+    return Math.max(0, Math.round((asDate - Date.now()) / 1000));
+  }
+  return DEFAULT_RETRY_AFTER_SECONDS;
+}
+
 async function withRateLimitBackoff<T>(
   fn: () => Promise<T>,
   sleep: (ms: number) => Promise<void>,
@@ -125,7 +143,7 @@ async function withRateLimitBackoff<T>(
 async function handleResponse(res: Response): Promise<unknown> {
   const retryAfter = res.headers.get('retry-after');
   if (res.status === 429 || (res.status === 403 && retryAfter !== null)) {
-    throw new RateLimitError(retryAfter ? Number(retryAfter) : 60);
+    throw new RateLimitError(parseRetryAfterSeconds(retryAfter));
   }
   if (!res.ok) {
     const text = await res.text();

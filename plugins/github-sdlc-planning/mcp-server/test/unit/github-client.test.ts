@@ -110,6 +110,54 @@ describe('githubRest', () => {
     expect(calls).toBe(1);
   });
 
+  it('parses an HTTP-date retry-after header instead of producing NaN', async () => {
+    let calls = 0;
+    const futureDate = new Date(Date.now() + 5000).toUTCString();
+    server.use(
+      http.get('https://api.github.com/repos/acme/date-limited', () => {
+        calls += 1;
+        if (calls === 1) {
+          return HttpResponse.json({ message: 'limited' }, { status: 403, headers: { 'retry-after': futureDate } });
+        }
+        return HttpResponse.json({ id: 1 });
+      }),
+    );
+    let observedSleepMs = -1;
+    await githubRest(
+      '/repos/acme/date-limited',
+      {},
+      {
+        sleep: (ms) => {
+          observedSleepMs = ms;
+          return Promise.resolve();
+        },
+      },
+    );
+    expect(Number.isNaN(observedSleepMs)).toBe(false);
+    expect(observedSleepMs).toBeGreaterThan(0);
+    expect(observedSleepMs).toBeLessThanOrEqual(6000);
+  });
+
+  it('falls back to the default backoff for a malformed retry-after header', async () => {
+    let observedSleepMs = -1;
+    server.use(
+      http.get('https://api.github.com/repos/acme/garbage-header', () => {
+        return HttpResponse.json({ message: 'limited' }, { status: 403, headers: { 'retry-after': 'not-a-real-value' } });
+      }),
+    );
+    await githubRest(
+      '/repos/acme/garbage-header',
+      {},
+      {
+        sleep: (ms) => {
+          observedSleepMs = ms;
+          return Promise.resolve();
+        },
+      },
+    ).catch(() => undefined);
+    expect(observedSleepMs).toBe(60_000);
+  });
+
   it('paces a second mutating call within the minimum interval, but not the first', async () => {
     mockRest('post', '/repos/acme/widgets', { id: 1 });
     mockRest('post', '/repos/acme/widgets', { id: 2 });
