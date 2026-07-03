@@ -165,12 +165,16 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm run test:coverage
-      - name: Upload built dist (consumed by github-pull-requests-mcp-server)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: github-sdlc-planning-mcp-server-dist
-          path: plugins/github-sdlc-planning/mcp-server/dist
-          if-no-files-found: error
+      - name: Committed dist/ must match a fresh build
+        # Claude Code installs plugins from git source with no build step —
+        # dist/ is the actual runtime artifact, not a derived/ignored one. A
+        # src/ change committed without rebuilding dist/ would silently ship
+        # stale code, so this fails the gate instead.
+        run: |
+          if ! git diff --exit-code -- dist/; then
+            echo "::error::plugins/github-sdlc-planning/mcp-server/dist/ is stale — run 'npm run build' and commit the result."
+            exit 1
+          fi
 
   test-pull-requests-mcp-server:
     name: test (github-pull-requests/mcp-server)
@@ -196,3 +200,10 @@ jobs:
           npm run lint
           npm run build
           npm run test:coverage
+      - name: Committed dist/ must match a fresh build
+        working-directory: plugins/github-pull-requests/mcp-server
+        run: |
+          if ! git diff --exit-code -- dist/; then
+            echo "::error::plugins/github-pull-requests/mcp-server/dist/ is stale — run 'npm run build' and commit the result."
+            exit 1
+          fi
