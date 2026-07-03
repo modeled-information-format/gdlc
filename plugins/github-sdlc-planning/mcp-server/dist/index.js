@@ -31054,7 +31054,6 @@ var RateLimitError = class extends Error {
 };
 var DEFAULT_RETRY_AFTER_SECONDS = 60;
 function parseRetryAfterSeconds(header) {
-  if (!header) return DEFAULT_RETRY_AFTER_SECONDS;
   const asSeconds = Number(header);
   if (Number.isFinite(asSeconds) && asSeconds >= 0) return asSeconds;
   const asDate = Date.parse(header);
@@ -31062,6 +31061,12 @@ function parseRetryAfterSeconds(header) {
     return Math.max(0, Math.round((asDate - Date.now()) / 1e3));
   }
   return DEFAULT_RETRY_AFTER_SECONDS;
+}
+function secondsUntilRateLimitReset(resetHeader) {
+  if (!resetHeader) return DEFAULT_RETRY_AFTER_SECONDS;
+  const resetEpochSeconds = Number(resetHeader);
+  if (!Number.isFinite(resetEpochSeconds)) return DEFAULT_RETRY_AFTER_SECONDS;
+  return Math.max(0, resetEpochSeconds - Math.floor(Date.now() / 1e3));
 }
 async function withRateLimitBackoff(fn, sleep, attempt = 0) {
   try {
@@ -31076,8 +31081,15 @@ async function withRateLimitBackoff(fn, sleep, attempt = 0) {
 }
 async function handleResponse(res) {
   const retryAfter = res.headers.get("retry-after");
-  if (res.status === 429 || res.status === 403 && retryAfter !== null) {
+  const primaryLimitExhausted = res.headers.get("x-ratelimit-remaining") === "0";
+  if (res.status === 429) {
+    throw new RateLimitError(retryAfter ? parseRetryAfterSeconds(retryAfter) : DEFAULT_RETRY_AFTER_SECONDS);
+  }
+  if (res.status === 403 && retryAfter !== null) {
     throw new RateLimitError(parseRetryAfterSeconds(retryAfter));
+  }
+  if (res.status === 403 && primaryLimitExhausted) {
+    throw new RateLimitError(secondsUntilRateLimitReset(res.headers.get("x-ratelimit-reset")));
   }
   if (!res.ok) {
     const text2 = await res.text();

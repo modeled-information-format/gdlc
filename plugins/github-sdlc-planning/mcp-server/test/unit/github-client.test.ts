@@ -158,6 +158,61 @@ describe('githubRest', () => {
     expect(observedSleepMs).toBe(60_000);
   });
 
+  it('backs off on a primary rate limit (403, X-RateLimit-Remaining: 0, no Retry-After) using X-RateLimit-Reset', async () => {
+    let calls = 0;
+    const resetEpochSeconds = Math.floor(Date.now() / 1000) + 5;
+    server.use(
+      http.get('https://api.github.com/repos/acme/primary-limited', () => {
+        calls += 1;
+        if (calls === 1) {
+          return HttpResponse.json(
+            { message: 'API rate limit exceeded' },
+            { status: 403, headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(resetEpochSeconds) } },
+          );
+        }
+        return HttpResponse.json({ id: 1 });
+      }),
+    );
+    let observedSleepMs = -1;
+    const data = await githubRest(
+      '/repos/acme/primary-limited',
+      {},
+      {
+        sleep: (ms) => {
+          observedSleepMs = ms;
+          return Promise.resolve();
+        },
+      },
+    );
+    expect(data).toEqual({ id: 1 });
+    expect(calls).toBe(2);
+    expect(observedSleepMs).toBeGreaterThan(0);
+    expect(observedSleepMs).toBeLessThanOrEqual(6000);
+  });
+
+  it('honors an explicit retry-after value on a 429 response', async () => {
+    let calls = 0;
+    server.use(
+      http.get('https://api.github.com/repos/acme/429-limited', () => {
+        calls += 1;
+        if (calls === 1) return HttpResponse.json({ message: 'limited' }, { status: 429, headers: { 'retry-after': '3' } });
+        return HttpResponse.json({ id: 1 });
+      }),
+    );
+    let observedSleepMs = -1;
+    await githubRest(
+      '/repos/acme/429-limited',
+      {},
+      {
+        sleep: (ms) => {
+          observedSleepMs = ms;
+          return Promise.resolve();
+        },
+      },
+    );
+    expect(observedSleepMs).toBe(3000);
+  });
+
   it('paces a second mutating call within the minimum interval, but not the first', async () => {
     mockRest('post', '/repos/acme/widgets', { id: 1 });
     mockRest('post', '/repos/acme/widgets', { id: 2 });

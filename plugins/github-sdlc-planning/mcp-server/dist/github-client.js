@@ -133,8 +133,6 @@ const DEFAULT_RETRY_AFTER_SECONDS = 60;
  * backing off -- exactly wrong during a real rate limit. Parses both forms,
  * falling back to a sane default for anything else. */
 function parseRetryAfterSeconds(header) {
-    if (!header)
-        return DEFAULT_RETRY_AFTER_SECONDS;
     const asSeconds = Number(header);
     if (Number.isFinite(asSeconds) && asSeconds >= 0)
         return asSeconds;
@@ -143,6 +141,21 @@ function parseRetryAfterSeconds(header) {
         return Math.max(0, Math.round((asDate - Date.now()) / 1000));
     }
     return DEFAULT_RETRY_AFTER_SECONDS;
+}
+/** GitHub's primary rate limit (request-count budget) signals via
+ * X-RateLimit-Remaining: 0 + X-RateLimit-Reset (a Unix-epoch-seconds
+ * timestamp) on a 403, typically *without* Retry-After -- Retry-After is
+ * specific to secondary (abuse-detection) limits. Requiring Retry-After
+ * alone (an earlier version of this fix) would have misclassified a real
+ * primary-limit exhaustion as a permission error and stopped backing off on
+ * it (Copilot review finding). */
+function secondsUntilRateLimitReset(resetHeader) {
+    if (!resetHeader)
+        return DEFAULT_RETRY_AFTER_SECONDS;
+    const resetEpochSeconds = Number(resetHeader);
+    if (!Number.isFinite(resetEpochSeconds))
+        return DEFAULT_RETRY_AFTER_SECONDS;
+    return Math.max(0, resetEpochSeconds - Math.floor(Date.now() / 1000));
 }
 async function withRateLimitBackoff(fn, sleep, attempt = 0) {
     try {
@@ -156,19 +169,29 @@ async function withRateLimitBackoff(fn, sleep, attempt = 0) {
         throw err;
     }
 }
-/** 429 ("Too Many Requests") is unambiguously rate-limiting, with or without
- * a retry-after header. 403 ("Forbidden") is ambiguous -- GitHub returns it
- * for genuine rate limits (primary and secondary, both of which set
- * retry-after) AND for ordinary permission-denied errors that have nothing
- * to do with rate limiting. Treating every 403 as rate-limited (the
- * original bug) discarded the real response body and wasted up to 3 retries
- * (180s+) surfacing a misleading "Rate limited" message for errors that
- * were never about rate limiting at all -- only require retry-after to be
- * present for a 403 specifically. */
+/** 429 ("Too Many Requests") is unambiguously rate-limiting. 403
+ * ("Forbidden") is ambiguous -- GitHub returns it for three different
+ * things: secondary (abuse-detection) rate limits, which set Retry-After;
+ * primary (request-budget) rate limits, which set X-RateLimit-Remaining: 0
+ * and X-RateLimit-Reset but typically *not* Retry-After; and ordinary
+ * permission-denied errors, which set neither. Treating every 403 as
+ * rate-limited (the original bug) discarded the real response body and
+ * wasted up to 3 retries (180s+) surfacing a misleading "Rate limited"
+ * message for errors that were never about rate limiting at all. Checking
+ * only Retry-After (an earlier version of this fix) would have
+ * misclassified real primary-limit exhaustion as a permission error instead
+ * -- both signals must be checked. */
 async function handleResponse(res) {
     const retryAfter = res.headers.get('retry-after');
-    if (res.status === 429 || (res.status === 403 && retryAfter !== null)) {
+    const primaryLimitExhausted = res.headers.get('x-ratelimit-remaining') === '0';
+    if (res.status === 429) {
+        throw new RateLimitError(retryAfter ? parseRetryAfterSeconds(retryAfter) : DEFAULT_RETRY_AFTER_SECONDS);
+    }
+    if (res.status === 403 && retryAfter !== null) {
         throw new RateLimitError(parseRetryAfterSeconds(retryAfter));
+    }
+    if (res.status === 403 && primaryLimitExhausted) {
+        throw new RateLimitError(secondsUntilRateLimitReset(res.headers.get('x-ratelimit-reset')));
     }
     if (!res.ok) {
         const text = await res.text();
