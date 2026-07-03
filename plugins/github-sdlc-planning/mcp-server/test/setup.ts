@@ -9,6 +9,9 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 beforeEach(() => {
-  process.env.GITHUB_TOKEN = 'test-token';
+  // ghp_-prefixed so assertProjectScope's classic-OAuth-scope path is
+  // exercised by default; tests of the App-installation-token skip path set
+  // a ghs_-prefixed token explicitly.
+  process.env.GITHUB_TOKEN = 'ghp_test-token-1234567890';
   resetAuthCacheForTests();
 });

@@ -31002,9 +31002,16 @@ function resolveToken(execImpl = defaultExecFileSync) {
     "No GitHub token available. Set GITHUB_TOKEN, or run `gh auth login --scopes project`."
   );
 }
+function tokenHasOAuthScopeModel(token) {
+  return token.startsWith("ghp_") || token.startsWith("gho_");
+}
 async function assertProjectScope(fetchImpl = fetch) {
   if (projectScopeChecked) return;
   const token = resolveToken();
+  if (!tokenHasOAuthScopeModel(token)) {
+    projectScopeChecked = true;
+    return;
+  }
   const res = await fetchImpl(`${GITHUB_API}/user`, {
     headers: { Authorization: `Bearer ${token}`, "X-GitHub-Api-Version": API_VERSION }
   });

@@ -39,11 +39,29 @@ export function resolveToken(execImpl: ExecFileSyncFn = defaultExecFileSync): st
   );
 }
 
+/** Classic PATs (`ghp_`) and OAuth App user tokens (`gho_`) carry the
+ * `X-OAuth-Scopes` response header the check below reads. GitHub App
+ * installation tokens (`ghs_`) and fine-grained PATs (`github_pat_`) use a
+ * fixed-permissions model instead — they never populate that header, and
+ * treating its absence as "missing project scope" was a real bug (found via
+ * live-integration-tests.yml run 28672305852: an `issues` App installation
+ * token, correctly granted org:projects write, was rejected here). */
+function tokenHasOAuthScopeModel(token: string): boolean {
+  return token.startsWith('ghp_') || token.startsWith('gho_');
+}
+
 /** Checked once per process. AC-4: name the missing scope explicitly instead
- * of surfacing GitHub's raw GraphQL permission error. */
+ * of surfacing GitHub's raw GraphQL permission error. Only meaningful for
+ * classic OAuth-scoped tokens; App installation tokens and fine-grained PATs
+ * skip this check and rely on the actual GraphQL call to surface a real
+ * permission error if the token genuinely lacks access. */
 export async function assertProjectScope(fetchImpl: typeof fetch = fetch): Promise<void> {
   if (projectScopeChecked) return;
   const token = resolveToken();
+  if (!tokenHasOAuthScopeModel(token)) {
+    projectScopeChecked = true;
+    return;
+  }
   const res = await fetchImpl(`${GITHUB_API}/user`, {
     headers: { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': API_VERSION },
   });

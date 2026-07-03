@@ -7,7 +7,10 @@ export type ExecFileSyncFn = (command: string, args: string[], options: {
  * mocking the `node:child_process` builtin. */
 export declare function resolveToken(execImpl?: ExecFileSyncFn): string;
 /** Checked once per process. AC-4: name the missing scope explicitly instead
- * of surfacing GitHub's raw GraphQL permission error. */
+ * of surfacing GitHub's raw GraphQL permission error. Only meaningful for
+ * classic OAuth-scoped tokens; App installation tokens and fine-grained PATs
+ * skip this check and rely on the actual GraphQL call to surface a real
+ * permission error if the token genuinely lacks access. */
 export declare function assertProjectScope(fetchImpl?: typeof fetch): Promise<void>;
 /** Test-only: reset module-level auth cache between test cases. */
 export declare function resetAuthCacheForTests(): void;
