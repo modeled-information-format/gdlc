@@ -486,7 +486,13 @@ jobs:
           git switch -C "${BRANCH}"
           git add .claude-plugin/marketplace.json
           git commit -m "chore(catalog): pin vendored plugins to ${TAG} (${SHA:0:7})"
-          git push -u origin "${BRANCH}"
+          # A re-run of this job (transient failure, manual re-trigger) may find
+          # this bot-exclusive branch/PR already pushed from a prior attempt —
+          # the content is deterministic, so --force is correct (no lease: a
+          # fresh checkout has no remote-tracking ref for an already-pushed
+          # branch), and PR creation reuses any existing open PR on the branch
+          # instead of failing on "pull request already exists".
+          git push --force -u origin "${BRANCH}"
           BODY_FILE="$(mktemp)"
           {
             echo "Self-referential re-pin: this release's tarball attestations (SLSA provenance, CycloneDX SBOM, SAST/SCA/Trivy/ShellCheck/Semgrep/secrets/manifest-review gate verdicts, OpenVEX) already verified fail-closed in this same workflow run — see the \`verify\` job in ${TAG} — before \`publish\` created this release. This PR only updates \`.claude-plugin/marketplace.json\`'s pinned \`ref\`/\`sha\` to match; \`catalog-admission\` re-checks the pin resolves to a real plugin before it can merge."
@@ -497,8 +503,14 @@ jobs:
             echo "gh attestation verify gdlc-*.tar.gz --repo ${GITHUB_REPOSITORY} --predicate-type https://slsa.dev/provenance/v1"
             echo '```'
           } > "${BODY_FILE}"
-          gh pr create --repo "${GITHUB_REPOSITORY}" --base main --head "${BRANCH}" \
-            --title "chore(catalog): pin vendored plugins to ${TAG}" \
-            --body-file "${BODY_FILE}"
+          PR_NUM="$(gh pr list --repo "${GITHUB_REPOSITORY}" --head "${BRANCH}" --json number --jq '.[0].number // empty')"
+          if [ -n "${PR_NUM}" ]; then
+            gh pr edit "${PR_NUM}" --repo "${GITHUB_REPOSITORY}" \
+              --title "chore(catalog): pin vendored plugins to ${TAG}" --body-file "${BODY_FILE}"
+          else
+            gh pr create --repo "${GITHUB_REPOSITORY}" --base main --head "${BRANCH}" \
+              --title "chore(catalog): pin vendored plugins to ${TAG}" --body-file "${BODY_FILE}"
+            PR_NUM="$(gh pr list --repo "${GITHUB_REPOSITORY}" --head "${BRANCH}" --json number --jq '.[0].number // empty')"
+          fi
           rm -f "${BODY_FILE}"
-          gh pr merge --repo "${GITHUB_REPOSITORY}" --auto --squash "${BRANCH}"
+          gh pr merge "${PR_NUM}" --repo "${GITHUB_REPOSITORY}" --auto --squash
