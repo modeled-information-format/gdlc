@@ -3,7 +3,7 @@ id: 3a7c9e11-8f4d-4b2a-9e6c-1d5f8a2b7c4e
 type: procedural
 created: 2026-07-03T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-03T00:00:00Z
+modified: 2026-07-03T20:50:00Z
 title: Verify cross-agent portability
 diataxis_type: how-to
 ---
@@ -16,9 +16,24 @@ proven at the protocol level by the unit tests and `evaluation.xml` QA pairs
 operations from Claude Code and from a second real MCP-capable host, and
 confirming identical GitHub-side results.
 
-This has not been run yet for this release — it needs a sandbox GitHub repo
-and a `project`-scoped PAT, neither of which this deliverable had access to
-provision. Run it once those are available.
+**Status: partially run.** A sandbox repo (`modeled-information-format/gdlc-sandbox`)
+and a real credential (a scoped GitHub App installation token, minted via
+`.github/workflows/live-integration-tests.yml`) now exist, and both plugins'
+`verify:live` scripts pass in full against real GitHub state — every
+representative operation (`create_issue`, `add_sub_issue`, `add_item_to_project`,
+`set_field_value`, `get_agent_capabilities`, `request_review`,
+`get_linked_issues` via `closingIssuesReferences`, and more) succeeds against
+the live API, not mocks. See the passing run:
+<https://github.com/modeled-information-format/gdlc/actions/runs/28682702222>.
+
+That is **not** the same claim as this doc's actual procedure below. It
+proves the MCP core's own implementation is correct against real GitHub —
+a single host (the script) calling the tool functions directly, not through
+the MCP protocol, and not compared against a second agent. The genuine
+cross-agent comparison (Claude Code vs. Codex/Cursor, through the actual MCP
+protocol, diffing tool *responses* not just GitHub-side state) still has not
+been run — this deliverable had a sandbox repo but not a second
+MCP-capable host driving the protocol layer in this environment.
 
 ## Prerequisites
 
