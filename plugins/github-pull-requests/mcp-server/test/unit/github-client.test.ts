@@ -93,7 +93,9 @@ describe('githubRest', () => {
       },
     );
     expect(Number.isNaN(observedSleepMs)).toBe(false);
-    expect(observedSleepMs).toBeGreaterThan(0);
+    // >= 0, not > 0: on a slow runner the 5s window could already have
+    // elapsed, in which case clamping to 0 is correct, not a bug.
+    expect(observedSleepMs).toBeGreaterThanOrEqual(0);
     expect(observedSleepMs).toBeLessThanOrEqual(6000);
   });
 
@@ -165,7 +167,9 @@ describe('githubRest', () => {
     );
     expect(data).toEqual({ id: 1 });
     expect(calls).toBe(2);
-    expect(observedSleepMs).toBeGreaterThan(0);
+    // >= 0, not > 0: on a slow runner the 5s reset window could already
+    // have elapsed, in which case clamping to 0 is correct, not a bug.
+    expect(observedSleepMs).toBeGreaterThanOrEqual(0);
     expect(observedSleepMs).toBeLessThanOrEqual(6000);
   });
 
