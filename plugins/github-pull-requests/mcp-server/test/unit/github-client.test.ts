@@ -82,6 +82,25 @@ describe('githubRest', () => {
     const data = await githubRest('/repos/acme/widgets/pulls/9');
     expect(data).toBeUndefined();
   });
+
+  it('paces a second mutating call within the minimum interval, but not the first', async () => {
+    mockRest('post', '/repos/acme/widgets/pulls/1/requested_reviewers', { users: [] });
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    await githubRest('/repos/acme/widgets/pulls/1/requested_reviewers', { method: 'POST' }, { sleep });
+    expect(sleep).not.toHaveBeenCalled();
+    await githubRest('/repos/acme/widgets/pulls/1/requested_reviewers', { method: 'POST' }, { sleep });
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(sleep.mock.calls[0][0]).toBeGreaterThan(0);
+  });
+
+  it('does not pace GET calls even back-to-back with a mutating call', async () => {
+    mockRest('post', '/repos/acme/widgets/pulls/1/requested_reviewers', { users: [] });
+    mockRest('get', '/repos/acme/widgets/pulls/1', { number: 1 });
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    await githubRest('/repos/acme/widgets/pulls/1/requested_reviewers', { method: 'POST' }, { sleep });
+    await githubRest('/repos/acme/widgets/pulls/1', {}, { sleep });
+    expect(sleep).not.toHaveBeenCalled();
+  });
 });
 
 describe('githubGraphQL', () => {
@@ -99,5 +118,23 @@ describe('githubGraphQL', () => {
   it('throws github_api_error when the response has neither data nor errors', async () => {
     server.use(http.post('https://api.github.com/graphql', () => HttpResponse.json({})));
     await expect(githubGraphQL('query { x }')).rejects.toMatchObject({ code: 'github_api_error' });
+  });
+
+  it('paces a second mutation within the minimum interval, but not the first', async () => {
+    mockGraphQL(() => ({ ok: true }));
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    await githubGraphQL('mutation { createThing }', {}, { sleep });
+    expect(sleep).not.toHaveBeenCalled();
+    await githubGraphQL('mutation { createThing }', {}, { sleep });
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(sleep.mock.calls[0][0]).toBeGreaterThan(0);
+  });
+
+  it('does not pace a query, even immediately after a mutation', async () => {
+    mockGraphQL(() => ({ ok: true }));
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    await githubGraphQL('mutation { createThing }', {}, { sleep });
+    await githubGraphQL('query { thing }', {}, { sleep });
+    expect(sleep).not.toHaveBeenCalled();
   });
 });

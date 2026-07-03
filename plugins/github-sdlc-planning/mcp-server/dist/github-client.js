@@ -67,10 +67,34 @@ export async function assertProjectScope(fetchImpl = fetch) {
     }
     projectScopeChecked = true;
 }
-/** Test-only: reset module-level auth cache between test cases. */
+/** Deterministic governor, not incidental pacing from how fast a given agent
+ * happens to call tools: GitHub's secondary (abuse-detection) rate limit for
+ * content-creating mutations is undocumented in /rate_limit and triggers on
+ * burst *pattern*, not primary-budget exhaustion (confirmed live: a
+ * 5-run/40-minute burst of create-branch+commit+PR tripped it with 4939/5000
+ * of the primary REST budget still unused). A reactive catch-403-and-retry
+ * loop alone isn't sufficient for a tool whose real jobs (epic-decomposition,
+ * bulk sub-issue seeding) intentionally create many objects in sequence.
+ * MIN_MUTATION_INTERVAL_MS caps mutating calls at 60/minute, comfortably
+ * under GitHub's informally documented ~80/minute secondary-limit guidance,
+ * enforced here unconditionally regardless of which MCP host or model is
+ * driving the calls. */
+const MIN_MUTATION_INTERVAL_MS = 1000;
+let lastMutationAt = 0;
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+async function enforceMutationPacing(sleep) {
+    const elapsed = Date.now() - lastMutationAt;
+    if (elapsed < MIN_MUTATION_INTERVAL_MS) {
+        await sleep(MIN_MUTATION_INTERVAL_MS - elapsed);
+    }
+    lastMutationAt = Date.now();
+}
+/** Test-only: reset module-level auth cache and mutation-pacing state between
+ * test cases. */
 export function resetAuthCacheForTests() {
     cachedToken = undefined;
     projectScopeChecked = false;
+    lastMutationAt = 0;
 }
 class RateLimitError extends Error {
     retryAfterSeconds;
@@ -111,10 +135,14 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export async function githubRest(path, opts = {}, deps = {}) {
     const fetchImpl = deps.fetchImpl ?? fetch;
     const sleep = deps.sleep ?? defaultSleep;
+    const method = opts.method ?? 'GET';
+    if (MUTATING_METHODS.has(method)) {
+        await enforceMutationPacing(sleep);
+    }
     return withRateLimitBackoff(async () => {
         const token = resolveToken();
         const res = await fetchImpl(`${GITHUB_API}${path}`, {
-            method: opts.method ?? 'GET',
+            method,
             headers: {
                 Authorization: `Bearer ${token}`,
                 Accept: 'application/vnd.github+json',
@@ -129,6 +157,9 @@ export async function githubRest(path, opts = {}, deps = {}) {
 export async function githubGraphQL(query, variables = {}, opts = {}, deps = {}) {
     const fetchImpl = deps.fetchImpl ?? fetch;
     const sleep = deps.sleep ?? defaultSleep;
+    if (query.trim().startsWith('mutation')) {
+        await enforceMutationPacing(sleep);
+    }
     return withRateLimitBackoff(async () => {
         const token = resolveToken();
         const headers = {

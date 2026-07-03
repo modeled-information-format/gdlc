@@ -31026,6 +31026,16 @@ async function assertProjectScope(fetchImpl = fetch) {
   }
   projectScopeChecked = true;
 }
+var MIN_MUTATION_INTERVAL_MS = 1e3;
+var lastMutationAt = 0;
+var MUTATING_METHODS = /* @__PURE__ */ new Set(["POST", "PUT", "PATCH", "DELETE"]);
+async function enforceMutationPacing(sleep) {
+  const elapsed = Date.now() - lastMutationAt;
+  if (elapsed < MIN_MUTATION_INTERVAL_MS) {
+    await sleep(MIN_MUTATION_INTERVAL_MS - elapsed);
+  }
+  lastMutationAt = Date.now();
+}
 var RateLimitError = class extends Error {
   retryAfterSeconds;
   constructor(retryAfterSeconds) {
@@ -31063,11 +31073,15 @@ var defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function githubRest(path, opts = {}, deps = {}) {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const sleep = deps.sleep ?? defaultSleep;
+  const method = opts.method ?? "GET";
+  if (MUTATING_METHODS.has(method)) {
+    await enforceMutationPacing(sleep);
+  }
   return withRateLimitBackoff(
     async () => {
       const token = resolveToken();
       const res = await fetchImpl(`${GITHUB_API}${path}`, {
-        method: opts.method ?? "GET",
+        method,
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github+json",
@@ -31084,6 +31098,9 @@ async function githubRest(path, opts = {}, deps = {}) {
 async function githubGraphQL(query, variables = {}, opts = {}, deps = {}) {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const sleep = deps.sleep ?? defaultSleep;
+  if (query.trim().startsWith("mutation")) {
+    await enforceMutationPacing(sleep);
+  }
   return withRateLimitBackoff(
     async () => {
       const token = resolveToken();
