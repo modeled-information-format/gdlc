@@ -15,6 +15,7 @@ Docs for the `github-sdlc-plugins` attested marketplace, organized by
 | Mode | Document |
 | --- | --- |
 | How-to | [Add a plugin](how-to/add-a-plugin.md) |
+| How-to | [Verify cross-agent portability](how-to/verify-cross-agent.md) |
 | Reference | [Gates](reference/gates.md) |
 | Explanation | [Why an attested marketplace](explanation/attested-marketplace.md) |
 | Security | [Verify a release](security/verify.md) |

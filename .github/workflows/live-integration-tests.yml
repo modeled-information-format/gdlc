@@ -1,0 +1,120 @@
+---
+name: live-integration-tests
+
+# Exercises both MCP servers' real implementation against a real sandbox
+# repo (modeled-information-format/gdlc-sandbox), not mocks. Not part of the
+# CI-gating quality-gates.yml — this mutates real GitHub state (issues,
+# sub-issues, milestones, discussions, a throwaway Projects v2 board, a PR),
+# so it runs on-demand only (workflow_dispatch), never on every push/PR.
+#
+# Needs the ISSUES_CLIENT_APP_ID/ISSUES_CLIENT_APP_PRIVATE_KEY secrets — see
+# auth/apps.json's "issues" role in modeled-information-format/.github. This
+# workflow fails until that App exists and those secrets are set (manual
+# prerequisite; not automatable here).
+#
+# github-pull-requests' request_review/remove_review_request path only runs
+# when SANDBOX_REVIEWER_LOGIN is set to a real org member other than the App
+# — set it as a workflow input or repo variable; the run skips that check
+# gracefully otherwise (see scripts/verify-live.ts in each package).
+
+"on":
+  workflow_dispatch:
+    inputs:
+      reviewer_login:
+        description: 'GitHub login to use for request_review/remove_review_request testing (optional; skips that check if omitted)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  live-verify:
+    name: live verify (github-sdlc-planning + github-pull-requests)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SANDBOX_OWNER: modeled-information-format
+      SANDBOX_REPO: gdlc-sandbox
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up Node (lts/*)
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 'lts/*'
+
+      - name: Mint the "issues" App installation token
+        id: issues_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.ISSUES_CLIENT_APP_ID }}
+          private-key: ${{ secrets.ISSUES_CLIENT_APP_PRIVATE_KEY }}
+          owner: ${{ env.SANDBOX_OWNER }}
+          repositories: ${{ env.SANDBOX_REPO }}
+
+      - name: Create a throwaway Projects v2 board + a text field
+        id: project
+        env:
+          GH_TOKEN: ${{ steps.issues_token.outputs.token }}
+          RUN_TITLE: "verify-live ${{ github.run_id }}"
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2016  # GraphQL's own $variable syntax, not shell expansion — values are passed via -f, never interpolated into the query text.
+          OWNER_ID=$(gh api graphql -f query='query($login:String!){organization(login:$login){id}}' \
+            -f login="${SANDBOX_OWNER}" --jq '.data.organization.id')
+          # shellcheck disable=SC2016
+          PROJECT_JSON=$(gh api graphql -f query='
+            mutation($ownerId:ID!, $title:String!) {
+              createProjectV2(input: { ownerId: $ownerId, title: $title }) { projectV2 { id number } }
+            }' -f ownerId="${OWNER_ID}" -f title="${RUN_TITLE}")
+          PROJECT_ID=$(jq -r '.data.createProjectV2.projectV2.id' <<<"$PROJECT_JSON")
+          PROJECT_NUMBER=$(jq -r '.data.createProjectV2.projectV2.number' <<<"$PROJECT_JSON")
+          # shellcheck disable=SC2016
+          FIELD_JSON=$(gh api graphql -f query='
+            mutation($projectId:ID!) {
+              addProjectV2Field(input: { projectId: $projectId, dataType: TEXT, name: "verify-live-text" }) {
+                projectV2Field { ... on ProjectV2Field { id } }
+              }
+            }' -f projectId="${PROJECT_ID}")
+          FIELD_ID=$(jq -r '.data.addProjectV2Field.projectV2Field.id' <<<"$FIELD_JSON")
+          {
+            echo "project_id=${PROJECT_ID}"
+            echo "project_number=${PROJECT_NUMBER}"
+            echo "field_id=${FIELD_ID}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Created project #${PROJECT_NUMBER} (${PROJECT_ID}), field ${FIELD_ID}"
+
+      - name: Build github-sdlc-planning/mcp-server
+        working-directory: plugins/github-sdlc-planning/mcp-server
+        run: npm ci
+      - name: Run github-sdlc-planning verify:live
+        working-directory: plugins/github-sdlc-planning/mcp-server
+        env:
+          GITHUB_TOKEN: ${{ steps.issues_token.outputs.token }}
+          SANDBOX_PROJECT_NUMBER: ${{ steps.project.outputs.project_number }}
+          SANDBOX_PROJECT_TEXT_FIELD_ID: ${{ steps.project.outputs.field_id }}
+        run: npm run verify:live
+
+      - name: Build github-pull-requests/mcp-server
+        working-directory: plugins/github-pull-requests/mcp-server
+        run: npm ci
+      - name: Run github-pull-requests verify:live
+        working-directory: plugins/github-pull-requests/mcp-server
+        env:
+          GITHUB_TOKEN: ${{ steps.issues_token.outputs.token }}
+          SANDBOX_REVIEWER_LOGIN: ${{ inputs.reviewer_login }}
+        run: npm run verify:live
+
+      - name: Delete the throwaway Projects v2 board
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.issues_token.outputs.token }}
+          PROJECT_ID: ${{ steps.project.outputs.project_id }}
+          PROJECT_NUMBER: ${{ steps.project.outputs.project_number }}
+        run: |
+          # shellcheck disable=SC2016
+          gh api graphql -f query='mutation($projectId:ID!){deleteProjectV2(input:{projectId:$projectId}){projectV2{id}}}' \
+            -f projectId="${PROJECT_ID}" || echo "::warning::project cleanup failed, delete #${PROJECT_NUMBER} manually"
