@@ -1,0 +1,19 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://modeled-information-format.github.io/vex/gdlc/v1",
+  "author": "modeled-information-format",
+  "role": "Project Maintainer",
+  "timestamp": "2026-07-03T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": { "name": "CVE-0000-00000" },
+      "products": [
+        { "@id": "pkg:generic/gdlc" }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Sample disposition — replace with real entries. The marketplace's scanners (Semgrep, Gitleaks, ShellCheck, Trivy, OSV) surface advisory findings on the two vendored plugins; disposition them here as you triage, so the release gate enforces 'no UNDISPOSITIONED high/critical findings' rather than 'zero findings'."
+    }
+  ]
+}

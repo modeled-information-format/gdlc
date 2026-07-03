@@ -1,0 +1,52 @@
+{
+  "name": "github-sdlc-plugins",
+  "description": "Attested Claude Code plugin marketplace for the GitHub SDLC planning domain. Every plugin tarball is SHA-pinned, scanned across the org's quality gates, signed, and admitted to this catalog only when its attestations verify fail-closed.",
+  "owner": {
+    "name": "modeled-information-format"
+  },
+  "metadata": {
+    "pluginRoot": "plugins"
+  },
+  "allowCrossMarketplaceDependenciesOn": ["modeled-information-format"],
+  "plugins": [
+    {
+      "name": "github-sdlc-planning",
+      "source": "./plugins/github-sdlc-planning",
+      "description": "Issues, native sub-issues, Projects v2, Milestones, and Discussions behind a portable MCP core plus a Claude Code progressive-enhancement layer. Every issue/discussion body carries MIF-conformant frontmatter authored via mif-docs.",
+      "version": "0.1.0",
+      "author": {
+        "name": "modeled-information-format"
+      },
+      "category": "planning",
+      "license": "MIT",
+      "keywords": [
+        "github",
+        "projects-v2",
+        "issues",
+        "sub-issues",
+        "milestones",
+        "discussions",
+        "mif",
+        "planning"
+      ]
+    },
+    {
+      "name": "github-pull-requests",
+      "source": "./plugins/github-pull-requests",
+      "description": "PR review-request routing and PR-to-issue link visibility, depending on github-sdlc-planning for its shared MIF comment-block reader.",
+      "version": "0.1.0",
+      "author": {
+        "name": "modeled-information-format"
+      },
+      "category": "planning",
+      "license": "MIT",
+      "keywords": [
+        "github",
+        "pull-requests",
+        "review-requests",
+        "issue-linking",
+        "near-term"
+      ]
+    }
+  ]
+}

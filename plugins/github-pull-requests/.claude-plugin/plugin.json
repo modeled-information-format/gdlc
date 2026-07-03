@@ -1,0 +1,22 @@
+{
+  "name": "github-pull-requests",
+  "displayName": "GitHub Pull Requests",
+  "version": "0.1.0",
+  "description": "PR review-request routing and PR-to-issue link visibility. Reuses github-sdlc-planning's MIF comment-block reader rather than duplicating that parser.",
+  "author": {
+    "name": "modeled-information-format"
+  },
+  "homepage": "https://github.com/modeled-information-format/gdlc",
+  "repository": "https://github.com/modeled-information-format/gdlc",
+  "license": "MIT",
+  "keywords": [
+    "github",
+    "pull-requests",
+    "review-requests",
+    "issue-linking",
+    "near-term"
+  ],
+  "dependencies": [
+    { "name": "github-sdlc-planning" }
+  ]
+}
