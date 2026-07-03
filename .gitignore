@@ -2,6 +2,7 @@ node_modules/
 *.tsbuildinfo
 .env
 .env.local
+CLAUDE.local.md
 coverage/
 *.log
 .DS_Store
