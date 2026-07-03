@@ -35,6 +35,24 @@ function step(name: string): void {
   process.stdout.write(`\n=== ${name} ===\n`);
 }
 
+/** GitHub parses a PR body's "Fixes #N" into closingIssuesReferences
+ * asynchronously after PR creation -- observed live: absent immediately
+ * after creation, present when checked manually a few minutes later. The
+ * exact typical delay isn't known from a single manual observation, so the
+ * default window here (attempts/delayMs) is sized generously rather than to
+ * a precise measured figure (same eventual-consistency pattern already
+ * found in the planning package's Projects v2 read-after-write, but that
+ * one resolved within ~1s, so its narrower default is kept as-is and this
+ * call site overrides both params explicitly). */
+async function retryUntil<T>(fn: () => Promise<T>, isReady: (result: T) => boolean, attempts = 5, delayMs = 1000): Promise<T> {
+  let result = await fn();
+  for (let i = 1; i < attempts && !isReady(result); i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    result = await fn();
+  }
+  return result;
+}
+
 interface CreatedIssue {
   number: number;
 }
@@ -93,7 +111,16 @@ async function main(): Promise<void> {
   process.stdout.write(`  issue #${issue.number}, PR #${pr.number}\n`);
 
   step('get_linked_issues (AC-3: closingIssuesReferences)');
-  const linked = await getLinkedIssues({ owner: OWNER, repo: REPO, pullNumber: pr.number });
+  // 12 attempts, 5s apart: the first attempt is immediate (no delay), so
+  // this sleeps for at most 11 * 5s = 55s total -- the closingIssuesReferences backfill
+  // delay isn't precisely measured, so this errs generous rather than
+  // risking a flaky failure on a correct-but-slow-to-populate link.
+  const linked = await retryUntil(
+    () => getLinkedIssues({ owner: OWNER, repo: REPO, pullNumber: pr.number }),
+    (result) => result.items.some((i) => i.number === issue.number && i.source === 'closing_reference' && i.closing),
+    12,
+    5000,
+  );
   assert(linked.sourceAttempted[0] === 'closing_reference', 'closing_reference attempted first');
   assert(
     linked.items.some((i) => i.number === issue.number && i.source === 'closing_reference' && i.closing),

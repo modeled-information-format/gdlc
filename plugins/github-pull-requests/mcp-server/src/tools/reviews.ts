@@ -37,7 +37,7 @@ export interface RequestedReviewers {
 
 interface RestRequestedReviewersResponse {
   users: Array<{ login: string }>;
-  requested_teams: Array<{ slug: string }>;
+  teams: Array<{ slug: string }>;
 }
 
 /** AC-1: request reviewers via POST .../requested_reviewers. */
@@ -50,7 +50,7 @@ export async function requestReview(input: RequestReviewInput, deps: GithubClien
     { method: 'POST', body: { reviewers: input.reviewers ?? [], team_reviewers: input.teamReviewers ?? [] } },
     deps,
   )) as RestRequestedReviewersResponse;
-  return { users: data.users.map((u) => u.login), teams: data.requested_teams.map((t) => t.slug) };
+  return { users: data.users.map((u) => u.login), teams: data.teams.map((t) => t.slug) };
 }
 
 /** AC-2: return current requested reviewers without a separate Timeline-API call. */
@@ -60,7 +60,7 @@ export async function listReviewRequests(input: PullRequestRef, deps: GithubClie
     {},
     deps,
   )) as RestRequestedReviewersResponse;
-  return { users: data.users.map((u) => u.login), teams: data.requested_teams.map((t) => t.slug) };
+  return { users: data.users.map((u) => u.login), teams: data.teams.map((t) => t.slug) };
 }
 
 export interface RemoveReviewRequestInput extends PullRequestRef {
@@ -74,5 +74,5 @@ export async function removeReviewRequest(input: RemoveReviewRequestInput, deps:
     { method: 'DELETE', body: { reviewers: input.reviewers ?? [], team_reviewers: input.teamReviewers ?? [] } },
     deps,
   )) as RestRequestedReviewersResponse;
-  return { users: data.users.map((u) => u.login), teams: data.requested_teams.map((t) => t.slug) };
+  return { users: data.users.map((u) => u.login), teams: data.teams.map((t) => t.slug) };
 }
