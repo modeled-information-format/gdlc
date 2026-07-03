@@ -31064,8 +31064,8 @@ async function withRateLimitBackoff(fn, sleep, attempt = 0) {
   }
 }
 async function handleResponse(res) {
-  if (res.status === 403 || res.status === 429) {
-    const retryAfter = res.headers.get("retry-after");
+  const retryAfter = res.headers.get("retry-after");
+  if (res.status === 429 || res.status === 403 && retryAfter !== null) {
     throw new RateLimitError(retryAfter ? Number(retryAfter) : 60);
   }
   if (!res.ok) {

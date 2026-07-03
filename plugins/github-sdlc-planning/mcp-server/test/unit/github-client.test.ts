@@ -94,6 +94,22 @@ describe('githubRest', () => {
     expect(calls).toBe(2);
   });
 
+  it('treats a 403 without a retry-after header as a real error, not a rate limit', async () => {
+    let calls = 0;
+    server.use(
+      http.get('https://api.github.com/repos/acme/forbidden', () => {
+        calls += 1;
+        return HttpResponse.json({ message: 'Resource not accessible by integration' }, { status: 403 });
+      }),
+    );
+    await expect(githubRest('/repos/acme/forbidden')).rejects.toMatchObject({
+      code: 'github_api_error',
+      message: expect.stringContaining('Resource not accessible by integration'),
+    });
+    // No retry attempted -- a real 403 fails fast instead of wasting 180s.
+    expect(calls).toBe(1);
+  });
+
   it('paces a second mutating call within the minimum interval, but not the first', async () => {
     mockRest('post', '/repos/acme/widgets', { id: 1 });
     mockRest('post', '/repos/acme/widgets', { id: 2 });

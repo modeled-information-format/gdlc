@@ -138,9 +138,18 @@ async function withRateLimitBackoff(fn, sleep, attempt = 0) {
         throw err;
     }
 }
+/** 429 ("Too Many Requests") is unambiguously rate-limiting, with or without
+ * a retry-after header. 403 ("Forbidden") is ambiguous -- GitHub returns it
+ * for genuine rate limits (primary and secondary, both of which set
+ * retry-after) AND for ordinary permission-denied errors that have nothing
+ * to do with rate limiting. Treating every 403 as rate-limited (the
+ * original bug) discarded the real response body and wasted up to 3 retries
+ * (180s+) surfacing a misleading "Rate limited" message for errors that
+ * were never about rate limiting at all -- only require retry-after to be
+ * present for a 403 specifically. */
 async function handleResponse(res) {
-    if (res.status === 403 || res.status === 429) {
-        const retryAfter = res.headers.get('retry-after');
+    const retryAfter = res.headers.get('retry-after');
+    if (res.status === 429 || (res.status === 403 && retryAfter !== null)) {
         throw new RateLimitError(retryAfter ? Number(retryAfter) : 60);
     }
     if (!res.ok) {
