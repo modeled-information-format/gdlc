@@ -141,7 +141,9 @@ function parseRetryAfterSeconds(header) {
         return asSeconds;
     const asDate = Date.parse(trimmed);
     if (!Number.isNaN(asDate)) {
-        return Math.max(0, Math.round((asDate - Date.now()) / 1000));
+        // Ceil, not round: rounding down (e.g. 0.4s remaining -> 0) would retry
+        // before the server-specified time. Always wait at least until then.
+        return Math.max(0, Math.ceil((asDate - Date.now()) / 1000));
     }
     return DEFAULT_RETRY_AFTER_SECONDS;
 }

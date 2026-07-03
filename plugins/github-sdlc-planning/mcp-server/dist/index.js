@@ -31060,7 +31060,7 @@ function parseRetryAfterSeconds(header) {
   if (Number.isFinite(asSeconds) && asSeconds >= 0) return asSeconds;
   const asDate = Date.parse(trimmed);
   if (!Number.isNaN(asDate)) {
-    return Math.max(0, Math.round((asDate - Date.now()) / 1e3));
+    return Math.max(0, Math.ceil((asDate - Date.now()) / 1e3));
   }
   return DEFAULT_RETRY_AFTER_SECONDS;
 }
