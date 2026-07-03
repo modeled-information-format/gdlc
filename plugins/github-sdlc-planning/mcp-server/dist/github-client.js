@@ -1,0 +1,144 @@
+import { execFileSync } from 'node:child_process';
+import { PlanningError } from './errors.js';
+const GITHUB_API = 'https://api.github.com';
+const GITHUB_GRAPHQL = 'https://api.github.com/graphql';
+const API_VERSION = '2022-11-28';
+const MAX_RATE_LIMIT_RETRIES = 3;
+let cachedToken;
+let projectScopeChecked = false;
+const defaultExecFileSync = (command, args, options) => execFileSync(command, args, options);
+/** Auth: env var first, `gh auth token` fallback (assumption #2 in the build
+ * plan). Fails fast with a remediation message rather than a raw 401.
+ * `execImpl` is injectable so tests can exercise the fallback path without
+ * mocking the `node:child_process` builtin. */
+export function resolveToken(execImpl = defaultExecFileSync) {
+    if (cachedToken)
+        return cachedToken;
+    const envToken = process.env.GITHUB_TOKEN;
+    if (envToken) {
+        cachedToken = envToken;
+        return envToken;
+    }
+    try {
+        const token = execImpl('gh', ['auth', 'token'], { encoding: 'utf8' }).trim();
+        if (token) {
+            cachedToken = token;
+            return token;
+        }
+    }
+    catch {
+        // fall through to the error below
+    }
+    throw new PlanningError('missing_scope', 'No GitHub token available. Set GITHUB_TOKEN, or run `gh auth login --scopes project`.');
+}
+/** Checked once per process. AC-4: name the missing scope explicitly instead
+ * of surfacing GitHub's raw GraphQL permission error. */
+export async function assertProjectScope(fetchImpl = fetch) {
+    if (projectScopeChecked)
+        return;
+    const token = resolveToken();
+    const res = await fetchImpl(`${GITHUB_API}/user`, {
+        headers: { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': API_VERSION },
+    });
+    const scopesHeader = res.headers.get('x-oauth-scopes') ?? '';
+    const scopes = scopesHeader
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    if (!scopes.includes('project')) {
+        throw new PlanningError('missing_scope', 'GitHub token is missing the `project` scope required for Projects v2 writes. Run `gh auth login --scopes project`.', { missingScope: 'project', presentScopes: scopes });
+    }
+    projectScopeChecked = true;
+}
+/** Test-only: reset module-level auth cache between test cases. */
+export function resetAuthCacheForTests() {
+    cachedToken = undefined;
+    projectScopeChecked = false;
+}
+class RateLimitError extends Error {
+    retryAfterSeconds;
+    constructor(retryAfterSeconds) {
+        super(`Rate limited, retry after ${retryAfterSeconds}s`);
+        this.retryAfterSeconds = retryAfterSeconds;
+    }
+}
+async function withRateLimitBackoff(fn, sleep, attempt = 0) {
+    try {
+        return await fn();
+    }
+    catch (err) {
+        if (err instanceof RateLimitError && attempt < MAX_RATE_LIMIT_RETRIES) {
+            await sleep(err.retryAfterSeconds * 1000);
+            return withRateLimitBackoff(fn, sleep, attempt + 1);
+        }
+        throw err;
+    }
+}
+async function handleResponse(res) {
+    if (res.status === 403 || res.status === 429) {
+        const retryAfter = res.headers.get('retry-after');
+        throw new RateLimitError(retryAfter ? Number(retryAfter) : 60);
+    }
+    if (!res.ok) {
+        const text = await res.text();
+        throw new PlanningError('github_api_error', `GitHub API error ${res.status}: ${text}`, {
+            status: res.status,
+        });
+    }
+    if (res.status === 204)
+        return undefined;
+    const text = await res.text();
+    return text ? JSON.parse(text) : undefined;
+}
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+export async function githubRest(path, opts = {}, deps = {}) {
+    const fetchImpl = deps.fetchImpl ?? fetch;
+    const sleep = deps.sleep ?? defaultSleep;
+    return withRateLimitBackoff(async () => {
+        const token = resolveToken();
+        const res = await fetchImpl(`${GITHUB_API}${path}`, {
+            method: opts.method ?? 'GET',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/vnd.github+json',
+                'X-GitHub-Api-Version': API_VERSION,
+                ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
+            },
+            body: opts.body ? JSON.stringify(opts.body) : undefined,
+        });
+        return handleResponse(res);
+    }, sleep);
+}
+export async function githubGraphQL(query, variables = {}, opts = {}, deps = {}) {
+    const fetchImpl = deps.fetchImpl ?? fetch;
+    const sleep = deps.sleep ?? defaultSleep;
+    return withRateLimitBackoff(async () => {
+        const token = resolveToken();
+        const headers = {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        };
+        if (opts.previewHeader)
+            headers['GraphQL-Features'] = opts.previewHeader;
+        const res = await fetchImpl(GITHUB_GRAPHQL, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ query, variables }),
+        });
+        const json = (await handleResponse(res));
+        if (json.errors?.length) {
+            const retryableSchemaError = json.errors.some((e) => /GraphQL-Features|Unknown argument|preview/i.test(e.message));
+            if (opts.previewHeader && retryableSchemaError) {
+                return githubGraphQL(query, variables, { ...opts, previewHeader: undefined }, deps);
+            }
+            throw new PlanningError('github_api_error', `GitHub GraphQL error: ${json.errors.map((e) => e.message).join('; ')}`, {
+                graphqlErrors: json.errors,
+            });
+        }
+        if (json.data === undefined) {
+            throw new PlanningError('github_api_error', 'GitHub GraphQL response had no data and no errors');
+        }
+        return json.data;
+    }, sleep);
+}
+//# sourceMappingURL=github-client.js.map
