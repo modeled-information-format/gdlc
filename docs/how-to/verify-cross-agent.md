@@ -20,9 +20,9 @@ confirming identical GitHub-side results.
 and a real credential (a scoped GitHub App installation token, minted via
 `.github/workflows/live-integration-tests.yml`) now exist, and both plugins'
 `verify:live` scripts pass in full against real GitHub state — every
-representative operation (create_issue, add_sub_issue, add_item_to_project,
-set_field_value, get_agent_capabilities, request_review,
-get_linked_issues via closingIssuesReferences, and more) succeeds against
+representative operation (`create_issue`, `add_sub_issue`, `add_item_to_project`,
+`set_field_value`, `get_agent_capabilities`, `request_review`,
+`get_linked_issues` via `closingIssuesReferences`, and more) succeeds against
 the live API, not mocks. See the passing run:
 <https://github.com/modeled-information-format/gdlc/actions/runs/28682702222>.
 
