@@ -1,0 +1,42 @@
+<evaluation>
+   <qa_pair id="1">
+      <question>How many tools does the github-sdlc-planning MCP server expose? Answer with just the number.</question>
+      <answer>16</answer>
+   </qa_pair>
+   <qa_pair id="2">
+      <question>Call get_agent_capabilities. What is the value of the hooksSupported field? Answer True or False.</question>
+      <answer>False</answer>
+   </qa_pair>
+   <qa_pair id="3">
+      <question>Call get_agent_capabilities. What is the value of the mifConformance field?</question>
+      <answer>L1</answer>
+   </qa_pair>
+   <qa_pair id="4">
+      <question>Call format_mif_issue_body with meta {id: "ship-it", type: "Task", namespace: "acme"} and body "Do the thing.". What is the second line of the returned body?</question>
+      <answer>&lt;!-- mif-type: Task --&gt;</answer>
+   </qa_pair>
+   <qa_pair id="5">
+      <question>Call parse_mif_issue_body with raw "Just a plain body, no frontmatter.". Is the meta field null? Answer True or False.</question>
+      <answer>True</answer>
+   </qa_pair>
+   <qa_pair id="6">
+      <question>What is the name of the tool that lists a parent issue's sub-issues?</question>
+      <answer>list_sub_issues</answer>
+   </qa_pair>
+   <qa_pair id="7">
+      <question>According to add_sub_issue's own client-side limit, what is the maximum number of sub-issues allowed per parent before it rejects with limit_exceeded? Answer with just the number.</question>
+      <answer>100</answer>
+   </qa_pair>
+   <qa_pair id="8">
+      <question>According to add_sub_issue's own client-side limit, what is the maximum nesting-level depth allowed before it rejects with limit_exceeded? Answer with just the number.</question>
+      <answer>8</answer>
+   </qa_pair>
+   <qa_pair id="9">
+      <question>What is the name of the tool that assigns (or unassigns) a milestone on an issue?</question>
+      <answer>assign_milestone</answer>
+   </qa_pair>
+   <qa_pair id="10">
+      <question>Which GraphQL mutation does create_discussion call to create a Discussion?</question>
+      <answer>createDiscussion</answer>
+   </qa_pair>
+</evaluation>

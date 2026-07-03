@@ -1,0 +1,73 @@
+{
+  "skill_name": "sprint-plan",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Plan Sprint 7 for acme/widgets, project #4. We have a 4-person team on a two-week cadence.",
+      "expected_output": "Reads current board state and open milestones, proposes a candidate issue set sized to team capacity, asks for confirmation before writing, then sets the Sprint iteration field on the confirmed items.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "get_project_items",
+          "description": "Reads current board state before proposing anything"
+        },
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "confirm|proceed|does this look|sound good",
+          "description": "Asks for confirmation before writing field values"
+        },
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "[Ss]tory [Pp]oints",
+          "description": "The final report references Story Points against capacity"
+        }
+      ],
+      "expectations": [
+        "Calls get_project_items and list_milestones before proposing anything",
+        "Presents a candidate sprint roster and asks for confirmation before calling set_field_value on any item",
+        "Only calls set_field_value after the user confirms the proposed roster",
+        "The final report lists each selected item's Status, Story Points, and the total committed points against capacity"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "A sprint-planning-request.yml issue was just submitted for acme/widgets — project #4, sprint 'Sprint 8', team size 5, cadence 2 weeks. Handle it.",
+      "expected_output": "Reads the submitted issue form via gh issue view instead of asking the user to repeat the team size/cadence, then proceeds with the same propose-then-confirm flow.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "gh issue view",
+          "description": "Reads the submitted form via gh issue view rather than asking the user to restate it"
+        }
+      ],
+      "expectations": [
+        "Reads the submitted form's rendered fields rather than asking the user to restate team size and cadence",
+        "Still proposes the sprint roster for confirmation before writing any field value"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Fill out the next sprint for acme/widgets, project #4, but skip anything tagged needs-design.",
+      "expected_output": "The proposed sprint roster excludes items tagged needs-design, and the exclusion is stated explicitly in the proposal.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "needs-design",
+          "description": "Explicitly names the excluded tag in the proposal"
+        }
+      ],
+      "expectations": [
+        "The proposed candidate set does not include any item the user said to skip",
+        "The proposal explicitly states which items were excluded and why"
+      ]
+    }
+  ]
+}

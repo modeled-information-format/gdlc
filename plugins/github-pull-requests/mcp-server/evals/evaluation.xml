@@ -1,0 +1,34 @@
+<evaluation>
+   <qa_pair id="1">
+      <question>How many tools does the github-pull-requests MCP server expose? Answer with just the number.</question>
+      <answer>4</answer>
+   </qa_pair>
+   <qa_pair id="2">
+      <question>What is the name of the tool that removes requested reviewers from a pull request?</question>
+      <answer>remove_review_request</answer>
+   </qa_pair>
+   <qa_pair id="3">
+      <question>What is the name of the tool that finds issues linked to a pull request?</question>
+      <answer>get_linked_issues</answer>
+   </qa_pair>
+   <qa_pair id="4">
+      <question>In get_linked_issues's result, what source value labels a match found only through Timeline-API or text-parsing fallback, as opposed to the official GraphQL field?</question>
+      <answer>heuristic</answer>
+   </qa_pair>
+   <qa_pair id="5">
+      <question>In get_linked_issues's result, what source value labels a match found via the GraphQL closingIssuesReferences field?</question>
+      <answer>closing_reference</answer>
+   </qa_pair>
+   <qa_pair id="6">
+      <question>What error code does request_review return when the target pull request has already closed or merged?</question>
+      <answer>stale_target</answer>
+   </qa_pair>
+   <qa_pair id="7">
+      <question>Which plugin does github-pull-requests declare a dependency on in its plugin.json?</question>
+      <answer>github-sdlc-planning</answer>
+   </qa_pair>
+   <qa_pair id="8">
+      <question>What is the name of the tool that lists the currently requested reviewers and teams on a pull request, without a separate Timeline-API call?</question>
+      <answer>list_review_requests</answer>
+   </qa_pair>
+</evaluation>

@@ -1,0 +1,80 @@
+{
+  "skill_name": "milestone-triage",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Triage the milestones for acme/widgets — I think some of them are overdue or empty.",
+      "expected_output": "Lists open milestones, flags overdue/empty/stale ones in a table, and proposes specific re-sequencing moves without applying any of them yet.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "list_milestones",
+          "description": "Calls list_milestones before making any claim about milestone state"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "assign_milestone",
+          "description": "Does not call assign_milestone before the user confirms a move (no confirmation was given in this prompt)"
+        },
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "[Oo]verdue",
+          "description": "Explicitly flags overdue milestones"
+        }
+      ],
+      "expectations": [
+        "Calls list_milestones before making any claim about milestone state",
+        "Presents findings as a table with milestone, due date, flag, and suggested action columns (or clearly equivalent structure)",
+        "Does NOT call assign_milestone before the user confirms a specific move",
+        "Flags at least the three categories named in the skill: overdue, empty, and stale"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "What's overdue on acme/widgets right now?",
+      "expected_output": "Lists only the overdue milestones (due date in the past, still open), not the full milestone list undifferentiated.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "list_milestones",
+          "description": "Fetches milestones via list_milestones before answering"
+        }
+      ],
+      "expectations": [
+        "The response is scoped to overdue milestones specifically, not a dump of every open milestone",
+        "Each overdue milestone's due date is stated"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Clean up our milestones on acme/widgets — move issue #42 from Sprint 3 to Sprint 5, and confirm you've done it.",
+      "expected_output": "Proposes the specific move, waits for (or notes it already has) explicit confirmation, then calls assign_milestone and reports the updated state.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "assign_milestone",
+          "description": "Calls assign_milestone since the user pre-confirmed the specific move in the prompt"
+        },
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "42",
+          "description": "References the specific issue number the user named"
+        }
+      ],
+      "expectations": [
+        "Confirms the specific re-sequencing move before calling assign_milestone",
+        "After confirmation, calls assign_milestone with the correct issue and target milestone",
+        "Reports the updated milestone assignment, not just \"done\""
+      ]
+    }
+  ]
+}

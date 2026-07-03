@@ -1,0 +1,91 @@
+{
+  "skill_name": "template-gallery",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "What project templates do you have available?",
+      "expected_output": "Lists all four catalog entries from templates/manifest.yml (Sprint Board, OKR Roadmap, Bug-Triage Board, Feature Pipeline) with a one-line description each.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "sprint-board",
+          "description": "Lists the sprint-board template"
+        },
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "okr-roadmap",
+          "description": "Lists the okr-roadmap template"
+        },
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "bug-triage-board",
+          "description": "Lists the bug-triage-board template"
+        },
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "feature-pipeline",
+          "description": "Lists the feature-pipeline template"
+        }
+      ],
+      "expectations": [
+        "Lists all four templates from templates/manifest.yml: sprint-board, okr-roadmap, bug-triage-board, feature-pipeline",
+        "Gives at least a one-line description per template",
+        "Does not fabricate a template that isn't in the manifest"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We track OKRs — set up a project template for that on acme/product.",
+      "expected_output": "Maps the cue \"we track OKRs\" to the okr-roadmap template per the manifest's cues list, then hands off to the project-setup agent with that template name.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "okr-roadmap",
+          "description": "Matches the OKR cue to the okr-roadmap template"
+        },
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "project-setup",
+          "description": "Hands off to the project-setup agent rather than instantiating anything itself"
+        }
+      ],
+      "expectations": [
+        "Matches the okr-roadmap template from the conversational cue, not a different template",
+        "Hands off to project-setup (or clearly states it will) with the matched template name rather than instantiating anything itself"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Use the 'sprint-board' template for acme/widgets, but the org's source template project was deleted last week.",
+      "expected_output": "Detects that the manifest's named source org template project no longer resolves, says so explicitly, and falls back to the agent's blank-createProjectV2 path rather than failing silently.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "not found|deleted|no longer|could not|couldn't",
+          "description": "Explicitly states the source template could not be found"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "templateId",
+          "description": "Never sends a templateId argument"
+        }
+      ],
+      "expectations": [
+        "Explicitly states that the stale catalog entry's source template could not be found",
+        "Falls back to blank project creation rather than erroring out with no explanation",
+        "Does not claim the template was successfully cloned when it was not"
+      ]
+    }
+  ]
+}

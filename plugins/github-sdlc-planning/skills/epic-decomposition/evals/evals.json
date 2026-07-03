@@ -1,0 +1,74 @@
+{
+  "skill_name": "epic-decomposition",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Break down \"migrate our auth system from sessions to JWT\" into issues for acme/api-server.",
+      "expected_output": "Creates one parent Epic issue summarizing the migration goal, then creates several child Story/Task issues attached via add_sub_issue, and reports the full hierarchy.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "add_sub_issue",
+          "description": "Attaches at least one child via add_sub_issue rather than creating unrelated standalone issues"
+        },
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "Epic",
+          "description": "The parent issue is typed Epic"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "mif-id:",
+          "description": "Never hand-writes the MIF comment block — create_issue prepends it, the raw comment syntax shouldn't appear in the agent's own output"
+        }
+      ],
+      "expectations": [
+        "Creates exactly one parent issue with mif.type set to Epic",
+        "Creates two or more child issues attached to the parent via add_sub_issue, not as unrelated standalone issues",
+        "Each child issue's mif.type is Story or Task, not Epic",
+        "The final report lists the parent Epic's URL and every child's number, title, and type",
+        "Every issue body created goes through create_issue's own MIF-prepending, never a hand-written MIF comment block"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Decompose this into sub-issues: \"add dark mode support across the whole app\" for acme/webapp. Break it into at least 6 pieces.",
+      "expected_output": "Creates a parent Epic and 6+ child issues, and if the 100-sub-issue or 8-level limit is ever hit, stops and explains rather than silently truncating.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "shell_command",
+          "command": "python3 -c \"import re,sys; t=open('transcript.md').read(); n=len(re.findall(r'add_sub_issue', t)); print(n); sys.exit(0 if n>=6 else 1)\"",
+          "description": "At least 6 add_sub_issue calls appear in the transcript"
+        }
+      ],
+      "expectations": [
+        "Creates at least 6 child issues attached to one parent Epic",
+        "Respects add_sub_issue's own limit_exceeded rejection rather than working around it",
+        "Does not attempt to nest child issues under other children beyond what the goal actually requires"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Turn \"reduce API p95 latency to under 200ms\" into a work plan with build order for acme/api-server.",
+      "expected_output": "Creates a parent Epic whose body includes an ordered list noting the intended build sequence among its child sub-issues, since sub-issues themselves carry no ordering field.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "1\\.|first|First",
+          "description": "The parent Epic body includes an explicit ordering marker"
+        }
+      ],
+      "expectations": [
+        "The parent Epic's body includes an explicit ordered list or sequence description referencing its child sub-issues",
+        "Does not claim GitHub's sub-issue API has a native ordering field — sequencing lives in prose, not a nonexistent API parameter"
+      ]
+    }
+  ]
+}

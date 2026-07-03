@@ -1,0 +1,161 @@
+{
+  "skill_name": "project-setup",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Set up a sprint board for acme/widgets. We're a 4-person team running two-week sprints, and we want the standard ceremonies seeded as draft issues.",
+      "expected_output": "The agent confirms auth capability first, classifies the intent as archetype 'sprint', resolves or creates a Projects v2 board, configures Status/Priority/Sprint/Story Points fields, seeds the four standard ceremony draft issues, and reports a project URL plus a created-fields summary.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "get_agent_capabilities",
+          "description": "Checks auth capability before attempting any board write"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "templateId",
+          "description": "Never sends a templateId argument — CreateProjectV2Input has no such field"
+        },
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "Sprint Planning.*Daily Standup.*Sprint Review.*Sprint Retrospective|Daily Standup",
+          "description": "Seeds at least one of the standard sprint ceremony draft issues"
+        },
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "(project|Project).*(url|URL)|github\\.com/.*/projects/",
+          "description": "The final report includes a project URL"
+        }
+      ],
+      "expectations": [
+        "Calls get_agent_capabilities (or otherwise checks auth) before attempting any write",
+        "Classifies the board archetype as sprint, not kanban/roadmap/backlog/bug-triage",
+        "Never sends a templateId argument to any project-creation call — createProjectV2 mints blank projects only, copyProjectV2 clones templates",
+        "Configures a Sprint field as an ITERATION type, not a SINGLE_SELECT",
+        "Seeds Sprint Planning, Daily Standup, Sprint Review, and Sprint Retrospective as draft issues",
+        "The final report includes a project URL and the list of created fields",
+        "Does NOT claim a board mutation succeeded without a corresponding tool result confirming it"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Create a kanban board for acme/infra-tools, no sprints, just a simple flow.",
+      "expected_output": "The agent classifies the intent as archetype 'kanban', configures a Status field without a Sprint iteration field, and does not seed ceremony draft issues (kanban has no sprint ceremonies).",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "Daily Standup",
+          "description": "Does not seed sprint-ceremony draft issues for a kanban board"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "templateId",
+          "description": "Never sends a templateId argument"
+        },
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "[Kk]anban",
+          "description": "Explicitly classifies the archetype as kanban somewhere in the transcript"
+        }
+      ],
+      "expectations": [
+        "Classifies the board archetype as kanban, not sprint",
+        "Does NOT create a Sprint ITERATION field for a kanban board",
+        "Does NOT seed Sprint Planning/Daily Standup/Sprint Review/Sprint Retrospective draft issues for a kanban archetype",
+        "Reports the project URL and field list on completion"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "We do two-week sprints — set up our project board for acme/mobile-app using whatever template fits.",
+      "expected_output": "The agent recognizes the conversational cue \"two-week sprints\" as mapping to the sprint-board template (per the template gallery manifest), attempts template resolution via copyProjectV2 before falling back to a blank createProjectV2.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "sprint-board|Sprint Board",
+          "description": "Matches the two-week-sprints cue to the sprint-board template"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "templateId",
+          "description": "Never sends a templateId argument"
+        },
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "copyProjectV2|createProjectV2",
+          "description": "Uses one of the two real project-creation mutations, not a fabricated one"
+        }
+      ],
+      "expectations": [
+        "Maps the phrase \"two-week sprints\" to the sprint-board template archetype, consistent with templates/manifest.yml's cues list",
+        "Attempts copyProjectV2 template resolution before falling back to blank createProjectV2",
+        "Never sends a templateId argument anywhere in the flow",
+        "If no matching org template exists, explicitly says so and falls back to configuring fields from scratch rather than failing silently"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Set up a project board for acme/legacy-repo. (Assume the connected GitHub token has repo scope but not project scope.)",
+      "expected_output": "A board-mutation call fails with a missing_scope error; the agent stops and reports the exact remediation (gh auth login --scopes project) instead of retrying the same call or silently falling back to unstructured gh calls.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "missing_scope",
+          "description": "Surfaces the structured missing_scope error code"
+        },
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "gh auth login --scopes project",
+          "description": "States the exact remediation command"
+        }
+      ],
+      "expectations": [
+        "Surfaces the missing_scope error code and the missing scope name (project) rather than a generic failure message",
+        "States the exact remediation command: gh auth login --scopes project",
+        "Does NOT retry the identical failing call",
+        "Does NOT fall back to unstructured gh issue/gh project shell calls that would skip MIF body writing"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Configure a bug-triage board for acme/support-tickets, no ceremonies needed.",
+      "expected_output": "The agent classifies the intent as archetype 'bug-triage', configures Status/Severity-style fields matching the bug-triage-board template, and skips ceremony seeding.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "[Bb]ug.[Tt]riage",
+          "description": "Explicitly classifies the archetype as bug-triage"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "Sprint Retrospective",
+          "description": "Does not seed sprint-ceremony draft issues for a bug-triage board"
+        }
+      ],
+      "expectations": [
+        "Classifies the board archetype as bug-triage",
+        "Does not seed sprint-ceremony draft issues for this archetype",
+        "Reports any board-mutation error with its structured error code, never a paraphrased summary that drops the code"
+      ]
+    }
+  ]
+}

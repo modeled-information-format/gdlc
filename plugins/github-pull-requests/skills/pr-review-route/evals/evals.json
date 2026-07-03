@@ -1,0 +1,79 @@
+{
+  "skill_name": "pr-review-route",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Who should review PR #42 on acme/widgets?",
+      "expected_output": "Reads CODEOWNERS and the PR's changed files, proposes a candidate reviewer/team list, and asks for confirmation before calling request_review.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "CODEOWNERS",
+          "description": "Reads CODEOWNERS before proposing reviewers"
+        },
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "confirm|does this look|sound good|shall I",
+          "description": "Asks for confirmation before calling request_review"
+        }
+      ],
+      "expectations": [
+        "Reads or attempts to read the repository's CODEOWNERS file before proposing reviewers",
+        "Matches changed files against CODEOWNERS patterns rather than guessing reviewers unrelated to the diff",
+        "Asks for confirmation before calling request_review",
+        "Does not call request_review before the user confirms the candidate list"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "There's no CODEOWNERS file in acme/scratch-repo. Who should review PR #3?",
+      "expected_output": "States explicitly that no CODEOWNERS file exists and asks the user who should review, instead of guessing reviewers.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "no CODEOWNERS|CODEOWNERS.*not found|doesn't have a CODEOWNERS",
+          "description": "Explicitly states no CODEOWNERS file was found"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "request_review",
+          "description": "Does not call request_review with a guessed reviewer list"
+        }
+      ],
+      "expectations": [
+        "Explicitly states that no CODEOWNERS file was found",
+        "Asks the user for reviewer names rather than inventing a candidate list with no basis"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Route PR #7 on acme/widgets to octocat for review. (Assume PR #7 was merged 30 seconds before this request.)",
+      "expected_output": "request_review reports stale_target; the skill relays the exact error to the user rather than retrying or claiming success.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "stale_target",
+          "description": "Relays the structured stale_target error code"
+        },
+        {
+          "type": "shell_command",
+          "command": "python3 -c \"import sys; t=open('transcript.md').read(); n=t.count('request_review'); print(n); sys.exit(0 if n<=1 else 1)\"",
+          "description": "request_review is not retried after the stale_target failure (called at most once)"
+        }
+      ],
+      "expectations": [
+        "Relays the stale_target error explicitly, naming that the PR is no longer open",
+        "Does not retry the same request_review call after a stale_target failure",
+        "Does not report the review request as successful"
+      ]
+    }
+  ]
+}
