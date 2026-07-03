@@ -1,0 +1,198 @@
+---
+name: quality-gates
+
+# Merge-time quality gates for the plugin marketplace — thin callers of the
+# central modeled-information-format/.github reusables (pinned by full commit
+# SHA, re-resolved 2026-07-03), plus this repo's own build/test/lint gates for
+# the two vendored TypeScript MCP servers. Every scanning gate normalizes on
+# SARIF and surfaces in the Security tab; wire "Code scanning results" as a
+# required check to make it the merge gate.
+#
+# The plugin-constituent scan map (research Pillar 2): ShellCheck over hook
+# scripts, Semgrep over MCP/bundled source, secret scanning (Gitleaks +
+# TruffleHog) over everything, manifest review over the catalog/manifests,
+# plus the org-standard SAST(actions)/SCA(OSV)/Trivy/Scorecard. A
+# marketplace-validate job runs the canonical `claude plugin validate`.
+#
+# test-planning-mcp-server MUST complete before test-pull-requests-mcp-server
+# starts: github-pull-requests-mcp-server's file: dependency on
+# github-sdlc-planning-mcp-server resolves at npm-install time to whatever is
+# on disk, and its own typecheck/build needs the sibling's dist/mif.d.ts and
+# dist/mif.js already built.
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "37 8 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # --- org-standard gates (central reusables) ---------------------------
+  sast:
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+      packages: read
+    uses: >-
+      modeled-information-format/.github/.github/workflows/reusable-sast-codeql.yml@7c56346c4bc47b15f08d44889116486583a1a7ac
+    with:
+      languages: actions
+      build-mode: none
+
+  sca:
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+      pull-requests: write
+    uses: >-
+      modeled-information-format/.github/.github/workflows/reusable-sca-osv.yml@7c56346c4bc47b15f08d44889116486583a1a7ac
+    with:
+      fail-on-severity: high
+
+  trivy:
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      packages: read
+    uses: >-
+      modeled-information-format/.github/.github/workflows/reusable-trivy.yml@7c56346c4bc47b15f08d44889116486583a1a7ac
+    with:
+      scan-iac: true
+
+  posture:
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    permissions:
+      security-events: write
+      id-token: write
+      contents: read
+      actions: read
+    uses: >-
+      modeled-information-format/.github/.github/workflows/reusable-scorecard.yml@7c56346c4bc47b15f08d44889116486583a1a7ac
+    with:
+      publish-results: false
+    secrets:
+      # CI app key so Scorecard scores Branch-Protection from real settings;
+      # its client-id is vars.CI_CLIENT_APP_ID (read inside the reusable).
+      # Manual prerequisite: unset until the CI GitHub App is provisioned —
+      # this job then no-ops rather than failing the run (see step 14 of the
+      # build plan / SECURITY.md).
+      app-private-key: ${{ secrets.CI_CLIENT_APP_PRIVATE_KEY }}
+
+  # --- plugin-constituent gates (central reusables) ----------------------
+  shellcheck:
+    permissions:
+      contents: read
+      security-events: write
+    uses: >-
+      modeled-information-format/.github/.github/workflows/reusable-shellcheck.yml@7c56346c4bc47b15f08d44889116486583a1a7ac
+  semgrep:
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    uses: >-
+      modeled-information-format/.github/.github/workflows/reusable-semgrep.yml@7c56346c4bc47b15f08d44889116486583a1a7ac
+    with:
+      directory: .
+  secrets:
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    uses: >-
+      modeled-information-format/.github/.github/workflows/reusable-secrets.yml@7c56346c4bc47b15f08d44889116486583a1a7ac
+    with:
+      directory: .
+  manifest-review:
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    uses: >-
+      modeled-information-format/.github/.github/workflows/reusable-manifest-review.yml@7c56346c4bc47b15f08d44889116486583a1a7ac
+    with:
+      directory: .
+
+  # --- canonical marketplace validation (claude CLI; don't reinvent) -----
+  marketplace-validate:
+    name: marketplace-validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install Claude Code CLI (pinned)
+        env:
+          CLAUDE_VERSION: 2.1.199
+        run: npm install -g "@anthropic-ai/claude-code@${CLAUDE_VERSION}"
+      - name: Validate marketplace + plugin manifests
+        run: claude plugin validate .
+
+  # --- build/test/lint gates for the two vendored MCP servers ------------
+  test-planning-mcp-server:
+    name: test (github-sdlc-planning/mcp-server)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: plugins/github-sdlc-planning/mcp-server
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up Node (lts/*)
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 'lts/*'
+          cache: npm
+          cache-dependency-path: plugins/github-sdlc-planning/mcp-server/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run test:coverage
+      - name: Upload built dist (consumed by github-pull-requests-mcp-server)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: github-sdlc-planning-mcp-server-dist
+          path: plugins/github-sdlc-planning/mcp-server/dist
+          if-no-files-found: error
+
+  test-pull-requests-mcp-server:
+    name: test (github-pull-requests/mcp-server)
+    needs: [test-planning-mcp-server]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up Node (lts/*)
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 'lts/*'
+      - name: Build the sibling plugin's dist/ (the file dependency needs it)
+        working-directory: plugins/github-sdlc-planning/mcp-server
+        run: npm ci && npm run build
+      - name: Install, typecheck, lint, build, test
+        working-directory: plugins/github-pull-requests/mcp-server
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm run build
+          npm run test:coverage

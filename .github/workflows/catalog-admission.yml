@@ -1,0 +1,152 @@
+---
+name: catalog-admission
+
+# Fail-closed admission control for the marketplace catalog — the gate that
+# makes SHA-pinning non-negotiable.
+#
+# Claude Code does not verify attestations at plugin INSTALL time yet
+# (anthropics/claude-code#30727), so the enforceable fail-closed seam is here.
+# It runs on EVERY pull request (not only when marketplace.json changes) so it
+# is always present and can be a hard REQUIRED status check: no PR merges
+# unless the entire catalog still satisfies the invariants. The catalog is
+# admitted only if
+#   1. `claude plugin validate` passes (canonical validation), and
+#   2. every EXTERNAL plugin source (github / url / git-subdir) is pinned to
+#      a full 40-char `sha` — a `ref` without a `sha` is mutable and REJECTED
+#      — and the marketplace name is not Anthropic-reserved (HARD fail —
+#      unlike the soft-fail quality-gates manifest-review), and
+#   3. each external entry's pinned artifact attestations verify (when
+#      present).
+# A plugin enters the catalog only when these hold. This catalog's own
+# plugins[] has zero external (github/url/git-subdir) sources today —
+# github-sdlc-planning and github-pull-requests are both vendored in-repo
+# local-path sources — so the SHA-pin check is a real, always-on invariant
+# that starts trivially satisfied and fires the moment a real external entry
+# (e.g. github-org-identity, once it ships) is added, with no new workflow
+# code required. The one real cross-marketplace edge this catalog carries
+# today — github-sdlc-planning's plugin.json depends on
+# mif-docs@modeled-information-format — is NOT a marketplace.json plugins[]
+# entry (dependencies[] carries name/version/marketplace, never a sha; that
+# field only exists on catalog plugin sources), so it's checked separately
+# below: every dependent plugin's declared marketplace must appear in this
+# catalog's allowCrossMarketplaceDependenciesOn allowlist.
+#
+# Make this job a REQUIRED status check in branch protection so the pin
+# requirement is enforced at merge, not by convention.
+
+"on":
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admit:
+    name: catalog-admission
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Claude Code CLI (pinned)
+        env:
+          CLAUDE_VERSION: 2.1.199
+        run: npm install -g "@anthropic-ai/claude-code@${CLAUDE_VERSION}"
+
+      - name: Validate catalog (canonical)
+        run: claude plugin validate .
+
+      - name: Enforce SHA-pinning + reserved-name (hard fail-closed)
+        run: |
+          set -euo pipefail
+          python3 - .claude-plugin/marketplace.json <<'PY'
+          import json, re, sys
+          SHA = re.compile(r'^[0-9a-f]{40}$')
+          RESERVED = {
+              "claude-code-marketplace","claude-code-plugins","claude-plugins-official",
+              "claude-plugins-community","claude-community","anthropic-marketplace",
+              "anthropic-plugins","agent-skills","anthropic-agent-skills",
+              "knowledge-work-plugins","life-sciences","claude-for-legal",
+              "claude-for-financial-services","financial-services-plugins"}
+          mp = json.load(open(sys.argv[1]))
+          errs = []
+          if mp.get("name") in RESERVED:
+              errs.append("marketplace name %r is Anthropic-reserved" % mp.get("name"))
+          for i, p in enumerate(mp.get("plugins", [])):
+              src = p.get("source")
+              name = p.get("name", "plugins[%d]" % i)
+              if isinstance(src, dict) and src.get("source") in ("github","url","git-subdir"):
+                  if not SHA.match(str(src.get("sha",""))):
+                      errs.append("external plugin %r is not pinned to a 40-char sha" % name)
+          # The dependent plugins' own cross-marketplace dependency pins matter
+          # too: a dependencies[] entry naming an external marketplace with no
+          # version constraint is allowed (tracks latest), but the target
+          # marketplace must be in allowCrossMarketplaceDependenciesOn.
+          allowed_cross = set(mp.get("allowCrossMarketplaceDependenciesOn", []))
+          import pathlib
+          for plugin_json in pathlib.Path("plugins").glob("*/.claude-plugin/plugin.json"):
+              pj = json.load(open(plugin_json))
+              for dep in pj.get("dependencies", []):
+                  if isinstance(dep, dict) and dep.get("marketplace") and dep["marketplace"] not in allowed_cross:
+                      errs.append(
+                          "%s declares a dependency on marketplace %r, not in allowCrossMarketplaceDependenciesOn"
+                          % (plugin_json, dep["marketplace"])
+                      )
+          if errs:
+              for e in errs:
+                  print("::error::%s" % e)
+              sys.exit(1)
+          n = sum(1 for p in mp.get("plugins", []) if isinstance(p.get("source"), dict))
+          print("catalog-admission OK: %d external entr(y/ies) SHA-pinned, name not reserved, cross-marketplace deps allowlisted" % n)
+          PY
+
+      # Hardening: a 40-char sha is not enough — the pin must resolve to a
+      # real plugin. For every external entry, fetch the plugin manifest AT
+      # the pinned commit; a pin without a .claude-plugin/plugin.json is
+      # REJECTED (stops a catalog entry pointing at a commit that lacks the
+      # plugin, or a moved one).
+      - name: Verify each external pin resolves to a real plugin (fail-closed)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - .claude-plugin/marketplace.json > entries.tsv <<'PY'
+          import json, sys
+          mp = json.load(open(sys.argv[1]))
+          for p in mp.get("plugins", []):
+              s = p.get("source")
+              if not isinstance(s, dict) or s.get("source") not in ("github", "git-subdir", "url"):
+                  continue
+              sha = s.get("sha", ""); name = p.get("name", "")
+              if s.get("source") == "github":
+                  slug = s.get("repo", "").strip("/"); path = s.get("path", "").strip("/")
+              else:
+                  raw = (s.get("repo") or s.get("url", "")).strip().rstrip("/")
+                  for pre in ("https://github.com/", "git@github.com:", "ssh://git@github.com/"):
+                      if raw.startswith(pre):
+                          raw = raw[len(pre):]
+                          break
+                  slug = raw.removesuffix(".git").strip("/")
+                  path = (s.get("subdir") or s.get("path") or "").strip("/")
+              man = (path + "/" if path else "") + ".claude-plugin/plugin.json"
+              print("%s\t%s\t%s\t%s" % (name, slug, man, sha))
+          PY
+          fail=0
+          while IFS=$'\t' read -r name slug man sha; do
+            [ -z "${name}" ] && continue
+            if gh api "repos/${slug}/contents/${man}?ref=${sha}" --jq '.name' >/dev/null 2>&1; then
+              echo "  OK   ${name}: ${slug}@${sha:0:12} contains ${man}"
+            else
+              echo "::error::${name}: pinned sha ${sha} in ${slug} has no ${man} — the pin does not resolve to a plugin"
+              fail=1
+            fi
+          done < entries.tsv
+          rm -f entries.tsv
+          [ "${fail}" -eq 0 ] || { echo "::error::catalog admission failed — one or more pins do not resolve to a plugin"; exit 1; }
+          echo "All external entries resolve to a plugin manifest at their pinned SHA."
