@@ -54,6 +54,148 @@ describe('githubRest', () => {
     expect(calls).toBe(2);
   });
 
+  it('treats a 403 without a retry-after header as a real error, not a rate limit', async () => {
+    let calls = 0;
+    server.use(
+      http.get('https://api.github.com/repos/acme/forbidden', () => {
+        calls += 1;
+        return HttpResponse.json({ message: 'Resource not accessible by integration' }, { status: 403 });
+      }),
+    );
+    await expect(githubRest('/repos/acme/forbidden')).rejects.toMatchObject({
+      code: 'github_api_error',
+      message: expect.stringContaining('Resource not accessible by integration'),
+    });
+    expect(calls).toBe(1);
+  });
+
+  it('parses an HTTP-date retry-after header instead of producing NaN', async () => {
+    let calls = 0;
+    const futureDate = new Date(Date.now() + 5000).toUTCString();
+    server.use(
+      http.get('https://api.github.com/repos/acme/date-limited', () => {
+        calls += 1;
+        if (calls === 1) {
+          return HttpResponse.json({ message: 'limited' }, { status: 403, headers: { 'retry-after': futureDate } });
+        }
+        return HttpResponse.json({ id: 1 });
+      }),
+    );
+    let observedSleepMs = -1;
+    await githubRest(
+      '/repos/acme/date-limited',
+      {},
+      {
+        sleep: (ms) => {
+          observedSleepMs = ms;
+          return Promise.resolve();
+        },
+      },
+    );
+    expect(Number.isNaN(observedSleepMs)).toBe(false);
+    // >= 0, not > 0: on a slow runner the 5s window could already have
+    // elapsed, in which case clamping to 0 is correct, not a bug.
+    expect(observedSleepMs).toBeGreaterThanOrEqual(0);
+    expect(observedSleepMs).toBeLessThanOrEqual(6000);
+  });
+
+  it('falls back to the default backoff for a malformed retry-after header', async () => {
+    let observedSleepMs = -1;
+    server.use(
+      http.get('https://api.github.com/repos/acme/garbage-header', () =>
+        HttpResponse.json({ message: 'limited' }, { status: 403, headers: { 'retry-after': 'not-a-real-value' } }),
+      ),
+    );
+    await githubRest(
+      '/repos/acme/garbage-header',
+      {},
+      {
+        sleep: (ms) => {
+          observedSleepMs = ms;
+          return Promise.resolve();
+        },
+      },
+    ).catch(() => undefined);
+    expect(observedSleepMs).toBe(60_000);
+  });
+
+  it('falls back to the default backoff for an empty/whitespace retry-after header', async () => {
+    let observedSleepMs = -1;
+    server.use(
+      http.get('https://api.github.com/repos/acme/empty-header', () =>
+        HttpResponse.json({ message: 'limited' }, { status: 403, headers: { 'retry-after': '   ' } }),
+      ),
+    );
+    await githubRest(
+      '/repos/acme/empty-header',
+      {},
+      {
+        sleep: (ms) => {
+          observedSleepMs = ms;
+          return Promise.resolve();
+        },
+      },
+    ).catch(() => undefined);
+    expect(observedSleepMs).toBe(60_000);
+  });
+
+  it('backs off on a primary rate limit (403, X-RateLimit-Remaining: 0, no Retry-After) using X-RateLimit-Reset', async () => {
+    let calls = 0;
+    const resetEpochSeconds = Math.floor(Date.now() / 1000) + 5;
+    server.use(
+      http.get('https://api.github.com/repos/acme/primary-limited', () => {
+        calls += 1;
+        if (calls === 1) {
+          return HttpResponse.json(
+            { message: 'API rate limit exceeded' },
+            { status: 403, headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(resetEpochSeconds) } },
+          );
+        }
+        return HttpResponse.json({ id: 1 });
+      }),
+    );
+    let observedSleepMs = -1;
+    const data = await githubRest(
+      '/repos/acme/primary-limited',
+      {},
+      {
+        sleep: (ms) => {
+          observedSleepMs = ms;
+          return Promise.resolve();
+        },
+      },
+    );
+    expect(data).toEqual({ id: 1 });
+    expect(calls).toBe(2);
+    // >= 0, not > 0: on a slow runner the 5s reset window could already
+    // have elapsed, in which case clamping to 0 is correct, not a bug.
+    expect(observedSleepMs).toBeGreaterThanOrEqual(0);
+    expect(observedSleepMs).toBeLessThanOrEqual(6000);
+  });
+
+  it('honors an explicit retry-after value on a 429 response', async () => {
+    let calls = 0;
+    server.use(
+      http.get('https://api.github.com/repos/acme/429-limited', () => {
+        calls += 1;
+        if (calls === 1) return HttpResponse.json({ message: 'limited' }, { status: 429, headers: { 'retry-after': '3' } });
+        return HttpResponse.json({ id: 1 });
+      }),
+    );
+    let observedSleepMs = -1;
+    await githubRest(
+      '/repos/acme/429-limited',
+      {},
+      {
+        sleep: (ms) => {
+          observedSleepMs = ms;
+          return Promise.resolve();
+        },
+      },
+    );
+    expect(observedSleepMs).toBe(3000);
+  });
+
   it('defaults to a 60s backoff when no retry-after header is present', async () => {
     let calls = 0;
     let observedSleepMs = 0;
