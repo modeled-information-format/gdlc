@@ -5,9 +5,11 @@ import { requestReview, listReviewRequests, removeReviewRequest } from '../../sr
 describe('requestReview', () => {
   it('AC-1: requests reviewers via POST .../requested_reviewers', async () => {
     mockRest('get', '/repos/acme/widgets/pulls/10', { state: 'open', merged: false });
+    // POST returns the full PR object -- requested_reviewers/requested_teams
+    // as top-level fields, not the abbreviated {users, teams} shape GET uses.
     mockRest('post', '/repos/acme/widgets/pulls/10/requested_reviewers', {
-      users: [{ login: 'octocat' }],
-      teams: [{ slug: 'reviewers' }],
+      requested_reviewers: [{ login: 'octocat' }],
+      requested_teams: [{ slug: 'reviewers' }],
     });
     const result = await requestReview({ owner: 'acme', repo: 'widgets', pullNumber: 10, reviewers: ['octocat'], teamReviewers: ['reviewers'] });
     expect(result).toEqual({ users: ['octocat'], teams: ['reviewers'] });
@@ -29,7 +31,7 @@ describe('requestReview', () => {
 
   it('defaults reviewers/teamReviewers to empty arrays when omitted', async () => {
     mockRest('get', '/repos/acme/widgets/pulls/14', { state: 'open', merged: false });
-    mockRest('post', '/repos/acme/widgets/pulls/14/requested_reviewers', { users: [], teams: [] });
+    mockRest('post', '/repos/acme/widgets/pulls/14/requested_reviewers', { requested_reviewers: [], requested_teams: [] });
     const result = await requestReview({ owner: 'acme', repo: 'widgets', pullNumber: 14 });
     expect(result).toEqual({ users: [], teams: [] });
   });
@@ -56,16 +58,18 @@ describe('listReviewRequests', () => {
 
 describe('removeReviewRequest', () => {
   it('removes reviewers via DELETE .../requested_reviewers', async () => {
+    // DELETE also returns the full PR object, same shape as POST -- verified
+    // live against the real API, not assumed from POST's behavior alone.
     mockRest('delete', '/repos/acme/widgets/pulls/10/requested_reviewers', {
-      users: [{ login: 'octocat' }],
-      teams: [{ slug: 'reviewers' }],
+      requested_reviewers: [{ login: 'octocat' }],
+      requested_teams: [{ slug: 'reviewers' }],
     });
     const result = await removeReviewRequest({ owner: 'acme', repo: 'widgets', pullNumber: 10, reviewers: ['octocat'] });
     expect(result).toEqual({ users: ['octocat'], teams: ['reviewers'] });
   });
 
   it('defaults reviewers/teamReviewers to empty arrays when omitted', async () => {
-    mockRest('delete', '/repos/acme/widgets/pulls/15/requested_reviewers', { users: [], teams: [] });
+    mockRest('delete', '/repos/acme/widgets/pulls/15/requested_reviewers', { requested_reviewers: [], requested_teams: [] });
     const result = await removeReviewRequest({ owner: 'acme', repo: 'widgets', pullNumber: 15 });
     expect(result).toEqual({ users: [], teams: [] });
   });

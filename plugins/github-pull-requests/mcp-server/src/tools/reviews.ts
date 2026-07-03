@@ -35,9 +35,24 @@ export interface RequestedReviewers {
   teams: string[];
 }
 
-interface RestRequestedReviewersResponse {
+/** GET .../requested_reviewers ("List requested reviewers") returns this
+ * abbreviated shape -- verified live: gh api .../pulls/31/requested_reviewers
+ * returned exactly {"users":[],"teams":[]}. */
+interface RestListRequestedReviewersResponse {
   users: Array<{ login: string }>;
   teams: Array<{ slug: string }>;
+}
+
+/** POST and DELETE .../requested_reviewers ("Request reviewers" /
+ * "Remove requested reviewers") both return the *full pull request object*,
+ * not the abbreviated {users, teams} shape GET uses -- a real, previously
+ * undetected bug: verified live that POST returns requested_reviewers (full
+ * user objects) and requested_teams as top-level PR fields, and confirmed
+ * DELETE returns the identical shape. Only the fields actually read are
+ * declared here. */
+interface RestPullRequestReviewersFields {
+  requested_reviewers: Array<{ login: string }>;
+  requested_teams: Array<{ slug: string }>;
 }
 
 /** AC-1: request reviewers via POST .../requested_reviewers. */
@@ -49,8 +64,8 @@ export async function requestReview(input: RequestReviewInput, deps: GithubClien
     `/repos/${input.owner}/${input.repo}/pulls/${input.pullNumber}/requested_reviewers`,
     { method: 'POST', body: { reviewers: input.reviewers ?? [], team_reviewers: input.teamReviewers ?? [] } },
     deps,
-  )) as RestRequestedReviewersResponse;
-  return { users: data.users.map((u) => u.login), teams: data.teams.map((t) => t.slug) };
+  )) as RestPullRequestReviewersFields;
+  return { users: data.requested_reviewers.map((u) => u.login), teams: data.requested_teams.map((t) => t.slug) };
 }
 
 /** AC-2: return current requested reviewers without a separate Timeline-API call. */
@@ -59,7 +74,7 @@ export async function listReviewRequests(input: PullRequestRef, deps: GithubClie
     `/repos/${input.owner}/${input.repo}/pulls/${input.pullNumber}/requested_reviewers`,
     {},
     deps,
-  )) as RestRequestedReviewersResponse;
+  )) as RestListRequestedReviewersResponse;
   return { users: data.users.map((u) => u.login), teams: data.teams.map((t) => t.slug) };
 }
 
@@ -73,6 +88,6 @@ export async function removeReviewRequest(input: RemoveReviewRequestInput, deps:
     `/repos/${input.owner}/${input.repo}/pulls/${input.pullNumber}/requested_reviewers`,
     { method: 'DELETE', body: { reviewers: input.reviewers ?? [], team_reviewers: input.teamReviewers ?? [] } },
     deps,
-  )) as RestRequestedReviewersResponse;
-  return { users: data.users.map((u) => u.login), teams: data.teams.map((t) => t.slug) };
+  )) as RestPullRequestReviewersFields;
+  return { users: data.requested_reviewers.map((u) => u.login), teams: data.requested_teams.map((t) => t.slug) };
 }

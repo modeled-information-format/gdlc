@@ -31148,7 +31148,7 @@ async function requestReview(input, deps = {}) {
     { method: "POST", body: { reviewers: input.reviewers ?? [], team_reviewers: input.teamReviewers ?? [] } },
     deps
   );
-  return { users: data.users.map((u) => u.login), teams: data.teams.map((t) => t.slug) };
+  return { users: data.requested_reviewers.map((u) => u.login), teams: data.requested_teams.map((t) => t.slug) };
 }
 async function listReviewRequests(input, deps = {}) {
   const data = await githubRest(
@@ -31164,7 +31164,7 @@ async function removeReviewRequest(input, deps = {}) {
     { method: "DELETE", body: { reviewers: input.reviewers ?? [], team_reviewers: input.teamReviewers ?? [] } },
     deps
   );
-  return { users: data.users.map((u) => u.login), teams: data.teams.map((t) => t.slug) };
+  return { users: data.requested_reviewers.map((u) => u.login), teams: data.requested_teams.map((t) => t.slug) };
 }
 
 // ../../github-sdlc-planning/mcp-server/dist/mif.js
