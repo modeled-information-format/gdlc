@@ -9,13 +9,15 @@ diataxis_type: how-to
 ---
 # Add a plugin to the catalog
 
-A plugin joins this marketplace by being **cataloged**: either vendored
-in-repo (like `github-sdlc-planning` and `github-pull-requests`) or, for a
-future external plugin, referenced by a SHA-pinned `git-subdir` source that CI
-re-verifies fail-closed before the entry can merge. A plugin SHA that does not
-verify does not enter the catalog.
+A plugin joins this marketplace by being **cataloged**: referenced by a
+SHA-pinned `git-subdir` source that CI re-verifies fail-closed before the
+entry can merge. This holds whether the plugin lives in this same repo (like
+`github-sdlc-planning` and `github-pull-requests`, which point the
+`git-subdir` source back at this repo — see
+[catalog-pinning.md](catalog-pinning.md)) or in a genuinely external one. A
+plugin SHA that does not verify does not enter the catalog.
 
-The external flow:
+The flow:
 
 ```
 author plugin -> its repo attests its tarball (provenance + SBOM + gate verdicts)
@@ -33,9 +35,15 @@ author plugin -> its repo attests its tarball (provenance + SBOM + gate verdicts
   SLSA build provenance, a CycloneDX SBOM, and the seam-signed gate verdicts —
   at a specific commit. Catalog admission verifies *those* attestations; it
   does not re-scan the plugin from scratch.
-- A **vendored** (in-repo) plugin instead goes through this repo's own
-  `quality-gates.yml` and `release.yml` directly — no separate SHA-pin step,
-  since there's no external source to pin.
+- A **vendored** (in-repo) plugin goes through this repo's own
+  `quality-gates.yml` and `release.yml` directly, which produces the same
+  attested tarball this catalog requires of any external plugin. Its
+  `marketplace.json` entry starts as a local relative-path source (below).
+  Promoting it to a self-referential `git-subdir` pin is a one-time manual
+  step done after its first tagged release — `pin-catalog` only re-pins an
+  *existing* `git-subdir` entry, it does not create one (see
+  [catalog-pinning.md](catalog-pinning.md#manual-fallback-if-the-automated-job-fails)).
+  Every release after that first promotion re-pins it automatically.
 
 ## 1. For an external plugin: resolve the source commit SHA
 
@@ -49,7 +57,11 @@ gh api repos/<owner>/<plugin-repo>/git/ref/tags/<tag> \
 
 ## 2. Add an entry to `marketplace.json`
 
-**Vendored (in-repo)** — a local relative-path source:
+**Vendored (in-repo)** — starts as a local relative-path source; promoting it
+to a self-referential `git-subdir` entry is a one-time manual step done after
+its first tagged release (see
+[catalog-pinning.md](catalog-pinning.md#manual-fallback-if-the-automated-job-fails)) —
+every release after that re-pins it automatically, no manual edit needed:
 
 ```jsonc
 {
@@ -103,8 +115,9 @@ gh api repos/<owner>/<plugin-repo>/git/ref/tags/<tag> \
 The **catalog-admission** gate runs on every pull request (so it can be a
 hard required status check) and fails closed unless **all** of these hold:
 
-- every external plugin source is pinned to a full 40-char `sha` — a `ref`
-  without a `sha` is mutable and rejected;
+- every external plugin source — including a vendored plugin's
+  self-referential entry, once it has one — is pinned to a full 40-char
+  `sha`; a `ref` without a `sha` is mutable and rejected;
 - the pinned `sha` **actually resolves to a plugin**: admission fetches the
   `.claude-plugin/plugin.json` at that commit and rejects the entry if it is
   not there;
@@ -131,9 +144,11 @@ consumers can prove they fetched the catalog this repo published.
 
 ## Updating a cataloged plugin
 
-For a **vendored** plugin, bump its `version` in both `plugin.json` and its
-`marketplace.json` entry and let the normal release pipeline attest the new
-content. For an **external** plugin, re-pin its `sha` to the new commit and
-let catalog admission re-verify the new digest's attestations. Never edit a
-plugin's content in place behind an unchanged SHA — a different content hash
-is a different artifact, and the old attestations do not describe it.
+For a **vendored** plugin, bump its `version` in `plugin.json` and tag a
+release; `release.yml`'s `pin-catalog` job re-pins its `marketplace.json`
+entry's `ref`/`sha`/`version` to match automatically (see
+[catalog-pinning.md](catalog-pinning.md)) — no manual `marketplace.json` edit.
+For an **external** plugin, re-pin its `sha` to the new commit and let catalog
+admission re-verify the new digest's attestations. Never edit a plugin's
+content in place behind an unchanged SHA — a different content hash is a
+different artifact, and the old attestations do not describe it.

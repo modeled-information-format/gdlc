@@ -11,7 +11,13 @@
   "plugins": [
     {
       "name": "github-sdlc-planning",
-      "source": "./plugins/github-sdlc-planning",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/modeled-information-format/gdlc.git",
+        "path": "plugins/github-sdlc-planning",
+        "ref": "v0.1.0",
+        "sha": "5b0de1626ce120110d51e83d90f887d78ef25d96"
+      },
       "description": "Issues, native sub-issues, Projects v2, Milestones, and Discussions behind a portable MCP core plus a Claude Code progressive-enhancement layer. Every issue/discussion body carries MIF-conformant frontmatter authored via mif-docs.",
       "version": "0.1.0",
       "author": {
@@ -32,7 +38,13 @@
     },
     {
       "name": "github-pull-requests",
-      "source": "./plugins/github-pull-requests",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/modeled-information-format/gdlc.git",
+        "path": "plugins/github-pull-requests",
+        "ref": "v0.1.0",
+        "sha": "5b0de1626ce120110d51e83d90f887d78ef25d96"
+      },
       "description": "PR review-request routing and PR-to-issue link visibility, depending on github-sdlc-planning for its shared MIF comment-block reader.",
       "version": "0.1.0",
       "author": {

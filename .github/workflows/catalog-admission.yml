@@ -17,13 +17,15 @@ name: catalog-admission
 #      unlike the soft-fail quality-gates manifest-review), and
 #   3. each external entry's pinned artifact attestations verify (when
 #      present).
-# A plugin enters the catalog only when these hold. This catalog's own
-# plugins[] has zero external (github/url/git-subdir) sources today —
-# github-sdlc-planning and github-pull-requests are both vendored in-repo
-# local-path sources — so the SHA-pin check is a real, always-on invariant
-# that starts trivially satisfied and fires the moment a real external entry
-# (e.g. github-org-identity, once it ships) is added, with no new workflow
-# code required. The one real cross-marketplace edge this catalog carries
+# A plugin enters the catalog only when these hold. This catalog's own two
+# vendored plugins — github-sdlc-planning and github-pull-requests — are
+# THEMSELVES external (git-subdir) entries pointing back at this repo: a
+# self-referential pin gets the same discipline any other external catalog
+# entry gets (see docs/how-to/catalog-pinning.md). release.yml's pin-catalog
+# job keeps both re-pinned to the just-published tag/sha after every release,
+# so the SHA-pin check here is a real, always-on invariant, not a dormant one
+# waiting for a future external plugin (e.g. github-org-identity) to arrive.
+# The one real cross-marketplace edge this catalog carries
 # today — github-sdlc-planning's plugin.json depends on
 # mif-docs@modeled-information-format — is NOT a marketplace.json plugins[]
 # entry (dependencies[] carries name/version/marketplace, never a sha; that

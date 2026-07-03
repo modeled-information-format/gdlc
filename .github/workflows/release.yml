@@ -409,3 +409,108 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" dist/* \
             --repo "${GITHUB_REPOSITORY}" --title "Release ${VERSION}" \
             --generate-notes "${PRERELEASE[@]}"
+
+  # --- self-referential catalog pin: this catalog lists in-repo plugins --------
+  #
+  # Both plugins[] entries are git-subdir sources pointing at THIS repo (see
+  # docs/how-to/catalog-pinning.md) — the same attested-pin discipline an
+  # external catalog entry gets. This job re-pins them to the tag/sha just
+  # published above, in one commit (both entries always move together, since
+  # they ship from the same tarball), gated through catalog-admission and
+  # every other required check like any other change to main.
+  pin-catalog:
+    name: Pin Catalog (self-referential)
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [meta, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Mint catalog app token (self-repo scoped)
+        id: token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.CATALOG_CLIENT_APP_ID }}
+          private-key: ${{ secrets.CATALOG_CLIENT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Checkout main (catalog app token — push access)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          token: ${{ steps.token.outputs.token }}
+          ref: main
+          fetch-depth: 0
+
+      - name: Re-pin vendored plugin entries to this release
+        id: pin
+        env:
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          VERSION: ${{ needs.meta.outputs.version }}
+          SELF_URL: https://github.com/${{ github.repository }}.git
+        run: |
+          set -euo pipefail
+          FILE=.claude-plugin/marketplace.json
+          # Compare through jq on both sides — a raw `cat` vs jq's default
+          # pretty-printer can disagree on unrelated formatting (e.g. an
+          # inline vs multi-line array elsewhere in the file), which would
+          # make this "no-op" check spuriously report changed=true forever.
+          BEFORE="$(jq '.' "${FILE}")"
+          AFTER="$(jq --arg ref "${TAG}" --arg sha "${SHA}" --arg ver "${VERSION}" --arg url "${SELF_URL}" '
+            .plugins = [.plugins[] |
+              if (.source | type) == "object" and .source.source == "git-subdir" and .source.url == $url
+              then .version = $ver | .source.ref = $ref | .source.sha = $sha
+              else . end]
+          ' "${FILE}")"
+          if [ "${BEFORE}" = "${AFTER}" ]; then
+            echo "changed=false" >>"${GITHUB_OUTPUT}"
+            echo "Catalog already pinned to ${TAG} (${SHA:0:7}) — nothing to do."
+            exit 0
+          fi
+          printf '%s\n' "${AFTER}" > "${FILE}"
+          echo "changed=true" >>"${GITHUB_OUTPUT}"
+
+      - name: Open + auto-merge the pin PR
+        if: steps.pin.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          APP_SLUG: ${{ steps.token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
+          BRANCH="chore/pin-catalog-${TAG}"
+          git switch -C "${BRANCH}"
+          git add .claude-plugin/marketplace.json
+          git commit -m "chore(catalog): pin vendored plugins to ${TAG} (${SHA:0:7})"
+          # A re-run of this job (transient failure, manual re-trigger) may find
+          # this bot-exclusive branch/PR already pushed from a prior attempt —
+          # the content is deterministic, so --force is correct (no lease: a
+          # fresh checkout has no remote-tracking ref for an already-pushed
+          # branch), and PR creation reuses any existing open PR on the branch
+          # instead of failing on "pull request already exists".
+          git push --force -u origin "${BRANCH}"
+          BODY_FILE="$(mktemp)"
+          {
+            echo "Self-referential re-pin: this release's tarball attestations (SLSA provenance, CycloneDX SBOM, SAST/SCA/Trivy/ShellCheck/Semgrep/secrets/manifest-review gate verdicts, OpenVEX) already verified fail-closed in this same workflow run — see the \`verify\` job in ${TAG} — before \`publish\` created this release. This PR only updates \`.claude-plugin/marketplace.json\`'s pinned \`ref\`/\`sha\` to match; \`catalog-admission\` re-checks the pin resolves to a real plugin before it can merge."
+            echo ""
+            echo "Re-verify independently:"
+            echo '```bash'
+            echo "gh release download ${TAG} --repo ${GITHUB_REPOSITORY} --pattern '*.tar.gz'"
+            echo "gh attestation verify gdlc-*.tar.gz --repo ${GITHUB_REPOSITORY} --predicate-type https://slsa.dev/provenance/v1"
+            echo '```'
+          } > "${BODY_FILE}"
+          PR_NUM="$(gh pr list --repo "${GITHUB_REPOSITORY}" --head "${BRANCH}" --json number --jq '.[0].number // empty')"
+          if [ -n "${PR_NUM}" ]; then
+            gh pr edit "${PR_NUM}" --repo "${GITHUB_REPOSITORY}" \
+              --title "chore(catalog): pin vendored plugins to ${TAG}" --body-file "${BODY_FILE}"
+          else
+            gh pr create --repo "${GITHUB_REPOSITORY}" --base main --head "${BRANCH}" \
+              --title "chore(catalog): pin vendored plugins to ${TAG}" --body-file "${BODY_FILE}"
+            PR_NUM="$(gh pr list --repo "${GITHUB_REPOSITORY}" --head "${BRANCH}" --json number --jq '.[0].number // empty')"
+          fi
+          rm -f "${BODY_FILE}"
+          gh pr merge "${PR_NUM}" --repo "${GITHUB_REPOSITORY}" --auto --squash
