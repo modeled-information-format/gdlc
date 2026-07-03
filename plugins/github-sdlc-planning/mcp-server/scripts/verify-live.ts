@@ -42,6 +42,18 @@ function step(name: string): void {
   process.stdout.write(`\n=== ${name} ===\n`);
 }
 
+/** Projects v2 writes have brief read-after-write lag (observed: absent on
+ * the immediate read, present ~1s later) -- retry a few times before
+ * treating a missing item as a real failure rather than a false negative. */
+async function retryUntil<T>(fn: () => Promise<T>, isReady: (result: T) => boolean, attempts = 5, delayMs = 500): Promise<T> {
+  let result = await fn();
+  for (let i = 1; i < attempts && !isReady(result); i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    result = await fn();
+  }
+  return result;
+}
+
 async function main(): Promise<void> {
   const createdIssueNumbers: number[] = [];
 
@@ -106,7 +118,10 @@ async function main(): Promise<void> {
       projectNumber: PROJECT_NUMBER,
     });
     assert(item.itemId.length > 0, 'add_item_to_project returned an item ID');
-    const items = await getProjectItems({ projectOwnerLogin: OWNER, projectNumber: PROJECT_NUMBER });
+    const items = await retryUntil(
+      () => getProjectItems({ projectOwnerLogin: OWNER, projectNumber: PROJECT_NUMBER }),
+      (result) => result.items.some((i) => i.id === item.itemId),
+    );
     assert(
       items.items.some((i) => i.id === item.itemId),
       `get_project_items includes the added item`,
@@ -122,7 +137,10 @@ async function main(): Promise<void> {
         fieldId: PROJECT_TEXT_FIELD_ID,
         value: { kind: 'text', text: fieldValue },
       });
-      const itemsAfter = await getProjectItems({ projectOwnerLogin: OWNER, projectNumber: PROJECT_NUMBER });
+      const itemsAfter = await retryUntil(
+        () => getProjectItems({ projectOwnerLogin: OWNER, projectNumber: PROJECT_NUMBER }),
+        (result) => result.items.find((i) => i.id === item.itemId)?.fieldValues.some((f) => f.text === fieldValue) ?? false,
+      );
       const updatedItem = itemsAfter.items.find((i) => i.id === item.itemId);
       const textField = updatedItem?.fieldValues.find((f) => f.text === fieldValue);
       assert(textField !== undefined, `set_field_value's write is visible via get_project_items (${fieldValue})`);
