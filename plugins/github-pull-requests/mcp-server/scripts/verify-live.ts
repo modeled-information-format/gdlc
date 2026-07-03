@@ -35,6 +35,21 @@ function step(name: string): void {
   process.stdout.write(`\n=== ${name} ===\n`);
 }
 
+/** GitHub parses a PR body's "Fixes #N" into closingIssuesReferences
+ * asynchronously after PR creation -- observed live: absent immediately
+ * after creation, present a few minutes later. Retry a few times before
+ * treating a missing link as a real failure rather than a false negative
+ * (same eventual-consistency pattern already found in the planning
+ * package's Projects v2 read-after-write). */
+async function retryUntil<T>(fn: () => Promise<T>, isReady: (result: T) => boolean, attempts = 5, delayMs = 1000): Promise<T> {
+  let result = await fn();
+  for (let i = 1; i < attempts && !isReady(result); i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    result = await fn();
+  }
+  return result;
+}
+
 interface CreatedIssue {
   number: number;
 }
@@ -93,7 +108,10 @@ async function main(): Promise<void> {
   process.stdout.write(`  issue #${issue.number}, PR #${pr.number}\n`);
 
   step('get_linked_issues (AC-3: closingIssuesReferences)');
-  const linked = await getLinkedIssues({ owner: OWNER, repo: REPO, pullNumber: pr.number });
+  const linked = await retryUntil(
+    () => getLinkedIssues({ owner: OWNER, repo: REPO, pullNumber: pr.number }),
+    (result) => result.items.some((i) => i.number === issue.number && i.source === 'closing_reference' && i.closing),
+  );
   assert(linked.sourceAttempted[0] === 'closing_reference', 'closing_reference attempted first');
   assert(
     linked.items.some((i) => i.number === issue.number && i.source === 'closing_reference' && i.closing),
