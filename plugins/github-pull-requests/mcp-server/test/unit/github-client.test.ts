@@ -101,6 +101,72 @@ describe('githubRest', () => {
     await githubRest('/repos/acme/widgets/pulls/1', {}, { sleep });
     expect(sleep).not.toHaveBeenCalled();
   });
+
+  it('paces a lowercase mutating method the same as its uppercase form', async () => {
+    mockRest('post', '/repos/acme/widgets/pulls/1/requested_reviewers', { users: [] });
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    await githubRest('/repos/acme/widgets/pulls/1/requested_reviewers', { method: 'post' }, { sleep });
+    expect(sleep).not.toHaveBeenCalled();
+    await githubRest('/repos/acme/widgets/pulls/1/requested_reviewers', { method: 'post' }, { sleep });
+    expect(sleep).toHaveBeenCalledTimes(1);
+  });
+
+  it('serializes concurrent mutating calls so both get paced correctly, not both skipped', async () => {
+    mockRest('post', '/repos/acme/widgets/pulls/1/requested_reviewers', { users: [] });
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    await Promise.all([
+      githubRest('/repos/acme/widgets/pulls/1/requested_reviewers', { method: 'POST' }, { sleep }),
+      githubRest('/repos/acme/widgets/pulls/1/requested_reviewers', { method: 'POST' }, { sleep }),
+    ]);
+    expect(sleep).toHaveBeenCalledTimes(1);
+  });
+
+  it('paces a retried mutating attempt, not just the first attempt', async () => {
+    let calls = 0;
+    server.use(
+      http.post('https://api.github.com/repos/acme/retried', () => {
+        calls += 1;
+        if (calls === 1) return HttpResponse.json({ message: 'limited' }, { status: 403, headers: { 'retry-after': '0' } });
+        return HttpResponse.json({ id: 1 });
+      }),
+    );
+    mockRest('post', '/repos/acme/widgets/pulls/1/requested_reviewers', { users: [] });
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    await githubRest('/repos/acme/widgets/pulls/1/requested_reviewers', { method: 'POST' }, { sleep });
+    sleep.mockClear();
+    await githubRest('/repos/acme/retried', { method: 'POST' }, { sleep });
+    expect(sleep).toHaveBeenCalledTimes(3);
+  });
+
+  it('uses the real default sleep implementation when no sleep override is given', async () => {
+    let calls = 0;
+    server.use(
+      http.get('https://api.github.com/repos/acme/widgets/pulls/10', () => {
+        calls += 1;
+        if (calls === 1) return HttpResponse.json({ message: 'limited' }, { status: 403, headers: { 'retry-after': '0' } });
+        return HttpResponse.json({ number: 10 });
+      }),
+    );
+    const data = await githubRest('/repos/acme/widgets/pulls/10');
+    expect(data).toEqual({ number: 10 });
+  });
+
+  it('keeps the mutation-pacing gate alive if a sleep call rejects', async () => {
+    mockRest('post', '/repos/acme/widgets/pulls/1/requested_reviewers', { users: [] });
+    mockRest('post', '/repos/acme/widgets/pulls/1/requested_reviewers', { users: [] });
+    const sleep = vi.fn().mockRejectedValueOnce(new Error('sleep failed')).mockResolvedValue(undefined);
+    await githubRest('/repos/acme/widgets/pulls/1/requested_reviewers', { method: 'POST' }, { sleep });
+    // Second call is within the pacing window, so it must sleep -- that
+    // sleep rejects, but the gate's .catch() must keep the chain usable.
+    await expect(githubRest('/repos/acme/widgets/pulls/1/requested_reviewers', { method: 'POST' }, { sleep })).rejects.toThrow(
+      'sleep failed',
+    );
+    // A third call proves the gate wasn't left permanently broken.
+    mockRest('post', '/repos/acme/widgets/pulls/1/requested_reviewers', { users: [] });
+    await expect(
+      githubRest('/repos/acme/widgets/pulls/1/requested_reviewers', { method: 'POST' }, { sleep }),
+    ).resolves.toBeDefined();
+  });
 });
 
 describe('githubGraphQL', () => {
@@ -136,5 +202,24 @@ describe('githubGraphQL', () => {
     await githubGraphQL('mutation { createThing }', {}, { sleep });
     await githubGraphQL('query { thing }', {}, { sleep });
     expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it('paces a mutation preceded by a leading GraphQL comment', async () => {
+    mockGraphQL(() => ({ ok: true }));
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    await githubGraphQL('# a comment\nmutation { createThing }', {}, { sleep });
+    expect(sleep).not.toHaveBeenCalled();
+    await githubGraphQL('# another comment\nmutation { createThing }', {}, { sleep });
+    expect(sleep).toHaveBeenCalledTimes(1);
+  });
+
+  it('serializes concurrent mutations so both get paced correctly, not both skipped', async () => {
+    mockGraphQL(() => ({ ok: true }));
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    await Promise.all([
+      githubGraphQL('mutation { createThing }', {}, { sleep }),
+      githubGraphQL('mutation { createThing }', {}, { sleep }),
+    ]);
+    expect(sleep).toHaveBeenCalledTimes(1);
   });
 });

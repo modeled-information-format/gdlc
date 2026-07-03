@@ -94,15 +94,38 @@ export async function assertProjectScope(fetchImpl: typeof fetch = fetch): Promi
  * driving the calls. */
 const MIN_MUTATION_INTERVAL_MS = 1000;
 let lastMutationAt = 0;
+/** Serializes concurrent enforceMutationPacing() calls: each invocation
+ * chains onto the previous one's completion, so the check-then-update of
+ * lastMutationAt can never race even if callers fire mutations via
+ * Promise.all (Copilot review finding: an unserialized shared timestamp lets
+ * two concurrent mutations both observe the same "enough time has passed"
+ * state and proceed without sleeping). */
+let mutationGate: Promise<void> = Promise.resolve();
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-async function enforceMutationPacing(sleep: (ms: number) => Promise<void>): Promise<void> {
-  const elapsed = Date.now() - lastMutationAt;
-  if (elapsed < MIN_MUTATION_INTERVAL_MS) {
-    await sleep(MIN_MUTATION_INTERVAL_MS - elapsed);
-  }
-  lastMutationAt = Date.now();
+function enforceMutationPacing(sleep: (ms: number) => Promise<void>): Promise<void> {
+  const turn = mutationGate.then(async () => {
+    const elapsed = Date.now() - lastMutationAt;
+    if (elapsed < MIN_MUTATION_INTERVAL_MS) {
+      await sleep(MIN_MUTATION_INTERVAL_MS - elapsed);
+    }
+    lastMutationAt = Date.now();
+  });
+  mutationGate = turn.catch(() => undefined);
+  return turn;
+}
+
+/** GraphQL comments are full lines starting with `#` (spec-defined, not a
+ * heuristic) -- strip them before checking for the mutation keyword so a
+ * mutation preceded by a leading comment is still detected (Copilot review
+ * finding). */
+function isGraphQLMutation(query: string): boolean {
+  const withoutComments = query
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('#'))
+    .join('\n');
+  return withoutComments.trim().startsWith('mutation');
 }
 
 /** Test-only: reset module-level auth cache and mutation-pacing state between
@@ -111,6 +134,7 @@ export function resetAuthCacheForTests(): void {
   cachedToken = undefined;
   projectScopeChecked = false;
   lastMutationAt = 0;
+  mutationGate = Promise.resolve();
 }
 
 class RateLimitError extends Error {
@@ -172,12 +196,16 @@ export async function githubRest(
 ): Promise<unknown> {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const sleep = deps.sleep ?? defaultSleep;
-  const method = opts.method ?? 'GET';
-  if (MUTATING_METHODS.has(method)) {
-    await enforceMutationPacing(sleep);
-  }
+  const method = (opts.method ?? 'GET').toUpperCase();
+  const isMutating = MUTATING_METHODS.has(method);
   return withRateLimitBackoff(
     async () => {
+      // Paced on every attempt (including retries after a rate-limit wait),
+      // not just the first -- a retry-after of 0 or a few seconds could
+      // otherwise let back-to-back retries bypass the governor entirely.
+      if (isMutating) {
+        await enforceMutationPacing(sleep);
+      }
       const token = resolveToken();
       const res = await fetchImpl(`${GITHUB_API}${path}`, {
         method,
@@ -214,11 +242,12 @@ export async function githubGraphQL<T = unknown>(
 ): Promise<T> {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const sleep = deps.sleep ?? defaultSleep;
-  if (query.trim().startsWith('mutation')) {
-    await enforceMutationPacing(sleep);
-  }
+  const isMutating = isGraphQLMutation(query);
   return withRateLimitBackoff(
     async () => {
+      if (isMutating) {
+        await enforceMutationPacing(sleep);
+      }
       const token = resolveToken();
       const headers: Record<string, string> = {
         Authorization: `Bearer ${token}`,
