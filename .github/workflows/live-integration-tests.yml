@@ -72,19 +72,19 @@ jobs:
             }' -f ownerId="${OWNER_ID}" -f title="${RUN_TITLE}")
           PROJECT_ID=$(jq -r '.data.createProjectV2.projectV2.id' <<<"$PROJECT_JSON")
           PROJECT_NUMBER=$(jq -r '.data.createProjectV2.projectV2.number' <<<"$PROJECT_JSON")
-          # shellcheck disable=SC2016
-          FIELD_JSON=$(gh api graphql -f query='
-            mutation($projectId:ID!) {
-              addProjectV2Field(input: { projectId: $projectId, dataType: TEXT, name: "verify-live-text" }) {
-                projectV2Field { ... on ProjectV2Field { id } }
-              }
-            }' -f projectId="${PROJECT_ID}")
-          FIELD_ID=$(jq -r '.data.addProjectV2Field.projectV2Field.id' <<<"$FIELD_JSON")
           {
             echo "project_id=${PROJECT_ID}"
             echo "project_number=${PROJECT_NUMBER}"
-            echo "field_id=${FIELD_ID}"
           } >> "$GITHUB_OUTPUT"
+          # shellcheck disable=SC2016
+          FIELD_JSON=$(gh api graphql -f query='
+            mutation($projectId:ID!) {
+              createProjectV2Field(input: { projectId: $projectId, dataType: TEXT, name: "verify-live-text" }) {
+                projectV2Field { ... on ProjectV2Field { id } }
+              }
+            }' -f projectId="${PROJECT_ID}")
+          FIELD_ID=$(jq -r '.data.createProjectV2Field.projectV2Field.id' <<<"$FIELD_JSON")
+          echo "field_id=${FIELD_ID}" >> "$GITHUB_OUTPUT"
           echo "Created project #${PROJECT_NUMBER} (${PROJECT_ID}), field ${FIELD_ID}"
 
       - name: Build github-sdlc-planning/mcp-server
