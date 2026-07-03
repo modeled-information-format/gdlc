@@ -111,7 +111,8 @@ async function main(): Promise<void> {
   process.stdout.write(`  issue #${issue.number}, PR #${pr.number}\n`);
 
   step('get_linked_issues (AC-3: closingIssuesReferences)');
-  // 12 attempts * 5s = up to 60s -- the closingIssuesReferences backfill
+  // 12 attempts, 5s apart: the first attempt is immediate (no delay), so
+  // this sleeps for at most 11 * 5s = 55s total -- the closingIssuesReferences backfill
   // delay isn't precisely measured, so this errs generous rather than
   // risking a flaky failure on a correct-but-slow-to-populate link.
   const linked = await retryUntil(
