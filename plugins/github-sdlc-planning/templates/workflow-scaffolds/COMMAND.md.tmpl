@@ -1,0 +1,12 @@
+# Board commands
+
+Comment any of these on an issue to move it on the project board. A GitHub
+Actions workflow (`board-command.yml`) parses the comment and applies the
+matching mutation — no AI call in the loop, so this works whether or not the
+repo has any coding agent installed.
+
+- `/move-to-sprint N` — set the `Sprint` iteration field to sprint N.
+- `/set-priority P0|P1|P2` — set the `Priority` field.
+- `/complete` — set `Status` to Done.
+
+Only users with write access to this repository can trigger these commands.

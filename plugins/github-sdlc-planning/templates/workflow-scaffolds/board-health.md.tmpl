@@ -1,0 +1,30 @@
+---
+# gh-aw workflow scaffold (creative enhancement §8.4 — adaptive automation).
+# Copied into a TARGET repo's .github/aw/board-health.md on request, then
+# compiled with `gh aw compile` into a .lock.yml Actions artifact. Runs
+# through the ProjectOps safe-output pattern (engineering blueprint §5.1),
+# inheriting the same auth and human-in-the-loop gates as the rest of the
+# design — staged: true previews the status update instead of posting it,
+# until a human reviews the first run.
+on:
+  schedule:
+    - cron: "0 14 * * 1" # weekly, Monday — fuzz the minute before committing to a real repo
+  workflow_dispatch:
+engine: copilot
+safe-outputs:
+  create-project-status-update:
+    staged: true
+---
+
+# Weekly board health check
+
+Read the current state of project board {{PROJECT_URL}} via the GitHub MCP
+`projects` toolset. Identify items that have been in the same `Status` for
+more than 14 days (stale) and any item past its `Sprint` iteration's end date
+that is still open.
+
+Post a project status update (via the `create-project-status-update` safe
+output) summarizing: total items, count of stale items with links, and count
+of overdue items with links. Do not modify any field values — this workflow
+reports, it does not re-route. Re-routing stays a human or an explicit
+`/move-to-sprint` IssueOps command (see COMMAND.md).

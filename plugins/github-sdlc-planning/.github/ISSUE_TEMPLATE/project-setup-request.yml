@@ -1,0 +1,59 @@
+name: Project setup request
+description: Request a new GitHub Projects v2 board configured for your team.
+title: "[project-setup]: "
+labels: ["project-setup"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Submitting this form gives the `project-setup` agent a structured
+        intent instead of free text — the `board type` dropdown maps directly
+        to a template archetype (engineering blueprint §1.1).
+  - type: input
+    id: repo
+    attributes:
+      label: Target repository
+      description: owner/repo the board should be scoped to.
+      placeholder: acme/widgets
+    validations:
+      required: true
+  - type: dropdown
+    id: board-type
+    attributes:
+      label: Board type
+      options:
+        - sprint
+        - kanban
+        - roadmap
+        - backlog
+        - bug-triage
+    validations:
+      required: true
+  - type: input
+    id: team-size
+    attributes:
+      label: Team size
+      placeholder: "4"
+    validations:
+      required: false
+  - type: input
+    id: sprint-duration
+    attributes:
+      label: Sprint duration (only for board type "sprint")
+      placeholder: 2 weeks
+    validations:
+      required: false
+  - type: input
+    id: template-name
+    attributes:
+      label: Template name (optional — see the template gallery)
+      placeholder: sprint-board
+    validations:
+      required: false
+  - type: checkboxes
+    id: seed-ceremonies
+    attributes:
+      label: Seed standard ceremony draft issues?
+      options:
+        - label: Yes, seed Sprint Planning / Daily Standup / Sprint Review / Sprint Retrospective
+          required: false

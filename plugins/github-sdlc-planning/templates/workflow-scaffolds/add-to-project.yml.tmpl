@@ -1,0 +1,26 @@
+# Workflow scaffold (creative enhancement §8.3). The project-setup agent
+# copies this into a TARGET repo's .github/workflows/add-to-project.yml on
+# request, substituting {{PROJECT_URL}} and {{LABEL_FILTER}}. It is never
+# committed into gdlc itself — gdlc is the plugin source, not a consumer repo.
+#
+# Uses the GitHub-maintained actions/add-to-project action rather than a
+# hand-rolled GraphQL call (Don't Reinvent the Wheel). GITHUB_TOKEN cannot
+# write org-level Projects v2 — this workflow requires an org-scoped PAT or
+# GitHub App installation token supplied as a secret.
+name: Add to project
+
+"on":
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]
+
+jobs:
+  add-to-project:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.labels.*.name, '{{LABEL_FILTER}}') || github.event.pull_request != null
+    steps:
+      - uses: actions/add-to-project@main # pin to a released commit SHA before committing to a real repo
+        with:
+          project-url: {{PROJECT_URL}}
+          github-token: ${{ secrets.PROJECT_BOARD_TOKEN }}

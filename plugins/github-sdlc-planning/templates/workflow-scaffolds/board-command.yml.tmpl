@@ -1,0 +1,22 @@
+# Workflow scaffold (creative enhancement §8.3, Layer 3 — IssueOps). Copied
+# into a TARGET repo's .github/workflows/board-command.yml on request, paired
+# with COMMAND.md.tmpl. This is the floor layer: requires no hooks and works
+# for any agent or none, since it's driven by an issue comment, not an AI call.
+name: Board command
+
+"on":
+  issue_comment:
+    types: [created]
+
+jobs:
+  dispatch:
+    if: startsWith(github.event.comment.body, '/move-to-sprint') || startsWith(github.event.comment.body, '/set-priority') || startsWith(github.event.comment.body, '/complete')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: github/command@main # pin to a released commit SHA before committing to a real repo
+        with:
+          command: /move-to-sprint
+          github-token: ${{ secrets.PROJECT_BOARD_TOKEN }}
+          reaction: "+1"

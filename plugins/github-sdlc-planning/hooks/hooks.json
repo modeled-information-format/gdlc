@@ -1,0 +1,44 @@
+{
+  "description": "Claude Code progressive-enhancement layer: session bootstrap, MIF-body validation, and a legible confirmation prompt before any board mutation. Every behavior here is additive — the portable MCP core (get_session_context, get_agent_capabilities, format_mif_issue_body) is the floor a hook-less host uses instead.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs"],
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__github-sdlc-planning__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/validate-mif.mjs"],
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "mcp__github-sdlc-planning__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/confirm-mutation.mjs"],
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

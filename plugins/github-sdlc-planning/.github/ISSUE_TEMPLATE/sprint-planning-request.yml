@@ -1,0 +1,48 @@
+name: Sprint planning request
+description: Ask the sprint-plan skill to fill an upcoming sprint from the backlog.
+title: "[sprint-plan]: "
+labels: ["sprint-plan"]
+body:
+  - type: input
+    id: repo
+    attributes:
+      label: Target repository
+      placeholder: acme/widgets
+    validations:
+      required: true
+  - type: input
+    id: project-number
+    attributes:
+      label: Project number
+      description: The Projects v2 board's number (from its URL).
+      placeholder: "4"
+    validations:
+      required: true
+  - type: input
+    id: sprint-iteration
+    attributes:
+      label: Sprint iteration label
+      placeholder: "Sprint 7"
+    validations:
+      required: true
+  - type: input
+    id: team-size
+    attributes:
+      label: Team size
+      placeholder: "4"
+    validations:
+      required: true
+  - type: input
+    id: cadence
+    attributes:
+      label: Sprint cadence
+      placeholder: 2 weeks
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything the agent should weight when selecting issues
+      placeholder: Prioritize the auth-migration epic; skip anything tagged "needs-design".
+    validations:
+      required: false

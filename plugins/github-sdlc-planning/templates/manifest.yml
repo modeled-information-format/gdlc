@@ -1,0 +1,72 @@
+# Template gallery manifest (creative enhancement §8.1). This is a plugin
+# manifest, not a GitHub artifact — it points project-setup at a source org
+# template project to `copyProjectV2` from, or documents the field set to
+# build from scratch when no org template exists yet in a given org.
+#
+# `sourceOrgTemplateProject` is intentionally unset here: it names a project
+# in *your* org, resolved at setup time (`listProjectV2Templates`-style query
+# with a UI-inspection fallback per the engineering blueprint), not a fixed
+# value this manifest can hardcode across every installing org.
+
+templates:
+  - name: sprint-board
+    displayName: Sprint Board
+    description: Two-week sprint board with Status/Priority/Sprint/Story Points fields and standard ceremony draft issues.
+    cues:
+      - "two-week sprints"
+      - "we run sprints"
+      - "agile sprint board"
+    fields:
+      - { name: Status, type: SINGLE_SELECT, options: [Todo, In Progress, Done] }
+      - { name: Priority, type: SINGLE_SELECT, options: [P0, P1, P2] }
+      - { name: Sprint, type: ITERATION, cadenceDays: 14 }
+      - { name: Story Points, type: NUMBER }
+    seedDraftIssues:
+      - Sprint Planning
+      - Daily Standup
+      - Sprint Review
+      - Sprint Retrospective
+    defaultAutomations:
+      - auto-set Todo on add
+      - close/merge -> Done (built-in default)
+
+  - name: okr-roadmap
+    displayName: OKR Roadmap
+    description: Quarterly roadmap tracking Objectives and Key Results as project items with a Quarter iteration field.
+    cues:
+      - "we track OKRs"
+      - "quarterly roadmap"
+      - "objectives and key results"
+    fields:
+      - { name: Status, type: SINGLE_SELECT, options: [Not started, On track, At risk, Done] }
+      - { name: Quarter, type: ITERATION, cadenceDays: 90 }
+      - { name: Confidence, type: SINGLE_SELECT, options: [High, Medium, Low] }
+    seedDraftIssues: []
+    defaultAutomations:
+      - auto-set "Not started" on add
+
+  - name: bug-triage-board
+    displayName: Bug-Triage Board
+    description: Incoming-bug triage board with Severity and Repro-status fields, no sprint cadence.
+    cues:
+      - "bug triage board"
+      - "we need to triage bugs"
+    fields:
+      - { name: Status, type: SINGLE_SELECT, options: [New, Confirmed, In Progress, Fixed, Won't Fix] }
+      - { name: Severity, type: SINGLE_SELECT, options: [S0, S1, S2, S3] }
+    seedDraftIssues: []
+    defaultAutomations:
+      - auto-add-from-repository (issues labeled bug)
+
+  - name: feature-pipeline
+    displayName: Feature Pipeline
+    description: Discovery-to-ship pipeline board for feature work, tracking stage rather than sprint.
+    cues:
+      - "feature pipeline"
+      - "discovery to ship"
+    fields:
+      - { name: Stage, type: SINGLE_SELECT, options: [Discovery, Design, Building, Review, Shipped] }
+      - { name: Priority, type: SINGLE_SELECT, options: [P0, P1, P2] }
+    seedDraftIssues: []
+    defaultAutomations:
+      - auto-set Discovery on add
