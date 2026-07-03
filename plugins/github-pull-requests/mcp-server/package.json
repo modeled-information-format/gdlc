@@ -11,8 +11,9 @@
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src test --max-warnings 0"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.scripts.json",
+    "lint": "eslint src test scripts --max-warnings 0",
+    "verify:live": "tsx scripts/verify-live.ts"
   },
   "dependencies": {
     "@github-sdlc-plugins/github-sdlc-planning-mcp-server": "file:../../github-sdlc-planning/mcp-server",
