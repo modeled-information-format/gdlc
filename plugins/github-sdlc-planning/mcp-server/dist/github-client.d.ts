@@ -12,7 +12,8 @@ export declare function resolveToken(execImpl?: ExecFileSyncFn): string;
  * skip this check and rely on the actual GraphQL call to surface a real
  * permission error if the token genuinely lacks access. */
 export declare function assertProjectScope(fetchImpl?: typeof fetch): Promise<void>;
-/** Test-only: reset module-level auth cache between test cases. */
+/** Test-only: reset module-level auth cache and mutation-pacing state between
+ * test cases. */
 export declare function resetAuthCacheForTests(): void;
 interface RestOptions {
     method?: string;

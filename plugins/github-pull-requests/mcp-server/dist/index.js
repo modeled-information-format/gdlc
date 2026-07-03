@@ -30998,6 +30998,25 @@ function resolveToken(execImpl = defaultExecFileSync) {
   }
   throw new PrError("github_api_error", "No GitHub token available. Set GITHUB_TOKEN, or run `gh auth login`.");
 }
+var MIN_MUTATION_INTERVAL_MS = 1e3;
+var lastMutationAt = 0;
+var mutationGate = Promise.resolve();
+var MUTATING_METHODS = /* @__PURE__ */ new Set(["POST", "PUT", "PATCH", "DELETE"]);
+function enforceMutationPacing(sleep) {
+  const turn = mutationGate.then(async () => {
+    const elapsed = Date.now() - lastMutationAt;
+    if (elapsed < MIN_MUTATION_INTERVAL_MS) {
+      await sleep(MIN_MUTATION_INTERVAL_MS - elapsed);
+    }
+    lastMutationAt = Date.now();
+  });
+  mutationGate = turn.catch(() => void 0);
+  return turn;
+}
+function isGraphQLMutation(query) {
+  const withoutComments = query.split("\n").filter((line) => !line.trim().startsWith("#")).join("\n");
+  return withoutComments.trim().startsWith("mutation");
+}
 var RateLimitError = class extends Error {
   retryAfterSeconds;
   constructor(retryAfterSeconds) {
@@ -31033,11 +31052,16 @@ var defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function githubRest(path, opts = {}, deps = {}) {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const sleep = deps.sleep ?? defaultSleep;
+  const method = (opts.method ?? "GET").toUpperCase();
+  const isMutating = MUTATING_METHODS.has(method);
   return withRateLimitBackoff(
     async () => {
+      if (isMutating) {
+        await enforceMutationPacing(sleep);
+      }
       const token = resolveToken();
       const res = await fetchImpl(`${GITHUB_API}${path}`, {
-        method: opts.method ?? "GET",
+        method,
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github+json",
@@ -31054,8 +31078,12 @@ async function githubRest(path, opts = {}, deps = {}) {
 async function githubGraphQL(query, variables = {}, deps = {}) {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const sleep = deps.sleep ?? defaultSleep;
+  const isMutating = isGraphQLMutation(query);
   return withRateLimitBackoff(
     async () => {
+      if (isMutating) {
+        await enforceMutationPacing(sleep);
+      }
       const token = resolveToken();
       const res = await fetchImpl(GITHUB_GRAPHQL, {
         method: "POST",

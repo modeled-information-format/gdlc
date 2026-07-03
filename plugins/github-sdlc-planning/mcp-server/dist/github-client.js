@@ -67,10 +67,57 @@ export async function assertProjectScope(fetchImpl = fetch) {
     }
     projectScopeChecked = true;
 }
-/** Test-only: reset module-level auth cache between test cases. */
+/** Deterministic governor, not incidental pacing from how fast a given agent
+ * happens to call tools: GitHub's secondary (abuse-detection) rate limit for
+ * content-creating mutations is undocumented in /rate_limit and triggers on
+ * burst *pattern*, not primary-budget exhaustion (confirmed live: a
+ * 5-run/40-minute burst of create-branch+commit+PR tripped it with 4939/5000
+ * of the primary REST budget still unused). A reactive catch-403-and-retry
+ * loop alone isn't sufficient for a tool whose real jobs (epic-decomposition,
+ * bulk sub-issue seeding) intentionally create many objects in sequence.
+ * MIN_MUTATION_INTERVAL_MS caps mutating calls at 60/minute, comfortably
+ * under GitHub's informally documented ~80/minute secondary-limit guidance,
+ * enforced here unconditionally regardless of which MCP host or model is
+ * driving the calls. */
+const MIN_MUTATION_INTERVAL_MS = 1000;
+let lastMutationAt = 0;
+/** Serializes concurrent enforceMutationPacing() calls: each invocation
+ * chains onto the previous one's completion, so the check-then-update of
+ * lastMutationAt can never race even if callers fire mutations via
+ * Promise.all (Copilot review finding: an unserialized shared timestamp lets
+ * two concurrent mutations both observe the same "enough time has passed"
+ * state and proceed without sleeping). */
+let mutationGate = Promise.resolve();
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+function enforceMutationPacing(sleep) {
+    const turn = mutationGate.then(async () => {
+        const elapsed = Date.now() - lastMutationAt;
+        if (elapsed < MIN_MUTATION_INTERVAL_MS) {
+            await sleep(MIN_MUTATION_INTERVAL_MS - elapsed);
+        }
+        lastMutationAt = Date.now();
+    });
+    mutationGate = turn.catch(() => undefined);
+    return turn;
+}
+/** GraphQL comments are full lines starting with `#` (spec-defined, not a
+ * heuristic) -- strip them before checking for the mutation keyword so a
+ * mutation preceded by a leading comment is still detected (Copilot review
+ * finding). */
+function isGraphQLMutation(query) {
+    const withoutComments = query
+        .split('\n')
+        .filter((line) => !line.trim().startsWith('#'))
+        .join('\n');
+    return withoutComments.trim().startsWith('mutation');
+}
+/** Test-only: reset module-level auth cache and mutation-pacing state between
+ * test cases. */
 export function resetAuthCacheForTests() {
     cachedToken = undefined;
     projectScopeChecked = false;
+    lastMutationAt = 0;
+    mutationGate = Promise.resolve();
 }
 class RateLimitError extends Error {
     retryAfterSeconds;
@@ -111,10 +158,18 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export async function githubRest(path, opts = {}, deps = {}) {
     const fetchImpl = deps.fetchImpl ?? fetch;
     const sleep = deps.sleep ?? defaultSleep;
+    const method = (opts.method ?? 'GET').toUpperCase();
+    const isMutating = MUTATING_METHODS.has(method);
     return withRateLimitBackoff(async () => {
+        // Paced on every attempt (including retries after a rate-limit wait),
+        // not just the first -- a retry-after of 0 or a few seconds could
+        // otherwise let back-to-back retries bypass the governor entirely.
+        if (isMutating) {
+            await enforceMutationPacing(sleep);
+        }
         const token = resolveToken();
         const res = await fetchImpl(`${GITHUB_API}${path}`, {
-            method: opts.method ?? 'GET',
+            method,
             headers: {
                 Authorization: `Bearer ${token}`,
                 Accept: 'application/vnd.github+json',
@@ -129,7 +184,11 @@ export async function githubRest(path, opts = {}, deps = {}) {
 export async function githubGraphQL(query, variables = {}, opts = {}, deps = {}) {
     const fetchImpl = deps.fetchImpl ?? fetch;
     const sleep = deps.sleep ?? defaultSleep;
+    const isMutating = isGraphQLMutation(query);
     return withRateLimitBackoff(async () => {
+        if (isMutating) {
+            await enforceMutationPacing(sleep);
+        }
         const token = resolveToken();
         const headers = {
             Authorization: `Bearer ${token}`,
