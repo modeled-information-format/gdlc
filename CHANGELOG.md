@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-07-03
 
 ### Added
 
@@ -44,9 +44,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Diátaxis documentation set (`docs/`), `SECURITY.md`, `CODEOWNERS`,
   `.vex/openvex.json`.
 
+### Fixed
+
+Found and fixed via real live-API testing (`verify:live`, not mocks) against
+a sandbox repo — none of these were caught by the mocked unit test suite,
+which is exactly why live verification exists:
+
+- `assertProjectScope` rejected valid GitHub App installation tokens: it
+  checked the `X-OAuth-Scopes` header, which only classic PATs populate, and
+  treated its absence as "missing scope" for tokens that never carry it.
+- `handleResponse` treated every 403 as rate-limited, discarding the real
+  response body. A 403 is ambiguous — secondary rate limits, primary rate
+  limits, and ordinary permission errors all return it, distinguished only by
+  the `Retry-After` / `X-RateLimit-Remaining` headers, which are now checked
+  explicitly instead of assumed.
+- `GET .../requested_reviewers` and `POST`/`DELETE` on the same path return
+  different response shapes (`{users, teams}` vs. the full PR object with
+  `requested_reviewers`/`requested_teams` fields) — the code used the wrong
+  shape for POST/DELETE, undetected because the mocked tests used the same
+  wrong shape.
+- `closingIssuesReferences` and Projects v2 item reads have real
+  read-after-write lag; `verify:live` now retries with backoff instead of
+  asserting instant consistency.
+- Added a deterministic mutation-pacing governor (hard minimum interval
+  between content-creating calls, independent of which MCP host drives the
+  tools) after discovering the lack of one is what caused a real GitHub
+  secondary rate limit during repeated test runs against the sandbox.
+
+### Live verification
+
+Both plugins' `verify:live` scripts pass in full against real GitHub state
+(not mocks): every representative operation across both plugins succeeds,
+including sub-issue creation, Projects v2 item/field writes, Discussions,
+Milestones, and PR review-request routing with `closingIssuesReferences`
+resolution. This is real-API proof the implementation is correct — it is
+explicitly not the same claim as genuine cross-agent (dual MCP host)
+verification, which has not been run; see
+`docs/how-to/verify-cross-agent.md`.
+
 ### Test coverage
 
-- `github-sdlc-planning/mcp-server`: 66 tests, 96.88% statements / 90.75%
-  branches / 94.91% functions / 100% lines.
-- `github-pull-requests/mcp-server`: 29 tests, 97.67% statements / 91.46%
-  branches / 91.17% functions / 100% lines.
+- `github-sdlc-planning/mcp-server`: 84 tests, 97.06% statements / 91.04%
+  branches / 97.01% functions / 100% lines.
+- `github-pull-requests/mcp-server`: 46 tests, 98.28% statements / 91.5%
+  branches / 97.56% functions / 100% lines.
