@@ -158,6 +158,28 @@ describe('githubRest', () => {
     expect(observedSleepMs).toBe(60_000);
   });
 
+  it('falls back to the default backoff for an empty/whitespace retry-after header', async () => {
+    let observedSleepMs = -1;
+    server.use(
+      http.get('https://api.github.com/repos/acme/empty-header', () => {
+        return HttpResponse.json({ message: 'limited' }, { status: 403, headers: { 'retry-after': '   ' } });
+      }),
+    );
+    await githubRest(
+      '/repos/acme/empty-header',
+      {},
+      {
+        sleep: (ms) => {
+          observedSleepMs = ms;
+          return Promise.resolve();
+        },
+      },
+    ).catch(() => undefined);
+    // Number('') === 0 in JS -- without trimming/checking for empty, this
+    // would wrongly resolve to an immediate retry instead of the default.
+    expect(observedSleepMs).toBe(60_000);
+  });
+
   it('backs off on a primary rate limit (403, X-RateLimit-Remaining: 0, no Retry-After) using X-RateLimit-Reset', async () => {
     let calls = 0;
     const resetEpochSeconds = Math.floor(Date.now() / 1000) + 5;

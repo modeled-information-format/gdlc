@@ -153,9 +153,11 @@ const DEFAULT_RETRY_AFTER_SECONDS = 60;
  * backing off -- exactly wrong during a real rate limit. Parses both forms,
  * falling back to a sane default for anything else. */
 function parseRetryAfterSeconds(header: string): number {
-  const asSeconds = Number(header);
+  const trimmed = header.trim();
+  if (trimmed === '') return DEFAULT_RETRY_AFTER_SECONDS;
+  const asSeconds = Number(trimmed);
   if (Number.isFinite(asSeconds) && asSeconds >= 0) return asSeconds;
-  const asDate = Date.parse(header);
+  const asDate = Date.parse(trimmed);
   if (!Number.isNaN(asDate)) {
     return Math.max(0, Math.round((asDate - Date.now()) / 1000));
   }
