@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.local
+coverage/
+*.log
+.DS_Store
+*.tar.gz
+*.cosign.bundle
+entries.tsv
