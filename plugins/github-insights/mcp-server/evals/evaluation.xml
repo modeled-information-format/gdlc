@@ -1,0 +1,22 @@
+<evaluation>
+   <qa_pair id="1">
+      <question>How many tools does the github-insights MCP server expose? Answer with just the number.</question>
+      <answer>5</answer>
+   </qa_pair>
+   <qa_pair id="2">
+      <question>What field does get_repo_contributor_stats set to true when GitHub is still computing the stats asynchronously (a 202 Accepted response)?</question>
+      <answer>computing</answer>
+   </qa_pair>
+   <qa_pair id="3">
+      <question>Does get_repo_traffic_views work with a read-only token, or does it need write access to the repo?</question>
+      <answer>It needs write access</answer>
+   </qa_pair>
+   <qa_pair id="4">
+      <question>What is the name of the tool that returns an SPDX spec version and package count?</question>
+      <answer>get_dependency_graph_sbom</answer>
+   </qa_pair>
+   <qa_pair id="5">
+      <question>Does this plugin's confirm-echo contract require any field to match another before a write call? Answer yes or no.</question>
+      <answer>No</answer>
+   </qa_pair>
+</evaluation>

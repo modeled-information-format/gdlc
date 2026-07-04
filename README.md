@@ -65,6 +65,10 @@ plugins/
                                     # to Projects v2. Depends on
                                     # github-sdlc-planning (same-marketplace,
                                     # real dependency edge).
+  github-insights/                 # Tier-3 (deferred domain): read-only
+                                    # traffic, contributor stats, community
+                                    # profile, dependency-graph/SBOM.
+                                    # Standalone, no dependency edge.
 external_plugins/                  # reserved for future git-subdir + sha plugins
 docs/                               # Diátaxis docs (this README links into them)
 ```
