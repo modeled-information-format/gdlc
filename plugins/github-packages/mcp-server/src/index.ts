@@ -39,7 +39,7 @@ function wrap<TArgs>(fn: (args: TArgs) => Promise<unknown> | unknown) {
   };
 }
 
-const packageTypeSchema = z.enum(['npm', 'maven', 'rubygems', 'docker', 'nuget', 'generic']);
+const packageTypeSchema = z.enum(['npm', 'maven', 'rubygems', 'docker', 'container', 'nuget', 'generic']);
 const packageRefSchema = { org: z.string(), packageType: packageTypeSchema, packageName: z.string() };
 
 server.registerTool(

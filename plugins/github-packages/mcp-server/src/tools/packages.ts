@@ -1,9 +1,12 @@
 import { githubRest, type GithubClientDeps } from '../github-client.js';
 import { PackagesError } from '../errors.js';
 
-/** GitHub's package_type path segment: npm, maven, rubygems, docker
- * (the container registry), nuget, or generic. */
-export type PackageType = 'npm' | 'maven' | 'rubygems' | 'docker' | 'nuget' | 'generic';
+/** GitHub's package_type path segment. `docker` and `container` are
+ * distinct, non-interchangeable values (caught in review): `docker`
+ * finds packages on the legacy docker.pkg.github.com registry, while
+ * `container` is what the actual GitHub Container Registry (ghcr.io)
+ * uses today -- the one most repos actually publish to now. */
+export type PackageType = 'npm' | 'maven' | 'rubygems' | 'docker' | 'container' | 'nuget' | 'generic';
 
 export interface ListOrgPackagesInput {
   org: string;

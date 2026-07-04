@@ -31170,7 +31170,7 @@ function wrap(fn) {
     }
   };
 }
-var packageTypeSchema = external_exports.enum(["npm", "maven", "rubygems", "docker", "nuget", "generic"]);
+var packageTypeSchema = external_exports.enum(["npm", "maven", "rubygems", "docker", "container", "nuget", "generic"]);
 var packageRefSchema = { org: external_exports.string(), packageType: packageTypeSchema, packageName: external_exports.string() };
 server.registerTool(
   "list_org_packages",

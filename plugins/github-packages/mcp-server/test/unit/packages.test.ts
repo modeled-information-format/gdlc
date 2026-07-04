@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { http, HttpResponse } from 'msw';
+import { server } from '../setup.js';
 import { mockRest } from '../helpers.js';
 import {
   listOrgPackages,
@@ -19,9 +21,34 @@ describe('listOrgPackages', () => {
   });
 
   it('filters by package type via query string', async () => {
-    mockRest('get', '/orgs/acme/packages?package_type=docker', [{ id: 2, name: 'api', package_type: 'docker', visibility: 'private', version_count: 5 }]);
+    // msw v2 strips query strings before matching a handler's registered
+    // path, so a plain mockRest('get', '/orgs/acme/packages?package_type=docker', ...)
+    // would "pass" even if listOrgPackages sent no query string at all --
+    // it gives false assurance (caught in review). Reading request.url's
+    // real searchParams inside the handler is what actually proves the
+    // query string was sent.
+    let observedPackageType: string | null = null;
+    server.use(
+      http.get('https://api.github.com/orgs/acme/packages', ({ request }) => {
+        observedPackageType = new URL(request.url).searchParams.get('package_type');
+        return HttpResponse.json([{ id: 2, name: 'api', package_type: 'docker', visibility: 'private', version_count: 5 }]);
+      }),
+    );
     const result = await listOrgPackages({ org: 'acme', packageType: 'docker' });
+    expect(observedPackageType).toBe('docker');
     expect(result).toEqual([{ id: 2, name: 'api', packageType: 'docker', visibility: 'private', versionCount: 5 }]);
+  });
+
+  it('sends no package_type query param when packageType is omitted', async () => {
+    let observedPackageType: string | null = 'not-set';
+    server.use(
+      http.get('https://api.github.com/orgs/acme/packages', ({ request }) => {
+        observedPackageType = new URL(request.url).searchParams.get('package_type');
+        return HttpResponse.json([]);
+      }),
+    );
+    await listOrgPackages({ org: 'acme' });
+    expect(observedPackageType).toBeNull();
   });
 });
 

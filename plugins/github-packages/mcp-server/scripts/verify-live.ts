@@ -37,7 +37,7 @@ async function main(): Promise<void> {
   if (first === undefined) {
     process.stdout.write('\n=== get_org_package / list_package_versions / get_package_version ===\n  SKIP (org has no packages to inspect)\n');
   } else {
-    const packageType = first.packageType as 'npm' | 'maven' | 'rubygems' | 'docker' | 'nuget' | 'generic';
+    const packageType = first.packageType as 'npm' | 'maven' | 'rubygems' | 'docker' | 'container' | 'nuget' | 'generic';
 
     step(`get_org_package (${first.name})`);
     const pkg = await getOrgPackage({ org: ORG, packageType, packageName: first.name });

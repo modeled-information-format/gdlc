@@ -9,10 +9,15 @@ diataxis_type: reference
 ---
 # github-packages
 
-List an org's packages and versions across npm, Maven, RubyGems, the
-container (Docker/OCI) registry, NuGet, and generic registries; delete
-or restore a package or a single version. Tier-3 domain #6 (Packages) —
-artifact distribution, not a planning surface.
+List an org's packages and versions across npm, Maven, RubyGems, Docker
+(legacy `docker.pkg.github.com`), Container (`ghcr.io`, GitHub's actual
+Container Registry), NuGet, and generic registries; delete or restore a
+package or a single version. Tier-3 domain #6 (Packages) — artifact
+distribution, not a planning surface.
+
+`docker` and `container` are distinct, non-interchangeable
+`packageType` values — `docker` targets the legacy registry, `container`
+targets `ghcr.io`, which is what most repos actually publish to today.
 
 ## Install
 
