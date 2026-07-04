@@ -31102,8 +31102,7 @@ async function listOrganizationRoles(input, deps = {}) {
   return data.roles.map((r) => ({ id: r.id, name: r.name, description: r.description, source: r.source, baseRole: r.base_role }));
 }
 async function listRoleTeams(input, deps = {}) {
-  const data = await githubRest(`/orgs/${input.org}/organization-roles/${input.roleId}/teams`, {}, deps);
-  return data.map((t) => ({ slug: t.slug, name: t.name }));
+  return await githubRest(`/orgs/${input.org}/organization-roles/${input.roleId}/teams`, {}, deps);
 }
 async function listRoleUsers(input, deps = {}) {
   const data = await githubRest(`/orgs/${input.org}/organization-roles/${input.roleId}/users`, {}, deps);
@@ -31120,22 +31119,22 @@ function assertConfirmed(roleId, confirmRoleId) {
 }
 async function assignTeamRole(input, deps = {}) {
   assertConfirmed(input.roleId, input.confirmRoleId);
-  await githubRest(`/orgs/${input.org}/organization-roles/teams/${input.teamSlug}/${input.roleId}`, { method: "PUT" }, deps);
+  await githubRest(`/orgs/${input.org}/organization-roles/teams/${encodeURIComponent(input.teamSlug)}/${input.roleId}`, { method: "PUT" }, deps);
   return { org: input.org, roleId: input.roleId, teamSlug: input.teamSlug };
 }
 async function removeTeamRole(input, deps = {}) {
   assertConfirmed(input.roleId, input.confirmRoleId);
-  await githubRest(`/orgs/${input.org}/organization-roles/teams/${input.teamSlug}/${input.roleId}`, { method: "DELETE" }, deps);
+  await githubRest(`/orgs/${input.org}/organization-roles/teams/${encodeURIComponent(input.teamSlug)}/${input.roleId}`, { method: "DELETE" }, deps);
   return { org: input.org, roleId: input.roleId, teamSlug: input.teamSlug };
 }
 async function assignUserRole(input, deps = {}) {
   assertConfirmed(input.roleId, input.confirmRoleId);
-  await githubRest(`/orgs/${input.org}/organization-roles/users/${input.username}/${input.roleId}`, { method: "PUT" }, deps);
+  await githubRest(`/orgs/${input.org}/organization-roles/users/${encodeURIComponent(input.username)}/${input.roleId}`, { method: "PUT" }, deps);
   return { org: input.org, roleId: input.roleId, username: input.username };
 }
 async function removeUserRole(input, deps = {}) {
   assertConfirmed(input.roleId, input.confirmRoleId);
-  await githubRest(`/orgs/${input.org}/organization-roles/users/${input.username}/${input.roleId}`, { method: "DELETE" }, deps);
+  await githubRest(`/orgs/${input.org}/organization-roles/users/${encodeURIComponent(input.username)}/${input.roleId}`, { method: "DELETE" }, deps);
   return { org: input.org, roleId: input.roleId, username: input.username };
 }
 

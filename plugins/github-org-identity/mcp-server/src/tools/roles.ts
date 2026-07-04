@@ -41,14 +41,8 @@ export interface RoleTeam {
   name: string;
 }
 
-interface RestRoleTeam {
-  slug: string;
-  name: string;
-}
-
 export async function listRoleTeams(input: RoleRef, deps: GithubClientDeps = {}): Promise<RoleTeam[]> {
-  const data = (await githubRest(`/orgs/${input.org}/organization-roles/${input.roleId}/teams`, {}, deps)) as RestRoleTeam[];
-  return data.map((t) => ({ slug: t.slug, name: t.name }));
+  return (await githubRest(`/orgs/${input.org}/organization-roles/${input.roleId}/teams`, {}, deps)) as RoleTeam[];
 }
 
 export interface RoleUser {
@@ -100,13 +94,13 @@ export interface TeamRoleResult {
 
 export async function assignTeamRole(input: TeamRoleInput, deps: GithubClientDeps = {}): Promise<TeamRoleResult> {
   assertConfirmed(input.roleId, input.confirmRoleId);
-  await githubRest(`/orgs/${input.org}/organization-roles/teams/${input.teamSlug}/${input.roleId}`, { method: 'PUT' }, deps);
+  await githubRest(`/orgs/${input.org}/organization-roles/teams/${encodeURIComponent(input.teamSlug)}/${input.roleId}`, { method: 'PUT' }, deps);
   return { org: input.org, roleId: input.roleId, teamSlug: input.teamSlug };
 }
 
 export async function removeTeamRole(input: TeamRoleInput, deps: GithubClientDeps = {}): Promise<TeamRoleResult> {
   assertConfirmed(input.roleId, input.confirmRoleId);
-  await githubRest(`/orgs/${input.org}/organization-roles/teams/${input.teamSlug}/${input.roleId}`, { method: 'DELETE' }, deps);
+  await githubRest(`/orgs/${input.org}/organization-roles/teams/${encodeURIComponent(input.teamSlug)}/${input.roleId}`, { method: 'DELETE' }, deps);
   return { org: input.org, roleId: input.roleId, teamSlug: input.teamSlug };
 }
 
@@ -125,12 +119,12 @@ export interface UserRoleResult {
 
 export async function assignUserRole(input: UserRoleInput, deps: GithubClientDeps = {}): Promise<UserRoleResult> {
   assertConfirmed(input.roleId, input.confirmRoleId);
-  await githubRest(`/orgs/${input.org}/organization-roles/users/${input.username}/${input.roleId}`, { method: 'PUT' }, deps);
+  await githubRest(`/orgs/${input.org}/organization-roles/users/${encodeURIComponent(input.username)}/${input.roleId}`, { method: 'PUT' }, deps);
   return { org: input.org, roleId: input.roleId, username: input.username };
 }
 
 export async function removeUserRole(input: UserRoleInput, deps: GithubClientDeps = {}): Promise<UserRoleResult> {
   assertConfirmed(input.roleId, input.confirmRoleId);
-  await githubRest(`/orgs/${input.org}/organization-roles/users/${input.username}/${input.roleId}`, { method: 'DELETE' }, deps);
+  await githubRest(`/orgs/${input.org}/organization-roles/users/${encodeURIComponent(input.username)}/${input.roleId}`, { method: 'DELETE' }, deps);
   return { org: input.org, roleId: input.roleId, username: input.username };
 }
