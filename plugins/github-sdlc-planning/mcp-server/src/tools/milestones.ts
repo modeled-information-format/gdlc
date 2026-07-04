@@ -16,12 +16,14 @@ export interface MilestoneResult {
   number: number;
   title: string;
   url: string;
+  dueOn: string | null;
 }
 
 interface RestMilestoneResponse {
   number: number;
   title: string;
   html_url: string;
+  due_on: string | null;
 }
 
 export async function createMilestone(input: CreateMilestoneInput, deps: GithubClientDeps = {}): Promise<MilestoneResult> {
@@ -31,7 +33,7 @@ export async function createMilestone(input: CreateMilestoneInput, deps: GithubC
   if (input.state !== undefined) body.state = input.state;
 
   const data = (await githubRest(`/repos/${input.owner}/${input.repo}/milestones`, { method: 'POST', body }, deps)) as RestMilestoneResponse;
-  return { number: data.number, title: data.title, url: data.html_url };
+  return { number: data.number, title: data.title, url: data.html_url, dueOn: data.due_on };
 }
 
 export interface ListMilestonesInput {
@@ -47,7 +49,7 @@ export async function listMilestones(input: ListMilestonesInput, deps: GithubCli
     {},
     deps,
   )) as RestMilestoneResponse[];
-  return data.map((m) => ({ number: m.number, title: m.title, url: m.html_url }));
+  return data.map((m) => ({ number: m.number, title: m.title, url: m.html_url, dueOn: m.due_on }));
 }
 
 export interface AssignMilestoneInput {

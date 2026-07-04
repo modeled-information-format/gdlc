@@ -15,6 +15,7 @@ export interface SessionContextResult {
         number: number;
         title: string;
         url: string;
+        dueOn: string | null;
     }>;
     projectBoard: Awaited<ReturnType<typeof getProjectItems>> | null;
 }
