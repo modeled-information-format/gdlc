@@ -13,6 +13,7 @@ export interface MilestoneResult {
     number: number;
     title: string;
     url: string;
+    dueOn: string | null;
 }
 export declare function createMilestone(input: CreateMilestoneInput, deps?: GithubClientDeps): Promise<MilestoneResult>;
 export interface ListMilestonesInput {
