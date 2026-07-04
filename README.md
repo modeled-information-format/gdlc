@@ -51,7 +51,7 @@ for the full rationale.
 
 ## What ships
 
-Five real plugins, vendored in-repo (two dependency-linked, three standalone):
+Six real plugins, vendored in-repo (two dependency-linked, four standalone):
 
 ```
 .claude-plugin/marketplace.json   # the catalog (name: "github-sdlc-plugins")
@@ -74,6 +74,10 @@ plugins/
                                     # traffic, contributor stats, community
                                     # profile, dependency-graph/SBOM.
                                     # Standalone, no dependency edge.
+  github-packages/                 # Tier-3 (deferred domain): list org
+                                    # packages/versions across npm/Maven/
+                                    # RubyGems/container/NuGet/generic;
+                                    # delete/restore. Standalone.
   github-org-identity/             # Near-term #2: organization roles and
                                     # teams — list roles/assignments, assign
                                     # or remove a role for a team or user.

@@ -101,6 +101,26 @@
       ]
     },
     {
+      "name": "github-packages",
+      "source": "./plugins/github-packages",
+      "description": "List org packages and versions across npm, Maven, RubyGems, Docker (legacy registry), Container (ghcr.io), NuGet, and generic registries; delete/restore a package or version.",
+      "version": "0.1.0",
+      "author": {
+        "name": "modeled-information-format"
+      },
+      "category": "administration",
+      "license": "MIT",
+      "keywords": [
+        "github",
+        "packages",
+        "npm",
+        "container-registry",
+        "nuget",
+        "maven",
+        "rubygems"
+      ]
+    },
+    {
       "name": "github-org-identity",
       "source": "./plugins/github-org-identity",
       "description": "Organization roles and teams: list org roles, list role assignments, assign/remove a role for a team or user. SAML/SSO is out of scope.",
