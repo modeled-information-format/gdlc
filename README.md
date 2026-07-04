@@ -60,10 +60,11 @@ plugins/
                                     # Milestones, Discussions — portable MCP
                                     # core + Claude Code enhancement layer.
                                     # Depends on mif-docs@modeled-information-format.
-  github-pull-requests/            # near-term #1: PR review routing +
-                                    # PR-to-issue link visibility.
-                                    # Depends on github-sdlc-planning
-                                    # (same-marketplace, real dependency edge).
+  github-pull-requests/            # Full PR lifecycle: create, classify,
+                                    # review-route, link to issues, couple
+                                    # to Projects v2. Depends on
+                                    # github-sdlc-planning (same-marketplace,
+                                    # real dependency edge).
 external_plugins/                  # reserved for future git-subdir + sha plugins
 docs/                               # Diátaxis docs (this README links into them)
 ```
@@ -103,12 +104,15 @@ External plugin sources support a native **40-char `sha`** pin. When both
 ## Priority-matrix roadmap
 
 This marketplace is not built all at once. Tier-1 (`github-sdlc-planning`) and
-near-term #1 (`github-pull-requests`) ship in this pass. Near-term #2
-(`github-org-identity`) and six deferred domains (repo/org configuration, the
-broader Actions ecosystem, Insights, Packages, gitflow, the Audit Log) are
-documented follow-ups — each already has a citation-backed tier rationale on
-record and is added as a new `plugins[]` entry when its tier comes due, no
-catalog schema change required.
+the full PR-lifecycle scope of `github-pull-requests` (create, classify,
+review-route, link to issues, couple to Projects v2 — grown past the
+priority matrix's original narrower "near-term #1: review-routing +
+link-visibility" framing once that gap was confirmed as the project's chief
+requirement) ship in this pass. Near-term #2 (`github-org-identity`) and six
+deferred domains (repo/org configuration, the broader Actions ecosystem,
+Insights, Packages, gitflow, the Audit Log) are documented follow-ups — each
+already has a citation-backed tier rationale on record and is added as a new
+`plugins[]` entry when its tier comes due, no catalog schema change required.
 
 ## Gates and attestations
 

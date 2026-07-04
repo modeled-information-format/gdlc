@@ -2,7 +2,7 @@
   "name": "github-pull-requests",
   "displayName": "GitHub Pull Requests",
   "version": "0.1.0",
-  "description": "PR review-request routing and PR-to-issue link visibility. Reuses github-sdlc-planning's MIF comment-block reader rather than duplicating that parser.",
+  "description": "Full pull-request lifecycle control: create, classify (type/size/risk labels), review-route, link to issues, and couple to Projects v2. Reuses github-sdlc-planning's MIF comment-block reader and Projects v2 tools rather than duplicating that logic.",
   "author": {
     "name": "modeled-information-format"
   },
@@ -14,7 +14,8 @@
     "pull-requests",
     "review-requests",
     "issue-linking",
-    "near-term"
+    "pr-classification",
+    "projects-v2"
   ],
   "dependencies": [
     { "name": "github-sdlc-planning" }
