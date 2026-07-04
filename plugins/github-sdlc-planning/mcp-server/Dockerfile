@@ -24,6 +24,18 @@ RUN npm run build
 # never copied into this stage at all.
 FROM cgr.dev/chainguard/node:latest@sha256:5280e63c3d2c81366056926b79f27f70e4adbd3a03a5b45c53503eac2b722b3f
 WORKDIR /app
-COPY --from=builder /app/dist/index.js ./dist/index.js
+COPY --from=builder --chown=node:node /app/dist/index.js ./dist/index.js
+
+# Chainguard's node image ships a non-root "node" user (uid 65532) by
+# default, but the USER instruction is still explicit here so the
+# non-root posture is visible in the Dockerfile itself, not only inferred
+# from the base image (Trivy DS-0002).
+USER node
+
+# Minimal liveness check for a stdio-only server with no HTTP endpoint:
+# confirms the node runtime itself starts and runs cleanly, not deeper
+# MCP-protocol health (Trivy DS-0026).
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["node", "-e", "process.exit(0)"]
 
 ENTRYPOINT ["node", "dist/index.js"]
