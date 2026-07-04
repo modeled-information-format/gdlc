@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `github-pull-requests`: full PR lifecycle control, closing a gap between
+  the plugin's originally-scoped "near-term #1" framing (review-routing +
+  link-visibility) and its actual chief requirement (create, classify, and
+  couple to Projects v2 too). Four new tools:
+  - `create_pull_request` — opens a PR via the GraphQL `createPullRequest`
+    mutation (not a `gh pr create` shell-out), so future MIF-frontmatter
+    authoring can hook the same path issues already use.
+  - `classify_pull_request` — applies `type:`/`size:`/`risk:` labels; size
+    is computed automatically from the diff (`additions + deletions`,
+    danger.js/PR-size-labeler-convention buckets XS–XL); same-category
+    labels are replaced, not accumulated.
+  - `add_pull_request_to_project` — adds a PR to a Projects v2 board via
+    `addProjectV2ItemById`, sharing (not duplicating) the sibling
+    `github-sdlc-planning` package's `resolveProjectNodeId`.
+  - `sync_linked_issues_project_field` — for a merged PR, sets a Projects v2
+    field on every same-repo issue it closes. Matches project-board items to
+    linked issues by `number` **and** `repo` on both sides of the join — a
+    Projects v2 board can hold items from multiple repos, so `number` alone
+    is never a safe join key; cross-repo closing issues are reported in
+    `skippedCrossRepo`, never guessed at.
+  - `github-sdlc-planning`'s `get_project_items` now exposes `number` and
+    `repo` per item (previously only `title`), and the package gained two new
+    `exports` subpaths (`./resolvers`, `./tools/projects`) so
+    `github-pull-requests` reuses the real, already-tested
+    `resolveProjectNodeId`/`getProjectItems`/`setFieldValue` instead of
+    re-implementing that GraphQL logic a second time.
+  - Known limitation: `get_project_items`' `items(first: 100)` query has no
+    pagination cursor, so a board with more than 100 items can report a
+    genuinely-linked issue as `notFoundOnBoard` when it's simply outside the
+    first page. Fixing this needs cursor-based pagination shared with that
+    tool's other consumers (`session.ts`) — tracked as a follow-up, not
+    fixed in this pass.
 - Self-referential catalog pinning: both vendored plugin entries in
   `.claude-plugin/marketplace.json` are now `git-subdir` sources pointing back
   at this repo, pinned to a full 40-char commit SHA like any external catalog
@@ -17,6 +49,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `catalog` GitHub App and a gated PR/auto-merge flow (`main`'s branch
   protection has no bypass allowance for App tokens). See
   `docs/how-to/catalog-pinning.md`.
+
+### Fixed
+
+- Corrected the `[0.1.0]` entry below: it claimed "workflow-scaffolding-as-code
+  templates (add-to-project.yml, IssueOps board-command.yml), and an adaptive
+  board-health gh-aw scaffold" shipped alongside `github-sdlc-planning`. None
+  of those three ever existed in the repo (confirmed by a full-tree search) —
+  only the project-template gallery in that same bullet was real. The
+  `[0.1.0]` entry now describes only what actually shipped; the gh-aw
+  integration remains a genuinely open Tier-1 item (priority-matrix row #7).
 
 ## [0.1.0] - 2026-07-03
 
@@ -30,10 +72,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   PostToolUse hooks). Every issue body carries MIF-conformant frontmatter via
   a native, portable `format_mif_issue_body`/`parse_mif_issue_body`
   implementation, plus a real dependency on `mif-docs@modeled-information-format`
-  for longer-form planning documents. Creative enhancements: a curated
-  project-template gallery, workflow-scaffolding-as-code templates
-  (add-to-project.yml, IssueOps board-command.yml), and an adaptive
-  board-health gh-aw scaffold.
+  for longer-form planning documents. Creative enhancement shipped: a curated
+  project-template gallery (`skills/template-gallery`, backed by
+  `templates/manifest.yml`).
 - `github-pull-requests` plugin (near-term #1, the primary driving
   deliverable): PR review-request routing and PR-to-issue link visibility (4
   tools), a `pr-review-route` skill, declaring a real same-marketplace

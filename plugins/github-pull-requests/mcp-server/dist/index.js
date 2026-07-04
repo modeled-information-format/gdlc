@@ -30980,6 +30980,7 @@ var GITHUB_GRAPHQL = "https://api.github.com/graphql";
 var API_VERSION = "2022-11-28";
 var MAX_RATE_LIMIT_RETRIES = 3;
 var cachedToken;
+var projectScopeChecked = false;
 var defaultExecFileSync = (command, args, options) => execFileSync(command, args, options);
 function resolveToken(execImpl = defaultExecFileSync) {
   if (cachedToken) return cachedToken;
@@ -31016,6 +31017,36 @@ function enforceMutationPacing(sleep) {
 function isGraphQLMutation(query) {
   const withoutComments = query.split("\n").filter((line) => !line.trim().startsWith("#")).join("\n");
   return withoutComments.trim().startsWith("mutation");
+}
+function tokenHasOAuthScopeModel(token) {
+  return token.startsWith("ghp_") || token.startsWith("gho_");
+}
+async function assertProjectScope(fetchImpl = fetch) {
+  if (projectScopeChecked) return;
+  const token = resolveToken();
+  if (!tokenHasOAuthScopeModel(token)) {
+    projectScopeChecked = true;
+    return;
+  }
+  const res = await fetchImpl(`${GITHUB_API}/user`, {
+    headers: { Authorization: `Bearer ${token}`, "X-GitHub-Api-Version": API_VERSION }
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new PrError("github_api_error", `Failed to verify token scopes: GET /user returned ${res.status}: ${text}`, {
+      status: res.status
+    });
+  }
+  const scopesHeader = res.headers.get("x-oauth-scopes") ?? "";
+  const scopes = scopesHeader.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!scopes.includes("project")) {
+    throw new PrError(
+      "missing_scope",
+      "GitHub token is missing the `project` scope required for Projects v2 writes. Run `gh auth login --scopes project`.",
+      { missingScope: "project", presentScopes: scopes }
+    );
+  }
+  projectScopeChecked = true;
 }
 var RateLimitError = class extends Error {
   retryAfterSeconds;
@@ -31283,6 +31314,539 @@ async function getLinkedIssues(ref, deps = {}) {
   return { items, sourceAttempted };
 }
 
+// src/resolvers.ts
+async function resolveRepositoryId(owner, repo, deps = {}) {
+  try {
+    const data = await githubRest(`/repos/${owner}/${repo}`, {}, deps);
+    if (!data.node_id) throw new Error("response missing node_id");
+    return data.node_id;
+  } catch (cause) {
+    throw new PrError("resolve_id_failed", `Failed to resolve repository node ID for ${owner}/${repo}`, {
+      lookupStep: "resolve_repository_id",
+      cause: cause instanceof Error ? cause.message : String(cause)
+    });
+  }
+}
+async function resolvePullRequestNodeId(owner, repo, pullNumber, deps = {}) {
+  try {
+    const data = await githubRest(`/repos/${owner}/${repo}/pulls/${pullNumber}`, {}, deps);
+    if (!data.node_id) throw new Error("response missing node_id");
+    return data.node_id;
+  } catch (cause) {
+    throw new PrError("resolve_id_failed", `Failed to resolve pull request node ID for ${owner}/${repo}#${pullNumber}`, {
+      lookupStep: "resolve_pull_request_id",
+      cause: cause instanceof Error ? cause.message : String(cause)
+    });
+  }
+}
+
+// src/tools/create-pull-request.ts
+var CREATE_PULL_REQUEST_MUTATION = `
+  mutation($repositoryId: ID!, $baseRefName: String!, $headRefName: String!, $title: String!, $body: String, $draft: Boolean) {
+    createPullRequest(input: {
+      repositoryId: $repositoryId, baseRefName: $baseRefName, headRefName: $headRefName,
+      title: $title, body: $body, draft: $draft
+    }) {
+      pullRequest { number url id }
+    }
+  }
+`;
+async function createPullRequest(input, deps = {}) {
+  const repositoryId = await resolveRepositoryId(input.owner, input.repo, deps);
+  const data = await githubGraphQL(
+    CREATE_PULL_REQUEST_MUTATION,
+    {
+      repositoryId,
+      baseRefName: input.baseRefName,
+      headRefName: input.headRefName,
+      title: input.title,
+      body: input.body,
+      draft: input.draft
+    },
+    deps
+  );
+  return {
+    number: data.createPullRequest.pullRequest.number,
+    url: data.createPullRequest.pullRequest.url,
+    nodeId: data.createPullRequest.pullRequest.id
+  };
+}
+
+// src/tools/classify-pull-request.ts
+var PR_TYPES = ["feat", "fix", "chore", "docs", "refactor", "test", "perf"];
+var PR_RISKS = ["low", "medium", "high"];
+var TYPE_COLORS = {
+  feat: "0E8A16",
+  fix: "D73A4A",
+  chore: "BFD4F2",
+  docs: "0075CA",
+  refactor: "A371F7",
+  test: "FBCA04",
+  perf: "FF8C00"
+};
+var SIZE_COLORS = {
+  XS: "3CBF00",
+  S: "5D9801",
+  M: "7F6900",
+  L: "A14300",
+  XL: "D73A4A"
+};
+var RISK_COLORS = {
+  low: "0E8A16",
+  medium: "FBCA04",
+  high: "D73A4A"
+};
+function bucketSize(changedLines) {
+  if (changedLines < 10) return "XS";
+  if (changedLines < 30) return "S";
+  if (changedLines < 100) return "M";
+  if (changedLines < 500) return "L";
+  return "XL";
+}
+async function labelExists(owner, repo, name, deps) {
+  try {
+    await githubRest(`/repos/${owner}/${repo}/labels/${encodeURIComponent(name)}`, {}, deps);
+    return true;
+  } catch (err) {
+    if (isPrError(err) && err.details.status === 404) return false;
+    throw err;
+  }
+}
+async function ensureLabel(owner, repo, name, color, deps) {
+  if (await labelExists(owner, repo, name, deps)) return;
+  await githubRest(`/repos/${owner}/${repo}/labels`, { method: "POST", body: { name, color } }, deps);
+}
+var CATEGORY_RE = /^(type|size|risk):/;
+function categoryOf(label) {
+  const match = CATEGORY_RE.exec(label);
+  return match ? match[1] : null;
+}
+async function classifyPullRequest(input, deps = {}) {
+  const pr = await githubRest(`/repos/${input.owner}/${input.repo}/pulls/${input.pullNumber}`, {}, deps);
+  const changedLines = pr.additions + pr.deletions;
+  const size = bucketSize(changedLines);
+  const desired = [`type:${input.type}`, `size:${size}`, ...input.risk ? [`risk:${input.risk}`] : []];
+  const desiredSet = new Set(desired);
+  const managedCategories = new Set(input.risk !== void 0 ? ["type", "size", "risk"] : ["type", "size"]);
+  const stale = pr.labels.map((l) => l.name).filter((name) => {
+    const category = categoryOf(name);
+    return category !== null && managedCategories.has(category) && !desiredSet.has(name);
+  });
+  for (const name of stale) {
+    await githubRest(`/repos/${input.owner}/${input.repo}/issues/${input.pullNumber}/labels/${encodeURIComponent(name)}`, { method: "DELETE" }, deps);
+  }
+  const colors = {
+    [`type:${input.type}`]: TYPE_COLORS[input.type],
+    [`size:${size}`]: SIZE_COLORS[size],
+    ...input.risk ? { [`risk:${input.risk}`]: RISK_COLORS[input.risk] } : {}
+  };
+  for (const name of desired) {
+    await ensureLabel(input.owner, input.repo, name, colors[name], deps);
+  }
+  await githubRest(
+    `/repos/${input.owner}/${input.repo}/issues/${input.pullNumber}/labels`,
+    { method: "POST", body: { labels: desired } },
+    deps
+  );
+  return {
+    type: input.type,
+    size,
+    risk: input.risk,
+    changedLines,
+    changedFiles: pr.changed_files,
+    labelsApplied: desired,
+    labelsRemoved: stale
+  };
+}
+
+// ../../github-sdlc-planning/mcp-server/dist/github-client.js
+import { execFileSync as execFileSync2 } from "node:child_process";
+
+// ../../github-sdlc-planning/mcp-server/dist/errors.js
+var PlanningError = class extends Error {
+  code;
+  details;
+  constructor(code, message, details = {}) {
+    super(message);
+    this.name = "PlanningError";
+    this.code = code;
+    this.details = details;
+  }
+  toJSON() {
+    return { error: this.code, message: this.message, ...this.details };
+  }
+};
+
+// ../../github-sdlc-planning/mcp-server/dist/github-client.js
+var GITHUB_API2 = "https://api.github.com";
+var GITHUB_GRAPHQL2 = "https://api.github.com/graphql";
+var API_VERSION2 = "2022-11-28";
+var MAX_RATE_LIMIT_RETRIES2 = 3;
+var cachedToken2;
+var projectScopeChecked2 = false;
+var defaultExecFileSync2 = (command, args, options) => execFileSync2(command, args, options);
+function resolveToken2(execImpl = defaultExecFileSync2) {
+  if (cachedToken2)
+    return cachedToken2;
+  const envToken = process.env.GITHUB_TOKEN;
+  if (envToken) {
+    cachedToken2 = envToken;
+    return envToken;
+  }
+  try {
+    const token = execImpl("gh", ["auth", "token"], { encoding: "utf8" }).trim();
+    if (token) {
+      cachedToken2 = token;
+      return token;
+    }
+  } catch {
+  }
+  throw new PlanningError("missing_scope", "No GitHub token available. Set GITHUB_TOKEN, or run `gh auth login --scopes project`.");
+}
+function tokenHasOAuthScopeModel2(token) {
+  return token.startsWith("ghp_") || token.startsWith("gho_");
+}
+async function assertProjectScope2(fetchImpl = fetch) {
+  if (projectScopeChecked2)
+    return;
+  const token = resolveToken2();
+  if (!tokenHasOAuthScopeModel2(token)) {
+    projectScopeChecked2 = true;
+    return;
+  }
+  const res = await fetchImpl(`${GITHUB_API2}/user`, {
+    headers: { Authorization: `Bearer ${token}`, "X-GitHub-Api-Version": API_VERSION2 }
+  });
+  const scopesHeader = res.headers.get("x-oauth-scopes") ?? "";
+  const scopes = scopesHeader.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!scopes.includes("project")) {
+    throw new PlanningError("missing_scope", "GitHub token is missing the `project` scope required for Projects v2 writes. Run `gh auth login --scopes project`.", { missingScope: "project", presentScopes: scopes });
+  }
+  projectScopeChecked2 = true;
+}
+var MIN_MUTATION_INTERVAL_MS2 = 1e3;
+var lastMutationAt2 = 0;
+var mutationGate2 = Promise.resolve();
+function enforceMutationPacing2(sleep) {
+  const turn = mutationGate2.then(async () => {
+    const elapsed = Date.now() - lastMutationAt2;
+    if (elapsed < MIN_MUTATION_INTERVAL_MS2) {
+      await sleep(MIN_MUTATION_INTERVAL_MS2 - elapsed);
+    }
+    lastMutationAt2 = Date.now();
+  });
+  mutationGate2 = turn.catch(() => void 0);
+  return turn;
+}
+function isGraphQLMutation2(query) {
+  const withoutComments = query.split("\n").filter((line) => !line.trim().startsWith("#")).join("\n");
+  return withoutComments.trim().startsWith("mutation");
+}
+var RateLimitError2 = class extends Error {
+  retryAfterSeconds;
+  constructor(retryAfterSeconds) {
+    super(`Rate limited, retry after ${retryAfterSeconds}s`);
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+};
+var DEFAULT_RETRY_AFTER_SECONDS2 = 60;
+function parseRetryAfterSeconds2(header) {
+  const trimmed = header.trim();
+  if (trimmed === "")
+    return DEFAULT_RETRY_AFTER_SECONDS2;
+  const asSeconds = Number(trimmed);
+  if (Number.isFinite(asSeconds) && asSeconds >= 0)
+    return asSeconds;
+  const asDate = Date.parse(trimmed);
+  if (!Number.isNaN(asDate)) {
+    return Math.max(0, Math.ceil((asDate - Date.now()) / 1e3));
+  }
+  return DEFAULT_RETRY_AFTER_SECONDS2;
+}
+function secondsUntilRateLimitReset2(resetHeader) {
+  if (!resetHeader)
+    return DEFAULT_RETRY_AFTER_SECONDS2;
+  const resetEpochSeconds = Number(resetHeader);
+  if (!Number.isFinite(resetEpochSeconds))
+    return DEFAULT_RETRY_AFTER_SECONDS2;
+  return Math.max(0, resetEpochSeconds - Math.floor(Date.now() / 1e3));
+}
+async function withRateLimitBackoff2(fn, sleep, attempt = 0) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof RateLimitError2 && attempt < MAX_RATE_LIMIT_RETRIES2) {
+      await sleep(err.retryAfterSeconds * 1e3);
+      return withRateLimitBackoff2(fn, sleep, attempt + 1);
+    }
+    throw err;
+  }
+}
+async function handleResponse2(res) {
+  const retryAfter = res.headers.get("retry-after");
+  const primaryLimitExhausted = res.headers.get("x-ratelimit-remaining") === "0";
+  if (res.status === 429) {
+    throw new RateLimitError2(retryAfter ? parseRetryAfterSeconds2(retryAfter) : DEFAULT_RETRY_AFTER_SECONDS2);
+  }
+  if (res.status === 403 && retryAfter !== null) {
+    throw new RateLimitError2(parseRetryAfterSeconds2(retryAfter));
+  }
+  if (res.status === 403 && primaryLimitExhausted) {
+    throw new RateLimitError2(secondsUntilRateLimitReset2(res.headers.get("x-ratelimit-reset")));
+  }
+  if (!res.ok) {
+    const text2 = await res.text();
+    throw new PlanningError("github_api_error", `GitHub API error ${res.status}: ${text2}`, {
+      status: res.status
+    });
+  }
+  if (res.status === 204)
+    return void 0;
+  const text = await res.text();
+  return text ? JSON.parse(text) : void 0;
+}
+var defaultSleep2 = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+async function githubGraphQL2(query, variables = {}, opts = {}, deps = {}) {
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const sleep = deps.sleep ?? defaultSleep2;
+  const isMutating = isGraphQLMutation2(query);
+  return withRateLimitBackoff2(async () => {
+    if (isMutating) {
+      await enforceMutationPacing2(sleep);
+    }
+    const token = resolveToken2();
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    };
+    if (opts.previewHeader)
+      headers["GraphQL-Features"] = opts.previewHeader;
+    const res = await fetchImpl(GITHUB_GRAPHQL2, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ query, variables })
+    });
+    const json2 = await handleResponse2(res);
+    if (json2.errors?.length) {
+      const retryableSchemaError = json2.errors.some((e) => /GraphQL-Features|Unknown argument|preview/i.test(e.message));
+      if (opts.previewHeader && retryableSchemaError) {
+        return githubGraphQL2(query, variables, { ...opts, previewHeader: void 0 }, deps);
+      }
+      throw new PlanningError("github_api_error", `GitHub GraphQL error: ${json2.errors.map((e) => e.message).join("; ")}`, {
+        graphqlErrors: json2.errors
+      });
+    }
+    if (json2.data === void 0) {
+      throw new PlanningError("github_api_error", "GitHub GraphQL response had no data and no errors");
+    }
+    return json2.data;
+  }, sleep);
+}
+
+// ../../github-sdlc-planning/mcp-server/dist/resolvers.js
+var ORG_PROJECT_ID_QUERY = `
+  query($login: String!, $number: Int!) {
+    organization(login: $login) { projectV2(number: $number) { id } }
+  }
+`;
+var USER_PROJECT_ID_QUERY = `
+  query($login: String!, $number: Int!) {
+    user(login: $login) { projectV2(number: $number) { id } }
+  }
+`;
+async function resolveProjectNodeId(ownerLogin, projectNumber, ownerType = "organization", deps = {}) {
+  try {
+    if (ownerType === "organization") {
+      const data2 = await githubGraphQL2(ORG_PROJECT_ID_QUERY, { login: ownerLogin, number: projectNumber }, {}, deps);
+      const id2 = data2.organization?.projectV2?.id;
+      if (!id2)
+        throw new Error("organization project not found");
+      return id2;
+    }
+    const data = await githubGraphQL2(USER_PROJECT_ID_QUERY, { login: ownerLogin, number: projectNumber }, {}, deps);
+    const id = data.user?.projectV2?.id;
+    if (!id)
+      throw new Error("user project not found");
+    return id;
+  } catch (cause) {
+    throw new PlanningError("resolve_project_id", `Failed to resolve project node ID for ${ownerLogin} project #${projectNumber}`, { lookupStep: "resolve_project_id", cause: cause instanceof Error ? cause.message : String(cause) });
+  }
+}
+
+// src/tools/pr-projects.ts
+var ADD_ITEM_MUTATION = `
+  mutation($projectId: ID!, $contentId: ID!) {
+    addProjectV2ItemById(input: { projectId: $projectId, contentId: $contentId }) {
+      item { id }
+    }
+  }
+`;
+async function resolveProjectId(login, number4, ownerType, deps) {
+  try {
+    return await resolveProjectNodeId(login, number4, ownerType, deps);
+  } catch (cause) {
+    throw new PrError("resolve_id_failed", `Failed to resolve project node ID for ${login} project #${number4}`, {
+      lookupStep: "resolve_project_id",
+      cause: cause instanceof Error ? cause.message : String(cause)
+    });
+  }
+}
+async function addPullRequestToProject(input, deps = {}) {
+  await assertProjectScope(deps.fetchImpl);
+  const [contentId, projectId] = await Promise.all([
+    resolvePullRequestNodeId(input.owner, input.repo, input.pullNumber, deps),
+    resolveProjectId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? "organization", deps)
+  ]);
+  const data = await githubGraphQL(ADD_ITEM_MUTATION, { projectId, contentId }, deps);
+  return { itemId: data.addProjectV2ItemById.item.id };
+}
+
+// ../../github-sdlc-planning/mcp-server/dist/tools/projects.js
+var UPDATE_FIELD_VALUE_MUTATION = `
+  mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: ProjectV2FieldValue!) {
+    updateProjectV2ItemFieldValue(input: { projectId: $projectId, itemId: $itemId, fieldId: $fieldId, value: $value }) {
+      projectV2Item { id }
+    }
+  }
+`;
+function toGraphQLFieldValue(value) {
+  switch (value.kind) {
+    case "text":
+      return { text: value.text };
+    case "number":
+      return { number: value.number };
+    case "date":
+      return { date: value.date };
+    case "singleSelect":
+      return { singleSelectOptionId: value.optionId };
+    case "iteration":
+      return { iterationId: value.iterationId };
+  }
+}
+async function setFieldValue(input, deps = {}) {
+  await assertProjectScope2(deps.fetchImpl);
+  const projectId = await resolveProjectNodeId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? "organization", deps);
+  await githubGraphQL2(UPDATE_FIELD_VALUE_MUTATION, { projectId, itemId: input.itemId, fieldId: input.fieldId, value: toGraphQLFieldValue(input.value) }, {}, deps);
+  return { itemId: input.itemId };
+}
+var GET_PROJECT_ITEMS_QUERY = `
+  query($projectId: ID!) {
+    node(id: $projectId) {
+      ... on ProjectV2 {
+        items(first: 100) {
+          nodes {
+            id
+            content {
+              ... on Issue { title number repository { nameWithOwner } }
+              ... on PullRequest { title number repository { nameWithOwner } }
+              ... on DraftIssue { title }
+            }
+            fieldValues(first: 20) {
+              nodes {
+                ... on ProjectV2ItemFieldTextValue { text field { ... on ProjectV2FieldCommon { name } } }
+                ... on ProjectV2ItemFieldNumberValue { number field { ... on ProjectV2FieldCommon { name } } }
+                ... on ProjectV2ItemFieldDateValue { date field { ... on ProjectV2FieldCommon { name } } }
+                ... on ProjectV2ItemFieldSingleSelectValue { name field { ... on ProjectV2FieldCommon { name } } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+async function getProjectItems(input, deps = {}) {
+  const projectId = await resolveProjectNodeId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? "organization", deps);
+  const data = await githubGraphQL2(GET_PROJECT_ITEMS_QUERY, { projectId }, {}, deps);
+  const nodes = data.node?.items?.nodes ?? [];
+  return {
+    items: nodes.map((n) => ({
+      id: n.id,
+      title: n.content?.title ?? null,
+      number: n.content?.number ?? null,
+      repo: n.content?.repository?.nameWithOwner ?? null,
+      fieldValues: n.fieldValues.nodes.filter((fv) => fv.field?.name !== void 0).map((fv) => ({
+        fieldName: fv.field?.name,
+        text: fv.text,
+        number: fv.number,
+        date: fv.date,
+        optionName: fv.name
+      }))
+    }))
+  };
+}
+
+// src/tools/sync-linked-issues-project-field.ts
+async function assertPullMerged(ref, deps) {
+  const pr = await githubRest(`/repos/${ref.owner}/${ref.repo}/pulls/${ref.pullNumber}`, {}, deps);
+  if (!pr.merged) {
+    throw new PrError("not_merged", `PR #${ref.pullNumber} in ${ref.owner}/${ref.repo} is not merged yet`, {
+      pullNumber: ref.pullNumber
+    });
+  }
+}
+var PRESERVABLE_CODES = /* @__PURE__ */ new Set(["missing_scope", "github_api_error", "rate_limited"]);
+function isPreservablePlanningError(err) {
+  return typeof err === "object" && err !== null && "code" in err && "details" in err && typeof err.code === "string" && PRESERVABLE_CODES.has(err.code);
+}
+async function callPlanningTool(lookupStep, fn) {
+  try {
+    return await fn();
+  } catch (cause) {
+    if (isPreservablePlanningError(cause)) {
+      throw new PrError(cause.code, cause.message, cause.details);
+    }
+    throw new PrError("resolve_id_failed", `Projects v2 sync step "${lookupStep}" failed`, {
+      lookupStep,
+      cause: cause instanceof Error ? cause.message : String(cause)
+    });
+  }
+}
+function sameRepo(a, b) {
+  return a !== null && a.toLowerCase() === b.toLowerCase();
+}
+async function syncLinkedIssuesProjectField(input, deps = {}) {
+  const ref = { owner: input.owner, repo: input.repo, pullNumber: input.pullNumber };
+  await assertPullMerged(ref, deps);
+  const linked = await getLinkedIssues(ref, deps);
+  const prRepo = `${input.owner}/${input.repo}`;
+  const closing = linked.items.filter((i) => i.closing);
+  const closingIssueNumbers = closing.filter((i) => sameRepo(i.repo, prRepo)).map((i) => i.number);
+  const skippedCrossRepo = closing.filter((i) => !sameRepo(i.repo, prRepo)).map((i) => i.number);
+  const projectItems = await callPlanningTool(
+    "get_project_items",
+    () => getProjectItems(
+      { projectOwnerLogin: input.projectOwnerLogin, projectNumber: input.projectNumber, projectOwnerType: input.projectOwnerType },
+      deps
+    )
+  );
+  const synced = [];
+  const notFoundOnBoard = [];
+  for (const issueNumber of closingIssueNumbers) {
+    const item = projectItems.items.find((i) => i.number === issueNumber && sameRepo(i.repo, prRepo));
+    if (!item) {
+      notFoundOnBoard.push(issueNumber);
+      continue;
+    }
+    await callPlanningTool(
+      "set_field_value",
+      () => setFieldValue(
+        {
+          projectOwnerLogin: input.projectOwnerLogin,
+          projectNumber: input.projectNumber,
+          projectOwnerType: input.projectOwnerType,
+          itemId: item.id,
+          fieldId: input.fieldId,
+          value: input.value
+        },
+        deps
+      )
+    );
+    synced.push({ issueNumber, itemId: item.id });
+  }
+  return { synced, notFoundOnBoard, skippedCrossRepo };
+}
+
 // src/index.ts
 var server = new McpServer({ name: "github-pull-requests", version: "0.1.0" });
 function toolResult(data) {
@@ -31305,6 +31869,14 @@ function wrap(fn) {
   };
 }
 var pullRequestRefSchema = { owner: external_exports.string(), repo: external_exports.string(), pullNumber: external_exports.number().int() };
+var projectOwnerTypeSchema = external_exports.enum(["organization", "user"]);
+var fieldValueSchema = external_exports.discriminatedUnion("kind", [
+  external_exports.object({ kind: external_exports.literal("text"), text: external_exports.string() }),
+  external_exports.object({ kind: external_exports.literal("number"), number: external_exports.number() }),
+  external_exports.object({ kind: external_exports.literal("date"), date: external_exports.string() }),
+  external_exports.object({ kind: external_exports.literal("singleSelect"), optionId: external_exports.string() }),
+  external_exports.object({ kind: external_exports.literal("iteration"), iterationId: external_exports.string() })
+]);
 server.registerTool(
   "request_review",
   {
@@ -31340,6 +31912,66 @@ server.registerTool(
     inputSchema: pullRequestRefSchema
   },
   wrap(getLinkedIssues)
+);
+server.registerTool(
+  "create_pull_request",
+  {
+    title: "Create pull request",
+    description: "Open a pull request via the GraphQL createPullRequest mutation.",
+    inputSchema: {
+      owner: external_exports.string(),
+      repo: external_exports.string(),
+      title: external_exports.string(),
+      body: external_exports.string().optional(),
+      baseRefName: external_exports.string(),
+      headRefName: external_exports.string(),
+      draft: external_exports.boolean().optional()
+    }
+  },
+  wrap(createPullRequest)
+);
+server.registerTool(
+  "classify_pull_request",
+  {
+    title: "Classify pull request",
+    description: "Apply type/size/risk labels to a pull request. Size is computed automatically from the diff; type is required, risk is optional. Same-category labels are replaced, not accumulated.",
+    inputSchema: {
+      ...pullRequestRefSchema,
+      type: external_exports.enum(PR_TYPES),
+      risk: external_exports.enum(PR_RISKS).optional()
+    }
+  },
+  wrap(classifyPullRequest)
+);
+server.registerTool(
+  "add_pull_request_to_project",
+  {
+    title: "Add pull request to project",
+    description: "Add a pull request to a Projects v2 board via addProjectV2ItemById.",
+    inputSchema: {
+      ...pullRequestRefSchema,
+      projectOwnerLogin: external_exports.string(),
+      projectNumber: external_exports.number().int(),
+      projectOwnerType: projectOwnerTypeSchema.optional()
+    }
+  },
+  wrap(addPullRequestToProject)
+);
+server.registerTool(
+  "sync_linked_issues_project_field",
+  {
+    title: "Sync linked issues project field",
+    description: "For a merged pull request, set a Projects v2 field on every same-repo issue it closes (requires the PR to be merged; matches issues to project items by number; closing issues in a different repo are reported in skippedCrossRepo, never guessed at).",
+    inputSchema: {
+      ...pullRequestRefSchema,
+      projectOwnerLogin: external_exports.string(),
+      projectNumber: external_exports.number().int(),
+      projectOwnerType: projectOwnerTypeSchema.optional(),
+      fieldId: external_exports.string(),
+      value: fieldValueSchema
+    }
+  },
+  wrap(syncLinkedIssuesProjectField)
 );
 async function main() {
   const transport = new StdioServerTransport();

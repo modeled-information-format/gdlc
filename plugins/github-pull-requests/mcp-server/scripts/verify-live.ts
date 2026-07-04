@@ -6,20 +6,42 @@
  * .github/workflows/live-integration-tests.yml, or manually with a real
  * token and a sandbox repo you control.
  *
- * Creates a real issue + a real PR (via the Contents API, so no local git
- * needed) whose body closes that issue, then exercises get_linked_issues
- * (AC-3, the real closingIssuesReferences path), list_review_requests, and
- * — only when SANDBOX_REVIEWER_LOGIN is set to a real collaborator other
- * than the PR author — request_review / remove_review_request (AC-1/AC-2).
- * Cleans up by closing the PR and the issue.
+ * Creates a real issue + a real PR (opened via create_pull_request itself,
+ * not a raw REST call — the branch/commit still need a git-refs/Contents-API
+ * setup step, since create_pull_request only opens the PR against an
+ * existing head ref) whose body closes that issue, then exercises
+ * get_linked_issues (AC-3, the real closingIssuesReferences path),
+ * classify_pull_request, list_review_requests, and — only when
+ * SANDBOX_REVIEWER_LOGIN is set to a real collaborator other than the PR
+ * author — request_review / remove_review_request. When
+ * SANDBOX_PROJECT_OWNER/SANDBOX_PROJECT_NUMBER/SANDBOX_FIELD_ID are all set,
+ * also exercises add_pull_request_to_project, merges the PR, and exercises
+ * sync_linked_issues_project_field, asserting the linked issue's project
+ * field actually changed. Cleans up by closing (or, if merged, leaving
+ * merged) the PR and closing the issue.
  */
 import { githubRest, type GithubClientDeps } from '../src/github-client.js';
 import { requestReview, listReviewRequests, removeReviewRequest } from '../src/tools/reviews.js';
 import { getLinkedIssues } from '../src/tools/linked-issues.js';
+import { createPullRequest } from '../src/tools/create-pull-request.js';
+import { classifyPullRequest } from '../src/tools/classify-pull-request.js';
+import { addPullRequestToProject } from '../src/tools/pr-projects.js';
+import { syncLinkedIssuesProjectField } from '../src/tools/sync-linked-issues-project-field.js';
+import { getProjectItems } from '@github-sdlc-plugins/github-sdlc-planning-mcp-server/tools/projects';
+import type { ProjectOwnerType } from '@github-sdlc-plugins/github-sdlc-planning-mcp-server/resolvers';
 
 const OWNER = process.env.SANDBOX_OWNER ?? 'modeled-information-format';
 const REPO = process.env.SANDBOX_REPO ?? 'gdlc-sandbox';
 const REVIEWER_LOGIN = process.env.SANDBOX_REVIEWER_LOGIN;
+const PROJECT_OWNER = process.env.SANDBOX_PROJECT_OWNER;
+// Number('') would already fall through the `? :` above, but a non-numeric
+// value (e.g. SANDBOX_PROJECT_NUMBER="abc") produces NaN, which is not
+// `undefined` — the project-coupling block's `!== undefined` guard would
+// then proceed with a NaN project number instead of skipping cleanly.
+const rawProjectNumber = process.env.SANDBOX_PROJECT_NUMBER ? Number(process.env.SANDBOX_PROJECT_NUMBER) : undefined;
+const PROJECT_NUMBER = rawProjectNumber !== undefined && Number.isFinite(rawProjectNumber) ? rawProjectNumber : undefined;
+const PROJECT_OWNER_TYPE = (process.env.SANDBOX_PROJECT_OWNER_TYPE as ProjectOwnerType | undefined) ?? 'organization';
+const FIELD_ID = process.env.SANDBOX_FIELD_ID;
 const RUN_ID = process.env.GITHUB_RUN_ID ?? String(Date.now());
 
 let failed = false;
@@ -59,9 +81,6 @@ interface CreatedIssue {
 interface RefResponse {
   object: { sha: string };
 }
-interface CreatedPull {
-  number: number;
-}
 
 async function createIssueViaRest(deps: GithubClientDeps): Promise<CreatedIssue> {
   return (await githubRest(
@@ -71,7 +90,9 @@ async function createIssueViaRest(deps: GithubClientDeps): Promise<CreatedIssue>
   )) as CreatedIssue;
 }
 
-async function createPullViaContentsApi(deps: GithubClientDeps, issueNumber: number): Promise<CreatedPull> {
+/** Only the branch/commit setup — the PR itself is opened via
+ * create_pull_request (the tool under test), not a raw REST call. */
+async function createBranchWithCommit(deps: GithubClientDeps): Promise<string> {
   const branch = `verify-live-${RUN_ID}`;
   const mainRef = (await githubRest(`/repos/${OWNER}/${REPO}/git/ref/heads/main`, {}, deps)) as RefResponse;
   await githubRest(`/repos/${OWNER}/${REPO}/git/refs`, { method: 'POST', body: { ref: `refs/heads/${branch}`, sha: mainRef.object.sha } }, deps);
@@ -87,28 +108,22 @@ async function createPullViaContentsApi(deps: GithubClientDeps, issueNumber: num
     },
     deps,
   );
-  return (await githubRest(
-    `/repos/${OWNER}/${REPO}/pulls`,
-    {
-      method: 'POST',
-      body: {
-        title: `[verify-live ${RUN_ID}]`,
-        head: branch,
-        base: 'main',
-        body: `Fixes #${issueNumber}\n\nSafe to close/delete.`,
-      },
-    },
-    deps,
-  )) as CreatedPull;
+  return branch;
 }
 
 async function main(): Promise<void> {
   const deps: GithubClientDeps = {};
 
-  step('setup: create issue + PR that closes it');
+  step('setup: create issue + PR that closes it (via create_pull_request)');
   const issue = await createIssueViaRest(deps);
-  const pr = await createPullViaContentsApi(deps, issue.number);
+  const branch = await createBranchWithCommit(deps);
+  const pr = await createPullRequest(
+    { owner: OWNER, repo: REPO, title: `[verify-live ${RUN_ID}]`, body: `Fixes #${issue.number}\n\nSafe to close/delete.`, baseRefName: 'main', headRefName: branch },
+    deps,
+  );
+  assert(typeof pr.number === 'number' && pr.number > 0, 'create_pull_request returned a real PR number');
   process.stdout.write(`  issue #${issue.number}, PR #${pr.number}\n`);
+  let merged = false;
 
   step('get_linked_issues (AC-3: closingIssuesReferences)');
   // 12 attempts, 5s apart: the first attempt is immediate (no delay), so
@@ -127,6 +142,12 @@ async function main(): Promise<void> {
     `get_linked_issues finds issue #${issue.number} via closingIssuesReferences`,
   );
 
+  step('classify_pull_request');
+  const classified = await classifyPullRequest({ owner: OWNER, repo: REPO, pullNumber: pr.number, type: 'test' });
+  assert(classified.size === 'XS', `classify_pull_request buckets a 1-file, tiny diff as XS (got ${classified.size})`);
+  assert(classified.labelsApplied.includes('type:test'), 'classify_pull_request applied type:test');
+  assert(classified.labelsApplied.includes(`size:${classified.size}`), `classify_pull_request applied size:${classified.size}`);
+
   step('list_review_requests (empty state)');
   const empty = await listReviewRequests({ owner: OWNER, repo: REPO, pullNumber: pr.number });
   assert(empty.users.length === 0 && empty.teams.length === 0, 'no reviewers requested yet');
@@ -141,10 +162,62 @@ async function main(): Promise<void> {
     process.stdout.write('\n=== request_review / remove_review_request ===\n  SKIP (no SANDBOX_REVIEWER_LOGIN set)\n');
   }
 
+  if (PROJECT_OWNER !== undefined && PROJECT_NUMBER !== undefined && FIELD_ID !== undefined) {
+    step('add_pull_request_to_project');
+    await addPullRequestToProject(
+      { owner: OWNER, repo: REPO, pullNumber: pr.number, projectOwnerLogin: PROJECT_OWNER, projectNumber: PROJECT_NUMBER, projectOwnerType: PROJECT_OWNER_TYPE },
+      deps,
+    );
+    assert(true, `add_pull_request_to_project added PR #${pr.number} to ${PROJECT_OWNER} project #${PROJECT_NUMBER}`);
+
+    step('merge PR, then sync_linked_issues_project_field');
+    await githubRest(`/repos/${OWNER}/${REPO}/pulls/${pr.number}/merge`, { method: 'PUT' }, deps);
+    merged = true;
+    const sync = await retryUntil(
+      () =>
+        syncLinkedIssuesProjectField(
+          {
+            owner: OWNER,
+            repo: REPO,
+            pullNumber: pr.number,
+            projectOwnerLogin: PROJECT_OWNER,
+            projectNumber: PROJECT_NUMBER,
+            projectOwnerType: PROJECT_OWNER_TYPE,
+            fieldId: FIELD_ID,
+            value: { kind: 'text', text: `verify-live ${RUN_ID}` },
+          },
+          deps,
+        ),
+      (result) => result.synced.some((s) => s.issueNumber === issue.number),
+      12,
+      5000,
+    );
+    assert(
+      sync.synced.some((s) => s.issueNumber === issue.number),
+      `sync_linked_issues_project_field synced issue #${issue.number}'s project field`,
+    );
+
+    const items = await getProjectItems(
+      { projectOwnerLogin: PROJECT_OWNER, projectNumber: PROJECT_NUMBER, projectOwnerType: PROJECT_OWNER_TYPE },
+      deps,
+    );
+    const syncedItem = items.items.find((i) => i.number === issue.number);
+    assert(
+      syncedItem?.fieldValues.some((fv) => fv.text === `verify-live ${RUN_ID}`) ?? false,
+      `linked issue #${issue.number}'s project item field reflects the synced value`,
+    );
+  } else {
+    process.stdout.write(
+      '\n=== add_pull_request_to_project / sync_linked_issues_project_field ===\n  SKIP (SANDBOX_PROJECT_OWNER/SANDBOX_PROJECT_NUMBER/SANDBOX_FIELD_ID not all set)\n',
+    );
+  }
+
   step('cleanup');
-  await githubRest(`/repos/${OWNER}/${REPO}/pulls/${pr.number}`, { method: 'PATCH', body: { state: 'closed' } }, deps);
+  if (!merged) {
+    await githubRest(`/repos/${OWNER}/${REPO}/pulls/${pr.number}`, { method: 'PATCH', body: { state: 'closed' } }, deps);
+  }
   await githubRest(`/repos/${OWNER}/${REPO}/issues/${issue.number}`, { method: 'PATCH', body: { state: 'closed' } }, deps);
-  process.stdout.write(`  closed PR #${pr.number} and issue #${issue.number}\n`);
+  process.stdout.write(`  ${merged ? 'left merged' : 'closed'} PR #${pr.number}, closed issue #${issue.number}\n`);
 
   if (failed) {
     process.stdout.write('\nverify-live: FAILED\n');

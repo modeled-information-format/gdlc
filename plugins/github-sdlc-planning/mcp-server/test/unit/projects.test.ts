@@ -79,7 +79,7 @@ describe('getProjectItems', () => {
             nodes: [
               {
                 id: 'PVTI_1',
-                content: { title: 'Ship the thing' },
+                content: { title: 'Ship the thing', number: 9, repository: { nameWithOwner: 'acme/widgets' } },
                 fieldValues: {
                   nodes: [
                     { text: undefined, name: 'In Progress', field: { name: 'Status' } },
@@ -100,11 +100,29 @@ describe('getProjectItems', () => {
       {
         id: 'PVTI_1',
         title: 'Ship the thing',
+        number: 9,
+        repo: 'acme/widgets',
         fieldValues: [
           { fieldName: 'Status', text: undefined, number: undefined, date: undefined, optionName: 'In Progress' },
           { fieldName: 'Story Points', text: undefined, number: 5, date: undefined, optionName: undefined },
         ],
       },
     ]);
+  });
+
+  it('Edge Case: a DraftIssue item has no number or repo, not an error', async () => {
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      return {
+        node: {
+          items: {
+            nodes: [{ id: 'PVTI_2', content: { title: 'A draft idea' }, fieldValues: { nodes: [] } }],
+          },
+        },
+      };
+    });
+
+    const result = await getProjectItems({ projectOwnerLogin: 'acme', projectNumber: 4 });
+    expect(result.items).toEqual([{ id: 'PVTI_2', title: 'A draft idea', number: null, repo: null, fieldValues: [] }]);
   });
 });

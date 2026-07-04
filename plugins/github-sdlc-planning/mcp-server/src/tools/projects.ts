@@ -118,6 +118,16 @@ export interface ProjectItemFieldValue {
 export interface ProjectItemSummary {
   id: string;
   title: string | null;
+  /** Issue/PR number of the item's content — null for a DraftIssue, which
+   * has no number. Lets a caller map a project item back to the
+   * issue/PR it was created from without a fragile title-string match. */
+  number: number | null;
+  /** "owner/repo" (GraphQL nameWithOwner) of the item's content — null for a
+   * DraftIssue, which has no repository. A Projects v2 board can hold items
+   * from multiple repos, so `number` alone is not a safe join key: a caller
+   * matching board items by number must also compare `repo`, or two repos'
+   * issues sharing the same number can resolve to the wrong item. */
+  repo: string | null;
   fieldValues: ProjectItemFieldValue[];
 }
 
@@ -133,8 +143,8 @@ const GET_PROJECT_ITEMS_QUERY = `
           nodes {
             id
             content {
-              ... on Issue { title }
-              ... on PullRequest { title }
+              ... on Issue { title number repository { nameWithOwner } }
+              ... on PullRequest { title number repository { nameWithOwner } }
               ... on DraftIssue { title }
             }
             fieldValues(first: 20) {
@@ -165,7 +175,7 @@ interface GetProjectItemsResponse {
     items?: {
       nodes: Array<{
         id: string;
-        content: { title?: string } | null;
+        content: { title?: string; number?: number; repository?: { nameWithOwner?: string } } | null;
         fieldValues: { nodes: RawFieldValueNode[] };
       }>;
     };
@@ -185,6 +195,8 @@ export async function getProjectItems(input: GetProjectItemsInput, deps: GithubC
     items: nodes.map((n) => ({
       id: n.id,
       title: n.content?.title ?? null,
+      number: n.content?.number ?? null,
+      repo: n.content?.repository?.nameWithOwner ?? null,
       fieldValues: n.fieldValues.nodes
         .filter((fv) => fv.field?.name !== undefined)
         .map((fv) => ({

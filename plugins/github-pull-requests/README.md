@@ -9,8 +9,10 @@ diataxis_type: reference
 ---
 # github-pull-requests
 
-PR review-request routing and PR-to-issue link visibility. Depends on
-`github-sdlc-planning` — installing this plugin auto-installs it.
+Full pull-request lifecycle control — create, classify (type/size/risk
+labels), review-route, link to issues, and couple to Projects v2 — not just
+review-request routing. Depends on `github-sdlc-planning` — installing this
+plugin auto-installs it.
 
 ## Install
 
@@ -26,15 +28,24 @@ disable both together, in the order the CLI's error message gives you.
 
 ## Auth
 
-Same PAT/`repo` scope `github-sdlc-planning` already requires — no additional
-scope, shared token/session serves both plugins.
+Same PAT `github-sdlc-planning` already requires — `repo` + `read:org` +
+`project` scope, shared token/session serves both plugins. The `project`
+scope is required for `add_pull_request_to_project` and
+`sync_linked_issues_project_field` (checked via `assertProjectScope`, same
+as the sibling package's Projects v2 writes); App installation tokens and
+fine-grained PATs skip that check and rely on the actual GraphQL call to
+surface a real permission error if access is genuinely missing.
 
 ## MCP tools
 
 | Tool | Purpose |
 | --- | --- |
+| `create_pull_request` | Open a PR via the GraphQL `createPullRequest` mutation |
+| `classify_pull_request` | Apply `type:`/`size:`/`risk:` labels — size is computed automatically from the diff, same-category labels are replaced not accumulated |
 | `request_review` / `list_review_requests` / `remove_review_request` | Reviewer routing |
 | `get_linked_issues` | PR→issue link discovery: `closingIssuesReferences` first, Timeline-API/text-parsing fallback labeled `confidence: heuristic` |
+| `add_pull_request_to_project` | Add a PR to a Projects v2 board via `addProjectV2ItemById` |
+| `sync_linked_issues_project_field` | For a merged PR, set a Projects v2 field on every same-repo issue it closes — cross-repo closing issues are reported in `skippedCrossRepo`, never guessed at |
 
 ## Skill
 
@@ -43,6 +54,10 @@ scope, shared token/session serves both plugins.
 
 ## Scope boundary
 
-This plugin surfaces and manages PR review/link state; it does not create or
-triage issues, and does not decide which sprint/milestone an issue belongs to
-(that's `github-sdlc-planning`'s job).
+This plugin covers the full PR lifecycle (create, classify, review-route,
+link, project-couple) plus reading/writing the specific Projects v2 field
+values a caller names on a PR's linked issues after merge. It does not
+create or triage issues itself, and does not decide which sprint/milestone
+an issue belongs to, or discover a board's field/option IDs from scratch
+(that's `github-sdlc-planning`'s job — its `set_field_value`/
+`get_project_items` tools are the ones this plugin composes with).

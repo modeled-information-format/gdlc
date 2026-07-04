@@ -54,8 +54,8 @@ const GET_PROJECT_ITEMS_QUERY = `
           nodes {
             id
             content {
-              ... on Issue { title }
-              ... on PullRequest { title }
+              ... on Issue { title number repository { nameWithOwner } }
+              ... on PullRequest { title number repository { nameWithOwner } }
               ... on DraftIssue { title }
             }
             fieldValues(first: 20) {
@@ -80,6 +80,8 @@ export async function getProjectItems(input, deps = {}) {
         items: nodes.map((n) => ({
             id: n.id,
             title: n.content?.title ?? null,
+            number: n.content?.number ?? null,
+            repo: n.content?.repository?.nameWithOwner ?? null,
             fieldValues: n.fieldValues.nodes
                 .filter((fv) => fv.field?.name !== undefined)
                 .map((fv) => ({
