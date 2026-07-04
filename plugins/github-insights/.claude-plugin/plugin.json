@@ -1,0 +1,21 @@
+{
+  "name": "github-insights",
+  "displayName": "GitHub Insights",
+  "version": "0.1.0",
+  "description": "Read-only repo/org reporting: traffic (views/clones), contributor stats, community-health profile, and dependency-graph/SBOM summary.",
+  "author": {
+    "name": "modeled-information-format"
+  },
+  "homepage": "https://github.com/modeled-information-format/gdlc",
+  "repository": "https://github.com/modeled-information-format/gdlc",
+  "license": "MIT",
+  "keywords": [
+    "github",
+    "traffic",
+    "insights",
+    "community-profile",
+    "dependency-graph",
+    "sbom",
+    "reporting"
+  ]
+}

@@ -79,6 +79,26 @@
         "custom-properties",
         "community-health-files"
       ]
+    },
+    {
+      "name": "github-insights",
+      "source": "./plugins/github-insights",
+      "description": "Read-only repo/org reporting: traffic (views/clones), contributor stats, community-health profile, and dependency-graph/SBOM summary.",
+      "version": "0.1.0",
+      "author": {
+        "name": "modeled-information-format"
+      },
+      "category": "reporting",
+      "license": "MIT",
+      "keywords": [
+        "github",
+        "traffic",
+        "insights",
+        "community-profile",
+        "dependency-graph",
+        "sbom",
+        "reporting"
+      ]
     }
   ]
 }

@@ -1,0 +1,24 @@
+{
+  "skill_name": "insights-report",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Report on repo health for acme/widgets.",
+      "expected_output": "Gathers traffic, contributor stats, community profile, and dependency-graph data, then presents a summary report.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "get_community_profile",
+          "description": "Calls get_community_profile before presenting a summary"
+        }
+      ],
+      "expectations": [
+        "Calls the traffic, contributor-stats, community-profile, and dependency-graph tools",
+        "Presents a summary report without suggesting or making any repo change",
+        "Handles a computing: true contributor-stats result by saying to retry shortly, not reporting zero contributors"
+      ]
+    }
+  ]
+}

@@ -70,6 +70,10 @@ plugins/
                                     # org .github community health files,
                                     # Pages status, custom repo properties.
                                     # Standalone, no dependency edge.
+  github-insights/                 # Tier-3 (deferred domain): read-only
+                                    # traffic, contributor stats, community
+                                    # profile, dependency-graph/SBOM.
+                                    # Standalone, no dependency edge.
 external_plugins/                  # reserved for future git-subdir + sha plugins
 docs/                               # Diátaxis docs (this README links into them)
 ```
