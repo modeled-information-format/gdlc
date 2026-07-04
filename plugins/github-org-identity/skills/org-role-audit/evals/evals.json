@@ -24,6 +24,18 @@
           "file": "transcript.md",
           "literal": "assign_user_role",
           "description": "Never calls assign_user_role during a read-only audit"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "remove_team_role",
+          "description": "Never calls remove_team_role during a read-only audit"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "remove_user_role",
+          "description": "Never calls remove_user_role during a read-only audit"
         }
       ],
       "expectations": [

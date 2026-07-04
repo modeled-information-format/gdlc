@@ -82,6 +82,12 @@ describe('removeTeamRole', () => {
       code: 'confirmation_mismatch',
     });
   });
+
+  it('URL-encodes a teamSlug containing reserved characters instead of corrupting the request path', async () => {
+    mockRest('delete', '/orgs/acme/organization-roles/teams/eng%2Fsecurity/42', {}, 204);
+    const result = await removeTeamRole({ org: 'acme', roleId: 42, confirmRoleId: 42, teamSlug: 'eng/security' });
+    expect(result).toEqual({ org: 'acme', roleId: 42, teamSlug: 'eng/security' });
+  });
 });
 
 describe('assignUserRole', () => {
@@ -116,5 +122,11 @@ describe('removeUserRole', () => {
     await expect(removeUserRole({ org: 'acme', roleId: 42, confirmRoleId: 7, username: 'octocat' })).rejects.toMatchObject({
       code: 'confirmation_mismatch',
     });
+  });
+
+  it('URL-encodes a username containing reserved characters instead of corrupting the request path', async () => {
+    mockRest('delete', '/orgs/acme/organization-roles/users/oct%2Focat/42', {}, 204);
+    const result = await removeUserRole({ org: 'acme', roleId: 42, confirmRoleId: 42, username: 'oct/ocat' });
+    expect(result).toEqual({ org: 'acme', roleId: 42, username: 'oct/ocat' });
   });
 });

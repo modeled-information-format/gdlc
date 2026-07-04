@@ -18,9 +18,10 @@
  * human-supervised step, not something this script automates.
  *
  * Sequence: list_organization_roles -> list_role_teams -> list_role_users
- * (for the first role that has at least one team or user assignment, if
- * any — an org with zero custom role assignments is a valid, if less
- * informative, run).
+ * for whichever role happens to be first in the list (roles[0], no
+ * assignment-based selection) — an org with zero organization roles at
+ * all is a valid, if less informative, run (the two role-membership
+ * calls are skipped entirely in that case).
  *
  * TARGET_ORG, not a "sandbox" var: unlike the sibling plugins' SANDBOX_REPO
  * (a disposable repo), organization roles are an org-wide construct with no
