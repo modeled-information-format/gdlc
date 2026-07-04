@@ -1,0 +1,31 @@
+{
+  "skill_name": "package-audit",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Audit packages for acme-corp.",
+      "expected_output": "Lists org packages and their versions, then presents a summary without deleting or restoring anything.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "list_org_packages",
+          "description": "Calls list_org_packages before presenting a summary"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "delete_package",
+          "description": "Never calls delete_package during a read-only audit"
+        }
+      ],
+      "expectations": [
+        "Calls list_org_packages for the named org",
+        "Calls list_package_versions for packages of interest",
+        "Presents a summary a human can review, without deleting or restoring any package",
+        "Never calls delete_package, delete_package_version, restore_package, or restore_package_version"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+#!/usr/bin/env tsx
+/**
+ * Live verification script: exercises the real src/ implementation against
+ * a real GitHub org, not a mock. Not part of the CI-gating `npm test` suite
+ * — invoked manually with a token that has `read:packages` scope.
+ *
+ * READ-ONLY BY DESIGN: none of the four write tools (delete_package,
+ * delete_package_version, restore_package, restore_package_version) are
+ * exercised here — deleting/restoring a real published package as part of
+ * an automated smoke test is exactly the kind of action this plugin's own
+ * confirm-echo guards exist to slow down. Write-path coverage lives
+ * entirely in the mocked unit suite.
+ */
+import { listOrgPackages, getOrgPackage, listPackageVersions, getPackageVersion } from '../src/tools/packages.js';
+
+const ORG = process.env.TARGET_ORG ?? 'modeled-information-format';
+
+let failed = false;
+function assert(condition: boolean, message: string): void {
+  if (condition) {
+    process.stdout.write(`  OK   ${message}\n`);
+  } else {
+    failed = true;
+    process.stdout.write(`  FAIL ${message}\n`);
+  }
+}
+function step(name: string): void {
+  process.stdout.write(`\n=== ${name} ===\n`);
+}
+
+async function main(): Promise<void> {
+  step(`list_org_packages (${ORG})`);
+  const packages = await listOrgPackages({ org: ORG });
+  assert(Array.isArray(packages), `list_org_packages returned an array (${packages.length} package(s))`);
+
+  const first = packages[0];
+  if (first === undefined) {
+    process.stdout.write('\n=== get_org_package / list_package_versions / get_package_version ===\n  SKIP (org has no packages to inspect)\n');
+  } else {
+    const packageType = first.packageType as 'npm' | 'maven' | 'rubygems' | 'docker' | 'nuget' | 'generic';
+
+    step(`get_org_package (${first.name})`);
+    const pkg = await getOrgPackage({ org: ORG, packageType, packageName: first.name });
+    assert(pkg.name === first.name, `get_org_package returned the same package (${pkg.name})`);
+
+    step(`list_package_versions (${first.name})`);
+    const versions = await listPackageVersions({ org: ORG, packageType, packageName: first.name });
+    assert(Array.isArray(versions), `list_package_versions returned an array (${versions.length} version(s))`);
+
+    const firstVersion = versions[0];
+    if (firstVersion === undefined) {
+      process.stdout.write('\n=== get_package_version ===\n  SKIP (package has no versions)\n');
+    } else {
+      step(`get_package_version (${first.name}@${firstVersion.id})`);
+      const version = await getPackageVersion({ org: ORG, packageType, packageName: first.name, versionId: firstVersion.id });
+      assert(version.id === firstVersion.id, `get_package_version returned the same version (${version.id})`);
+    }
+  }
+
+  if (failed) {
+    process.stdout.write('\nverify-live: FAILED\n');
+    process.exit(1);
+  }
+  process.stdout.write('\nverify-live: PASSED\n');
+}
+
+main().catch((err: unknown) => {
+  process.stderr.write(`verify-live crashed: ${err instanceof Error ? err.stack : String(err)}\n`);
+  process.exit(1);
+});

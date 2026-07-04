@@ -1,0 +1,25 @@
+---
+description: Audit an org's published packages and their versions, and present a summary for the user to review. Use when the user asks to "audit packages", "list our packages", or "check package versions".
+when_to_use: Trigger on "audit packages for <org>", "list packages", "check versions of <package>", or a periodic package-inventory review request.
+argument-hint: "[org] [package type]"
+allowed-tools: mcp__github-packages__*
+---
+
+# Package audit
+
+Audit published packages for **$ARGUMENTS**.
+
+1. Call `mcp__github-packages__list_org_packages`, optionally filtered
+   by package type if the user named one.
+2. For each package of interest, call
+   `mcp__github-packages__list_package_versions` to see its version
+   history.
+3. Present a summary: package name, type, visibility, version count, and
+   any packages with an unusually high version count (could indicate a
+   noisy/unpruned registry) for the user to judge — this skill surfaces
+   findings, it does not decide what to delete.
+4. This skill is **read-only**. It never calls `delete_package`,
+   `delete_package_version`, `restore_package`, or
+   `restore_package_version` on its own; if the user wants a package
+   deleted or restored after reviewing the audit, that's a separate,
+   explicit request they make directly.

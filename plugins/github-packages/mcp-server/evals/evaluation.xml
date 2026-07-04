@@ -1,0 +1,22 @@
+<evaluation>
+   <qa_pair id="1">
+      <question>How many tools does the github-packages MCP server expose? Answer with just the number.</question>
+      <answer>8</answer>
+   </qa_pair>
+   <qa_pair id="2">
+      <question>What field must equal "packageName" for delete_package to succeed, instead of throwing before any API call?</question>
+      <answer>confirmPackageName</answer>
+   </qa_pair>
+   <qa_pair id="3">
+      <question>Do restore_package and restore_package_version require a confirm-echo field? Answer yes or no.</question>
+      <answer>No</answer>
+   </qa_pair>
+   <qa_pair id="4">
+      <question>Is there a GitHub REST endpoint to change a package's visibility (public/private)?</question>
+      <answer>No</answer>
+   </qa_pair>
+   <qa_pair id="5">
+      <question>Within roughly how many days of deletion can a package or version be restored?</question>
+      <answer>30 days</answer>
+   </qa_pair>
+</evaluation>
