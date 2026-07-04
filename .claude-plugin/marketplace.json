@@ -65,9 +65,15 @@
     },
     {
       "name": "github-repo-config",
-      "source": "./plugins/github-repo-config",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/modeled-information-format/gdlc.git",
+        "path": "plugins/github-repo-config",
+        "ref": "v0.2.0",
+        "sha": "19a5f9c1470b7eee6b784b8f817efbf5713149cf"
+      },
       "description": "Repo/org governance: branch protection and rulesets, org-wide .github community health files, GitHub Pages status, and custom repository properties.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "modeled-information-format"
       },
@@ -84,9 +90,15 @@
     },
     {
       "name": "github-insights",
-      "source": "./plugins/github-insights",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/modeled-information-format/gdlc.git",
+        "path": "plugins/github-insights",
+        "ref": "v0.2.0",
+        "sha": "19a5f9c1470b7eee6b784b8f817efbf5713149cf"
+      },
       "description": "Read-only repo/org reporting: traffic (views/clones), contributor stats, community-health profile, and dependency-graph/SBOM summary.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "modeled-information-format"
       },
@@ -104,9 +116,15 @@
     },
     {
       "name": "github-packages",
-      "source": "./plugins/github-packages",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/modeled-information-format/gdlc.git",
+        "path": "plugins/github-packages",
+        "ref": "v0.2.0",
+        "sha": "19a5f9c1470b7eee6b784b8f817efbf5713149cf"
+      },
       "description": "List org packages and versions across npm, Maven, RubyGems, Docker (legacy registry), Container (ghcr.io), NuGet, and generic registries; delete/restore a package or version.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "modeled-information-format"
       },
@@ -124,9 +142,15 @@
     },
     {
       "name": "github-org-identity",
-      "source": "./plugins/github-org-identity",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/modeled-information-format/gdlc.git",
+        "path": "plugins/github-org-identity",
+        "ref": "v0.2.0",
+        "sha": "19a5f9c1470b7eee6b784b8f817efbf5713149cf"
+      },
       "description": "Organization roles and teams: list org roles, list role assignments, assign/remove a role for a team or user. SAML/SSO is out of scope.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "modeled-information-format"
       },
