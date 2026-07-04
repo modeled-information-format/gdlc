@@ -34,7 +34,12 @@ const OWNER = process.env.SANDBOX_OWNER ?? 'modeled-information-format';
 const REPO = process.env.SANDBOX_REPO ?? 'gdlc-sandbox';
 const REVIEWER_LOGIN = process.env.SANDBOX_REVIEWER_LOGIN;
 const PROJECT_OWNER = process.env.SANDBOX_PROJECT_OWNER;
-const PROJECT_NUMBER = process.env.SANDBOX_PROJECT_NUMBER ? Number(process.env.SANDBOX_PROJECT_NUMBER) : undefined;
+// Number('') would already fall through the `? :` above, but a non-numeric
+// value (e.g. SANDBOX_PROJECT_NUMBER="abc") produces NaN, which is not
+// `undefined` — the project-coupling block's `!== undefined` guard would
+// then proceed with a NaN project number instead of skipping cleanly.
+const rawProjectNumber = process.env.SANDBOX_PROJECT_NUMBER ? Number(process.env.SANDBOX_PROJECT_NUMBER) : undefined;
+const PROJECT_NUMBER = rawProjectNumber !== undefined && Number.isFinite(rawProjectNumber) ? rawProjectNumber : undefined;
 const PROJECT_OWNER_TYPE = (process.env.SANDBOX_PROJECT_OWNER_TYPE as ProjectOwnerType | undefined) ?? 'organization';
 const FIELD_ID = process.env.SANDBOX_FIELD_ID;
 const RUN_ID = process.env.GITHUB_RUN_ID ?? String(Date.now());

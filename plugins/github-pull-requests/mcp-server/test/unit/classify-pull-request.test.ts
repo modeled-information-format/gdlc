@@ -70,6 +70,32 @@ describe('classifyPullRequest', () => {
     expect(result.labelsApplied).toEqual(['type:feat', 'size:XL']);
   });
 
+  it('Edge Case: omitting risk leaves an existing risk: label untouched, not cleared', async () => {
+    mockPull(0, 0, 0, ['risk:high']);
+    mockRest('get', '/repos/acme/widgets/labels/type%3Afeat', {}, 404);
+    mockRest('get', '/repos/acme/widgets/labels/size%3AXS', {}, 404);
+    mockRest('post', '/repos/acme/widgets/labels', {});
+    mockRest('post', '/repos/acme/widgets/issues/1/labels', {});
+
+    const result = await classifyPullRequest({ owner: 'acme', repo: 'widgets', pullNumber: 1, type: 'feat' }, fastDeps);
+    expect(result.labelsRemoved).toEqual([]);
+    expect(result.labelsApplied).toEqual(['type:feat', 'size:XS']);
+  });
+
+  it('replaces an existing risk: label when a new risk value is supplied', async () => {
+    mockPull(0, 0, 0, ['risk:high']);
+    mockRest('delete', '/repos/acme/widgets/issues/1/labels/risk%3Ahigh', {});
+    mockRest('get', '/repos/acme/widgets/labels/type%3Afeat', {}, 404);
+    mockRest('get', '/repos/acme/widgets/labels/size%3AXS', {}, 404);
+    mockRest('get', '/repos/acme/widgets/labels/risk%3Alow', {}, 404);
+    mockRest('post', '/repos/acme/widgets/labels', {});
+    mockRest('post', '/repos/acme/widgets/issues/1/labels', {});
+
+    const result = await classifyPullRequest({ owner: 'acme', repo: 'widgets', pullNumber: 1, type: 'feat', risk: 'low' }, fastDeps);
+    expect(result.labelsRemoved).toEqual(['risk:high']);
+    expect(result.labelsApplied).toEqual(['type:feat', 'size:XS', 'risk:low']);
+  });
+
   it('Edge Case: does not touch an unrelated (non type:/size:/risk:) label', async () => {
     mockPull(0, 0, 0, ['unrelated-label']);
     mockRest('get', '/repos/acme/widgets/labels/type%3Afeat', {}, 404);

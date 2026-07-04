@@ -30,6 +30,44 @@ describe('syncLinkedIssuesProjectField', () => {
     ).rejects.toMatchObject({ code: 'not_merged' });
   });
 
+  // Must run before any test below that completes a successful project-scope
+  // check (e.g. "syncs the project field..."): github-sdlc-planning's
+  // assertProjectScope caches its result in a module-level flag this plugin
+  // has no way to reset (not exported), so once that flag flips true within
+  // this file's single module load, later calls short-circuit past the
+  // /user check regardless of what mockUserScopes sets up.
+  it('Edge Case: preserves missing_scope from set_field_value rather than collapsing it to resolve_id_failed', async () => {
+    mockUserScopes(['repo']);
+    mockRest('get', '/repos/acme/widgets/pulls/10', { merged: true });
+    mockGraphQL((body) => {
+      if (body.query.includes('closingIssuesReferences')) {
+        return {
+          repository: {
+            pullRequest: {
+              body: 'Fixes #11',
+              closingIssuesReferences: { nodes: [{ number: 11, repository: { nameWithOwner: 'acme/widgets' } }] },
+            },
+          },
+        };
+      }
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      return projectQueryResponses([{ id: 'PVTI_11', number: 11 }]);
+    });
+    mockRest('get', '/repos/acme/widgets/issues/11', { body: 'plain' });
+
+    await expect(
+      syncLinkedIssuesProjectField({
+        owner: 'acme',
+        repo: 'widgets',
+        pullNumber: 10,
+        projectOwnerLogin: 'acme',
+        projectNumber: 4,
+        fieldId: 'PVTF_status',
+        value: { kind: 'singleSelect', optionId: 'OPT_done' },
+      }),
+    ).rejects.toMatchObject({ code: 'missing_scope', details: { missingScope: 'project' } });
+  });
+
   it('syncs the project field for every closing linked issue found on the board', async () => {
     mockUserScopes(['repo', 'project']);
     mockRest('get', '/repos/acme/widgets/pulls/2', { merged: true });

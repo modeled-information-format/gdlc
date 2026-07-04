@@ -31417,13 +31417,21 @@ async function ensureLabel(owner, repo, name, color, deps) {
   await githubRest(`/repos/${owner}/${repo}/labels`, { method: "POST", body: { name, color } }, deps);
 }
 var CATEGORY_RE = /^(type|size|risk):/;
+function categoryOf(label) {
+  const match = CATEGORY_RE.exec(label);
+  return match ? match[1] : null;
+}
 async function classifyPullRequest(input, deps = {}) {
   const pr = await githubRest(`/repos/${input.owner}/${input.repo}/pulls/${input.pullNumber}`, {}, deps);
   const changedLines = pr.additions + pr.deletions;
   const size = bucketSize(changedLines);
   const desired = [`type:${input.type}`, `size:${size}`, ...input.risk ? [`risk:${input.risk}`] : []];
   const desiredSet = new Set(desired);
-  const stale = pr.labels.map((l) => l.name).filter((name) => CATEGORY_RE.test(name) && !desiredSet.has(name));
+  const managedCategories = new Set(input.risk !== void 0 ? ["type", "size", "risk"] : ["type", "size"]);
+  const stale = pr.labels.map((l) => l.name).filter((name) => {
+    const category = categoryOf(name);
+    return category !== null && managedCategories.has(category) && !desiredSet.has(name);
+  });
   for (const name of stale) {
     await githubRest(`/repos/${input.owner}/${input.repo}/issues/${input.pullNumber}/labels/${encodeURIComponent(name)}`, { method: "DELETE" }, deps);
   }
@@ -31777,10 +31785,17 @@ async function assertPullMerged(ref, deps) {
     });
   }
 }
+var PRESERVABLE_CODES = /* @__PURE__ */ new Set(["missing_scope", "github_api_error", "rate_limited"]);
+function isPreservablePlanningError(err) {
+  return typeof err === "object" && err !== null && "code" in err && "details" in err && typeof err.code === "string" && PRESERVABLE_CODES.has(err.code);
+}
 async function callPlanningTool(lookupStep, fn) {
   try {
     return await fn();
   } catch (cause) {
+    if (isPreservablePlanningError(cause)) {
+      throw new PrError(cause.code, cause.message, cause.details);
+    }
     throw new PrError("resolve_id_failed", `Projects v2 sync step "${lookupStep}" failed`, {
       lookupStep,
       cause: cause instanceof Error ? cause.message : String(cause)

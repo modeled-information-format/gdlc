@@ -83,6 +83,11 @@ async function ensureLabel(owner: string, repo: string, name: string, color: str
 
 const CATEGORY_RE = /^(type|size|risk):/;
 
+function categoryOf(label: string): 'type' | 'size' | 'risk' | null {
+  const match = CATEGORY_RE.exec(label);
+  return match ? (match[1] as 'type' | 'size' | 'risk') : null;
+}
+
 /** AC: same-category labels are replaced, not accumulated — a PR that grows
  * from size:S to size:XL must not wear both forever. Cross-category labels
  * are never touched (additive only). */
@@ -96,8 +101,19 @@ export async function classifyPullRequest(
 
   const desired = [`type:${input.type}`, `size:${size}`, ...(input.risk ? [`risk:${input.risk}`] : [])];
   const desiredSet = new Set(desired);
+  // A category is only managed (stale labels replaced) when this call
+  // actually supplies a value for it — `risk` is optional input, and
+  // omitting it must leave any existing risk: label untouched rather than
+  // silently clearing it, matching type/size (always supplied) but not
+  // forcing risk into that same always-managed behavior.
+  const managedCategories = new Set<'type' | 'size' | 'risk'>(input.risk !== undefined ? ['type', 'size', 'risk'] : ['type', 'size']);
 
-  const stale = pr.labels.map((l) => l.name).filter((name) => CATEGORY_RE.test(name) && !desiredSet.has(name));
+  const stale = pr.labels
+    .map((l) => l.name)
+    .filter((name) => {
+      const category = categoryOf(name);
+      return category !== null && managedCategories.has(category) && !desiredSet.has(name);
+    });
   for (const name of stale) {
     await githubRest(`/repos/${input.owner}/${input.repo}/issues/${input.pullNumber}/labels/${encodeURIComponent(name)}`, { method: 'DELETE' }, deps);
   }

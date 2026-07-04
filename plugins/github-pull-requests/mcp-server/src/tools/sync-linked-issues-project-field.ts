@@ -51,13 +51,38 @@ async function assertPullMerged(ref: PullRequestRef, deps: GithubClientDeps): Pr
   }
 }
 
+/** Codes a PlanningError can carry that mean the same thing in this plugin's
+ * own PrErrorCode union — preserved as-is rather than collapsed, since they
+ * describe a distinct condition a caller needs to react to differently
+ * (e.g. missing_scope means "run gh auth login", not "a lookup failed"). */
+const PRESERVABLE_CODES = new Set(['missing_scope', 'github_api_error', 'rate_limited']);
+
+function isPreservablePlanningError(err: unknown): err is { code: string; message: string; details: Record<string, unknown> } {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    'details' in err &&
+    typeof (err as { code: unknown }).code === 'string' &&
+    PRESERVABLE_CODES.has((err as { code: string }).code)
+  );
+}
+
 /** Wraps the two imported github-sdlc-planning calls so a PlanningError
  * never escapes this plugin's error shape and skips isPrError() in
- * index.ts (same pattern as pr-projects.ts's resolveProjectId). */
+ * index.ts (same pattern as pr-projects.ts's resolveProjectId) — but
+ * preserves a distinct, meaningful code (missing_scope, github_api_error,
+ * rate_limited) instead of collapsing every failure into resolve_id_failed,
+ * which would misclassify those and make it harder for a caller to react
+ * correctly. Only genuine lookup/translation failures (e.g.
+ * resolve_project_id) fall back to resolve_id_failed. */
 async function callPlanningTool<T>(lookupStep: string, fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (cause) {
+    if (isPreservablePlanningError(cause)) {
+      throw new PrError(cause.code as 'missing_scope' | 'github_api_error' | 'rate_limited', cause.message, cause.details);
+    }
     throw new PrError('resolve_id_failed', `Projects v2 sync step "${lookupStep}" failed`, {
       lookupStep,
       cause: cause instanceof Error ? cause.message : String(cause),
