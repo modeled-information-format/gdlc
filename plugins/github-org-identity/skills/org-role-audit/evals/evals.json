@@ -1,0 +1,62 @@
+{
+  "skill_name": "org-role-audit",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Audit org roles for acme-corp.",
+      "expected_output": "Lists organization roles, then their team/user assignments, and presents a summary table without changing any role assignment.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "list_organization_roles",
+          "description": "Calls list_organization_roles before presenting a summary"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "assign_team_role",
+          "description": "Never calls assign_team_role during a read-only audit"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "assign_user_role",
+          "description": "Never calls assign_user_role during a read-only audit"
+        }
+      ],
+      "expectations": [
+        "Calls list_organization_roles for the named org",
+        "Calls list_role_teams and/or list_role_users for each role found",
+        "Presents a summary a human can review, without mutating any role assignment",
+        "Never calls assign_team_role, remove_team_role, assign_user_role, or remove_user_role"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Who has the all_repo_admin role in acme-corp?",
+      "expected_output": "Looks up the all_repo_admin role's id via list_organization_roles, then lists its team and user assignments.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "all_repo_admin",
+          "description": "References the specific role asked about"
+        },
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "list_role_teams|list_role_users",
+          "description": "Calls at least one role-membership lookup tool"
+        }
+      ],
+      "expectations": [
+        "Finds the all_repo_admin role's id from list_organization_roles rather than guessing an id",
+        "Lists the teams and/or users holding that role",
+        "Does not attempt to change the role assignment"
+      ]
+    }
+  ]
+}

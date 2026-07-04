@@ -60,6 +60,24 @@
         "pr-classification",
         "projects-v2"
       ]
+    },
+    {
+      "name": "github-org-identity",
+      "source": "./plugins/github-org-identity",
+      "description": "Organization roles and teams: list org roles, list role assignments, assign/remove a role for a team or user. SAML/SSO is out of scope.",
+      "version": "0.1.0",
+      "author": {
+        "name": "modeled-information-format"
+      },
+      "category": "administration",
+      "license": "MIT",
+      "keywords": [
+        "github",
+        "organization-roles",
+        "teams",
+        "org-bootstrap",
+        "access-audit"
+      ]
     }
   ]
 }

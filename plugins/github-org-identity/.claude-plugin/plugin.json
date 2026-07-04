@@ -1,0 +1,19 @@
+{
+  "name": "github-org-identity",
+  "displayName": "GitHub Org Identity",
+  "version": "0.1.0",
+  "description": "Organization roles and teams: list org roles, list role assignments, assign/remove a role for a team or user. SAML/SSO is out of scope (Enterprise-only, largely non-automatable).",
+  "author": {
+    "name": "modeled-information-format"
+  },
+  "homepage": "https://github.com/modeled-information-format/gdlc",
+  "repository": "https://github.com/modeled-information-format/gdlc",
+  "license": "MIT",
+  "keywords": [
+    "github",
+    "organization-roles",
+    "teams",
+    "org-bootstrap",
+    "access-audit"
+  ]
+}
