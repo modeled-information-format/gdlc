@@ -31098,8 +31098,7 @@ async function githubRest(path, opts = {}, deps = {}) {
 
 // src/tools/packages.ts
 async function listOrgPackages(input, deps = {}) {
-  const query = input.packageType ? `?package_type=${input.packageType}` : "";
-  const data = await githubRest(`/orgs/${input.org}/packages${query}`, {}, deps);
+  const data = await githubRest(`/orgs/${input.org}/packages?package_type=${input.packageType}`, {}, deps);
   return data.map((p) => ({ id: p.id, name: p.name, packageType: p.package_type, visibility: p.visibility, versionCount: p.version_count }));
 }
 async function getOrgPackage(input, deps = {}) {
@@ -31196,8 +31195,8 @@ server.registerTool(
   "list_org_packages",
   {
     title: "List org packages",
-    description: "List an org's packages, optionally filtered by package type.",
-    inputSchema: { org: external_exports.string(), packageType: packageTypeSchema.optional() }
+    description: "List an org's packages of a given package type. GitHub's real endpoint requires package_type -- there is no single call that lists every type at once.",
+    inputSchema: { org: external_exports.string(), packageType: packageTypeSchema }
   },
   wrap(listOrgPackages)
 );

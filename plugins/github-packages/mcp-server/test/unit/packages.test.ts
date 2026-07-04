@@ -16,17 +16,19 @@ import {
 describe('listOrgPackages', () => {
   it('maps package summaries', async () => {
     mockRest('get', '/orgs/acme/packages', [{ id: 1, name: 'left-pad', package_type: 'npm', visibility: 'public', version_count: 3 }]);
-    const result = await listOrgPackages({ org: 'acme' });
+    const result = await listOrgPackages({ org: 'acme', packageType: 'npm' });
     expect(result).toEqual([{ id: 1, name: 'left-pad', packageType: 'npm', visibility: 'public', versionCount: 3 }]);
   });
 
-  it('filters by package type via query string', async () => {
+  it('sends package_type as a required query param', async () => {
     // msw v2 strips query strings before matching a handler's registered
     // path, so a plain mockRest('get', '/orgs/acme/packages?package_type=docker', ...)
     // would "pass" even if listOrgPackages sent no query string at all --
     // it gives false assurance (caught in review). Reading request.url's
     // real searchParams inside the handler is what actually proves the
-    // query string was sent.
+    // query string was sent. package_type is required by the real
+    // endpoint (verified live: omitting it returns a 422), not an
+    // optional filter, so every call must send it.
     let observedPackageType: string | null = null;
     server.use(
       http.get('https://api.github.com/orgs/acme/packages', ({ request }) => {
@@ -37,18 +39,6 @@ describe('listOrgPackages', () => {
     const result = await listOrgPackages({ org: 'acme', packageType: 'docker' });
     expect(observedPackageType).toBe('docker');
     expect(result).toEqual([{ id: 2, name: 'api', packageType: 'docker', visibility: 'private', versionCount: 5 }]);
-  });
-
-  it('sends no package_type query param when packageType is omitted', async () => {
-    let observedPackageType: string | null = 'not-set';
-    server.use(
-      http.get('https://api.github.com/orgs/acme/packages', ({ request }) => {
-        observedPackageType = new URL(request.url).searchParams.get('package_type');
-        return HttpResponse.json([]);
-      }),
-    );
-    await listOrgPackages({ org: 'acme' });
-    expect(observedPackageType).toBeNull();
   });
 });
 

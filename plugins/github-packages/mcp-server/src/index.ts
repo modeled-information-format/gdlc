@@ -46,8 +46,8 @@ server.registerTool(
   'list_org_packages',
   {
     title: 'List org packages',
-    description: "List an org's packages, optionally filtered by package type.",
-    inputSchema: { org: z.string(), packageType: packageTypeSchema.optional() },
+    description: "List an org's packages of a given package type. GitHub's real endpoint requires package_type -- there is no single call that lists every type at once.",
+    inputSchema: { org: z.string(), packageType: packageTypeSchema },
   },
   wrap(listOrgPackages),
 );

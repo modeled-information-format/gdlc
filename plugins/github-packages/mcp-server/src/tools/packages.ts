@@ -10,7 +10,13 @@ export type PackageType = 'npm' | 'maven' | 'rubygems' | 'docker' | 'container' 
 
 export interface ListOrgPackagesInput {
   org: string;
-  packageType?: PackageType;
+  /** Required by the real endpoint -- GET /orgs/{org}/packages returns a
+   * 422 ("The package_type parameter is required") when omitted, despite
+   * GitHub's own docs reading as if it were an optional filter. Caught
+   * live: the mocked unit test always returned data regardless of
+   * whether package_type was sent, so this wasn't caught until running
+   * against the real API. */
+  packageType: PackageType;
 }
 
 export interface PackageSummary {
@@ -30,8 +36,7 @@ interface RestPackage {
 }
 
 export async function listOrgPackages(input: ListOrgPackagesInput, deps: GithubClientDeps = {}): Promise<PackageSummary[]> {
-  const query = input.packageType ? `?package_type=${input.packageType}` : '';
-  const data = (await githubRest(`/orgs/${input.org}/packages${query}`, {}, deps)) as RestPackage[];
+  const data = (await githubRest(`/orgs/${input.org}/packages?package_type=${input.packageType}`, {}, deps)) as RestPackage[];
   return data.map((p) => ({ id: p.id, name: p.name, packageType: p.package_type, visibility: p.visibility, versionCount: p.version_count }));
 }
 
