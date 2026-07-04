@@ -1,0 +1,20 @@
+{
+  "name": "github-repo-config",
+  "displayName": "GitHub Repo Config",
+  "version": "0.1.0",
+  "description": "Repo/org governance: branch protection and rulesets, org-wide .github community health files, GitHub Pages status, and custom repository properties.",
+  "author": {
+    "name": "modeled-information-format"
+  },
+  "homepage": "https://github.com/modeled-information-format/gdlc",
+  "repository": "https://github.com/modeled-information-format/gdlc",
+  "license": "MIT",
+  "keywords": [
+    "github",
+    "branch-protection",
+    "rulesets",
+    "github-pages",
+    "custom-properties",
+    "community-health-files"
+  ]
+}

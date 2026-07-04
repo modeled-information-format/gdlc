@@ -62,6 +62,25 @@
       ]
     },
     {
+      "name": "github-repo-config",
+      "source": "./plugins/github-repo-config",
+      "description": "Repo/org governance: branch protection and rulesets, org-wide .github community health files, GitHub Pages status, and custom repository properties.",
+      "version": "0.1.0",
+      "author": {
+        "name": "modeled-information-format"
+      },
+      "category": "administration",
+      "license": "MIT",
+      "keywords": [
+        "github",
+        "branch-protection",
+        "rulesets",
+        "github-pages",
+        "custom-properties",
+        "community-health-files"
+      ]
+    },
+    {
       "name": "github-insights",
       "source": "./plugins/github-insights",
       "description": "Read-only repo/org reporting: traffic (views/clones), contributor stats, community-health profile, and dependency-graph/SBOM summary.",
