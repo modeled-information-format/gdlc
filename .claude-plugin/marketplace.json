@@ -60,6 +60,25 @@
         "pr-classification",
         "projects-v2"
       ]
+    },
+    {
+      "name": "github-repo-config",
+      "source": "./plugins/github-repo-config",
+      "description": "Repo/org governance: branch protection and rulesets, org-wide .github community health files, GitHub Pages status, and custom repository properties.",
+      "version": "0.1.0",
+      "author": {
+        "name": "modeled-information-format"
+      },
+      "category": "administration",
+      "license": "MIT",
+      "keywords": [
+        "github",
+        "branch-protection",
+        "rulesets",
+        "github-pages",
+        "custom-properties",
+        "community-health-files"
+      ]
     }
   ]
 }

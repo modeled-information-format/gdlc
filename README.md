@@ -65,6 +65,11 @@ plugins/
                                     # to Projects v2. Depends on
                                     # github-sdlc-planning (same-marketplace,
                                     # real dependency edge).
+  github-repo-config/              # Tier-3 (deferred domain, narrowly
+                                    # scoped): branch protection/rulesets,
+                                    # org .github community health files,
+                                    # Pages status, custom repo properties.
+                                    # Standalone, no dependency edge.
 external_plugins/                  # reserved for future git-subdir + sha plugins
 docs/                               # Diátaxis docs (this README links into them)
 ```
