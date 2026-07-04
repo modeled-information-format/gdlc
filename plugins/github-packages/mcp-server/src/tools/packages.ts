@@ -42,7 +42,11 @@ export interface PackageRef {
 }
 
 export async function getOrgPackage(input: PackageRef, deps: GithubClientDeps = {}): Promise<PackageSummary> {
-  const data = (await githubRest(`/orgs/${input.org}/packages/${input.packageType}/${input.packageName}`, {}, deps)) as RestPackage;
+  const data = (await githubRest(
+    `/orgs/${input.org}/packages/${input.packageType}/${encodeURIComponent(input.packageName)}`,
+    {},
+    deps,
+  )) as RestPackage;
   return { id: data.id, name: data.name, packageType: data.package_type, visibility: data.visibility, versionCount: data.version_count };
 }
 
@@ -60,7 +64,7 @@ interface RestPackageVersion {
 
 export async function listPackageVersions(input: PackageRef, deps: GithubClientDeps = {}): Promise<PackageVersion[]> {
   const data = (await githubRest(
-    `/orgs/${input.org}/packages/${input.packageType}/${input.packageName}/versions`,
+    `/orgs/${input.org}/packages/${input.packageType}/${encodeURIComponent(input.packageName)}/versions`,
     {},
     deps,
   )) as RestPackageVersion[];
@@ -73,7 +77,7 @@ export interface PackageVersionRef extends PackageRef {
 
 export async function getPackageVersion(input: PackageVersionRef, deps: GithubClientDeps = {}): Promise<PackageVersion> {
   const data = (await githubRest(
-    `/orgs/${input.org}/packages/${input.packageType}/${input.packageName}/versions/${input.versionId}`,
+    `/orgs/${input.org}/packages/${input.packageType}/${encodeURIComponent(input.packageName)}/versions/${input.versionId}`,
     {},
     deps,
   )) as RestPackageVersion;
@@ -107,7 +111,11 @@ export interface DeletePackageResult {
 
 export async function deletePackage(input: DeletePackageInput, deps: GithubClientDeps = {}): Promise<DeletePackageResult> {
   assertConfirmed(input.packageName, input.confirmPackageName, 'packageName');
-  await githubRest(`/orgs/${input.org}/packages/${input.packageType}/${input.packageName}`, { method: 'DELETE' }, deps);
+  await githubRest(
+    `/orgs/${input.org}/packages/${input.packageType}/${encodeURIComponent(input.packageName)}`,
+    { method: 'DELETE' },
+    deps,
+  );
   return { org: input.org, packageType: input.packageType, packageName: input.packageName };
 }
 
@@ -124,7 +132,11 @@ export interface DeletePackageVersionResult {
 
 export async function deletePackageVersion(input: DeletePackageVersionInput, deps: GithubClientDeps = {}): Promise<DeletePackageVersionResult> {
   assertConfirmed(input.versionId, input.confirmVersionId, 'versionId');
-  await githubRest(`/orgs/${input.org}/packages/${input.packageType}/${input.packageName}/versions/${input.versionId}`, { method: 'DELETE' }, deps);
+  await githubRest(
+    `/orgs/${input.org}/packages/${input.packageType}/${encodeURIComponent(input.packageName)}/versions/${input.versionId}`,
+    { method: 'DELETE' },
+    deps,
+  );
   return { org: input.org, packageType: input.packageType, packageName: input.packageName, versionId: input.versionId };
 }
 
@@ -134,11 +146,19 @@ export async function deletePackageVersion(input: DeletePackageVersionInput, dep
  * has since republished under the same name/version; a request outside
  * that window surfaces as a plain github_api_error. */
 export async function restorePackage(input: PackageRef, deps: GithubClientDeps = {}): Promise<DeletePackageResult> {
-  await githubRest(`/orgs/${input.org}/packages/${input.packageType}/${input.packageName}/restore`, { method: 'POST' }, deps);
+  await githubRest(
+    `/orgs/${input.org}/packages/${input.packageType}/${encodeURIComponent(input.packageName)}/restore`,
+    { method: 'POST' },
+    deps,
+  );
   return { org: input.org, packageType: input.packageType, packageName: input.packageName };
 }
 
 export async function restorePackageVersion(input: PackageVersionRef, deps: GithubClientDeps = {}): Promise<DeletePackageVersionResult> {
-  await githubRest(`/orgs/${input.org}/packages/${input.packageType}/${input.packageName}/versions/${input.versionId}/restore`, { method: 'POST' }, deps);
+  await githubRest(
+    `/orgs/${input.org}/packages/${input.packageType}/${encodeURIComponent(input.packageName)}/versions/${input.versionId}/restore`,
+    { method: 'POST' },
+    deps,
+  );
   return { org: input.org, packageType: input.packageType, packageName: input.packageName, versionId: input.versionId };
 }

@@ -31103,12 +31103,16 @@ async function listOrgPackages(input, deps = {}) {
   return data.map((p) => ({ id: p.id, name: p.name, packageType: p.package_type, visibility: p.visibility, versionCount: p.version_count }));
 }
 async function getOrgPackage(input, deps = {}) {
-  const data = await githubRest(`/orgs/${input.org}/packages/${input.packageType}/${input.packageName}`, {}, deps);
+  const data = await githubRest(
+    `/orgs/${input.org}/packages/${input.packageType}/${encodeURIComponent(input.packageName)}`,
+    {},
+    deps
+  );
   return { id: data.id, name: data.name, packageType: data.package_type, visibility: data.visibility, versionCount: data.version_count };
 }
 async function listPackageVersions(input, deps = {}) {
   const data = await githubRest(
-    `/orgs/${input.org}/packages/${input.packageType}/${input.packageName}/versions`,
+    `/orgs/${input.org}/packages/${input.packageType}/${encodeURIComponent(input.packageName)}/versions`,
     {},
     deps
   );
@@ -31116,7 +31120,7 @@ async function listPackageVersions(input, deps = {}) {
 }
 async function getPackageVersion(input, deps = {}) {
   const data = await githubRest(
-    `/orgs/${input.org}/packages/${input.packageType}/${input.packageName}/versions/${input.versionId}`,
+    `/orgs/${input.org}/packages/${input.packageType}/${encodeURIComponent(input.packageName)}/versions/${input.versionId}`,
     {},
     deps
   );
@@ -31132,20 +31136,36 @@ function assertConfirmed(actual, confirmed, label) {
 }
 async function deletePackage(input, deps = {}) {
   assertConfirmed(input.packageName, input.confirmPackageName, "packageName");
-  await githubRest(`/orgs/${input.org}/packages/${input.packageType}/${input.packageName}`, { method: "DELETE" }, deps);
+  await githubRest(
+    `/orgs/${input.org}/packages/${input.packageType}/${encodeURIComponent(input.packageName)}`,
+    { method: "DELETE" },
+    deps
+  );
   return { org: input.org, packageType: input.packageType, packageName: input.packageName };
 }
 async function deletePackageVersion(input, deps = {}) {
   assertConfirmed(input.versionId, input.confirmVersionId, "versionId");
-  await githubRest(`/orgs/${input.org}/packages/${input.packageType}/${input.packageName}/versions/${input.versionId}`, { method: "DELETE" }, deps);
+  await githubRest(
+    `/orgs/${input.org}/packages/${input.packageType}/${encodeURIComponent(input.packageName)}/versions/${input.versionId}`,
+    { method: "DELETE" },
+    deps
+  );
   return { org: input.org, packageType: input.packageType, packageName: input.packageName, versionId: input.versionId };
 }
 async function restorePackage(input, deps = {}) {
-  await githubRest(`/orgs/${input.org}/packages/${input.packageType}/${input.packageName}/restore`, { method: "POST" }, deps);
+  await githubRest(
+    `/orgs/${input.org}/packages/${input.packageType}/${encodeURIComponent(input.packageName)}/restore`,
+    { method: "POST" },
+    deps
+  );
   return { org: input.org, packageType: input.packageType, packageName: input.packageName };
 }
 async function restorePackageVersion(input, deps = {}) {
-  await githubRest(`/orgs/${input.org}/packages/${input.packageType}/${input.packageName}/versions/${input.versionId}/restore`, { method: "POST" }, deps);
+  await githubRest(
+    `/orgs/${input.org}/packages/${input.packageType}/${encodeURIComponent(input.packageName)}/versions/${input.versionId}/restore`,
+    { method: "POST" },
+    deps
+  );
   return { org: input.org, packageType: input.packageType, packageName: input.packageName, versionId: input.versionId };
 }
 
