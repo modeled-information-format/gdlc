@@ -7,6 +7,7 @@ const API_VERSION = '2022-11-28';
 const MAX_RATE_LIMIT_RETRIES = 3;
 
 let cachedToken: string | undefined;
+let projectScopeChecked = false;
 
 export type ExecFileSyncFn = (command: string, args: string[], options: { encoding: 'utf8' }) => string;
 
@@ -85,8 +86,54 @@ function isGraphQLMutation(query: string): boolean {
 
 export function resetAuthCacheForTests(): void {
   cachedToken = undefined;
+  projectScopeChecked = false;
   lastMutationAt = 0;
   mutationGate = Promise.resolve();
+}
+
+function tokenHasOAuthScopeModel(token: string): boolean {
+  return token.startsWith('ghp_') || token.startsWith('gho_');
+}
+
+/** Checked once per process, duplicated from github-sdlc-planning's own
+ * assertProjectScope rather than imported (it's tightly coupled to that
+ * package's private token-cache state, and isn't exported via its
+ * package.json). Only meaningful for classic OAuth-scoped tokens; App
+ * installation tokens and fine-grained PATs skip this check and rely on the
+ * actual GraphQL call to surface a real permission error if the token
+ * genuinely lacks access. */
+export async function assertProjectScope(fetchImpl: typeof fetch = fetch): Promise<void> {
+  if (projectScopeChecked) return;
+  const token = resolveToken();
+  if (!tokenHasOAuthScopeModel(token)) {
+    projectScopeChecked = true;
+    return;
+  }
+  const res = await fetchImpl(`${GITHUB_API}/user`, {
+    headers: { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': API_VERSION },
+  });
+  // A non-2xx here (expired token, transient outage) must not be
+  // misdiagnosed as "missing project scope" -- an empty scopes header from
+  // a failed request looks identical to a genuinely under-scoped token.
+  if (!res.ok) {
+    const text = await res.text();
+    throw new PrError('github_api_error', `Failed to verify token scopes: GET /user returned ${res.status}: ${text}`, {
+      status: res.status,
+    });
+  }
+  const scopesHeader = res.headers.get('x-oauth-scopes') ?? '';
+  const scopes = scopesHeader
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!scopes.includes('project')) {
+    throw new PrError(
+      'missing_scope',
+      'GitHub token is missing the `project` scope required for Projects v2 writes. Run `gh auth login --scopes project`.',
+      { missingScope: 'project', presentScopes: scopes },
+    );
+  }
+  projectScopeChecked = true;
 }
 
 class RateLimitError extends Error {

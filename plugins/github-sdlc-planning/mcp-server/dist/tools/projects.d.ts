@@ -60,6 +60,16 @@ export interface ProjectItemFieldValue {
 export interface ProjectItemSummary {
     id: string;
     title: string | null;
+    /** Issue/PR number of the item's content — null for a DraftIssue, which
+     * has no number. Lets a caller map a project item back to the
+     * issue/PR it was created from without a fragile title-string match. */
+    number: number | null;
+    /** "owner/repo" (GraphQL nameWithOwner) of the item's content — null for a
+     * DraftIssue, which has no repository. A Projects v2 board can hold items
+     * from multiple repos, so `number` alone is not a safe join key: a caller
+     * matching board items by number must also compare `repo`, or two repos'
+     * issues sharing the same number can resolve to the wrong item. */
+    repo: string | null;
     fieldValues: ProjectItemFieldValue[];
 }
 export interface GetProjectItemsResult {

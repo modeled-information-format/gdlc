@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '../setup.js';
-import { mockRest, mockGraphQL } from '../helpers.js';
-import { githubRest, githubGraphQL, resolveToken, resetAuthCacheForTests } from '../../src/github-client.js';
+import { mockRest, mockGraphQL, mockUserScopes } from '../helpers.js';
+import { githubRest, githubGraphQL, resolveToken, resetAuthCacheForTests, assertProjectScope } from '../../src/github-client.js';
 import { PrError } from '../../src/errors.js';
 
 describe('resolveToken', () => {
@@ -25,6 +25,40 @@ describe('resolveToken', () => {
       throw new Error('gh: command not found');
     });
     expect(() => resolveToken(execImpl)).toThrowError(PrError);
+  });
+});
+
+describe('assertProjectScope', () => {
+  it('resolves when the token has the project scope', async () => {
+    mockUserScopes(['repo', 'project', 'read:org']);
+    await expect(assertProjectScope()).resolves.toBeUndefined();
+  });
+
+  it('throws a named missing_scope error when project scope is absent', async () => {
+    mockUserScopes(['repo', 'read:org']);
+    await expect(assertProjectScope()).rejects.toMatchObject({
+      code: 'missing_scope',
+      details: { missingScope: 'project', presentScopes: ['repo', 'read:org'] },
+    });
+  });
+
+  it('skips the OAuth-scope check for a GitHub App installation token (ghs_)', async () => {
+    process.env.GITHUB_TOKEN = 'ghs_installation-token-1234567890';
+    resetAuthCacheForTests();
+    // No /user mock registered — if the check ran, this would throw an
+    // unhandled-request error from msw, proving the /user call is skipped.
+    await expect(assertProjectScope()).resolves.toBeUndefined();
+  });
+
+  it('skips the OAuth-scope check for a fine-grained PAT (github_pat_)', async () => {
+    process.env.GITHUB_TOKEN = 'github_pat_11ABCDEFG_1234567890';
+    resetAuthCacheForTests();
+    await expect(assertProjectScope()).resolves.toBeUndefined();
+  });
+
+  it('Edge Case: a failed /user request (e.g. expired token) surfaces as github_api_error, not a misdiagnosed missing_scope', async () => {
+    server.use(http.get('https://api.github.com/user', () => HttpResponse.json({ message: 'Bad credentials' }, { status: 401 })));
+    await expect(assertProjectScope()).rejects.toMatchObject({ code: 'github_api_error', details: { status: 401 } });
   });
 });
 

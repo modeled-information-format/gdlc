@@ -1,4 +1,10 @@
-export type PrErrorCode = 'github_api_error' | 'rate_limited' | 'stale_target';
+export type PrErrorCode =
+  | 'github_api_error'
+  | 'rate_limited'
+  | 'stale_target'
+  | 'missing_scope'
+  | 'resolve_id_failed'
+  | 'not_merged';
 
 export interface PrErrorDetails {
   [key: string]: unknown;

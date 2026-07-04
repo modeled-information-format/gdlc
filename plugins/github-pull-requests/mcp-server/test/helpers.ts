@@ -23,3 +23,11 @@ export function mockRest(method: 'get' | 'post' | 'patch' | 'delete', path: stri
   const handler = http[method](`https://api.github.com${path}`, () => HttpResponse.json(body, { status }));
   server.use(handler);
 }
+
+export function mockUserScopes(scopes: string[]): void {
+  server.use(
+    http.get('https://api.github.com/user', () =>
+      HttpResponse.json({ login: 'test-user' }, { headers: { 'x-oauth-scopes': scopes.join(', ') } }),
+    ),
+  );
+}

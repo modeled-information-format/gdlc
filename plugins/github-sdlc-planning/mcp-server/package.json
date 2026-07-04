@@ -8,7 +8,9 @@
   },
   "exports": {
     ".": "./dist/index.js",
-    "./mif": "./dist/mif.js"
+    "./mif": "./dist/mif.js",
+    "./resolvers": "./dist/resolvers.js",
+    "./tools/projects": "./dist/tools/projects.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && npm run bundle",
