@@ -11,7 +11,7 @@ export async function getSessionContext(input, deps = {}) {
         : Promise.resolve(null);
     const [milestones, projectBoard] = await Promise.all([milestonesPromise, projectBoardPromise]);
     return {
-        openMilestones: milestones.map((m) => ({ number: m.number, title: m.title, url: m.html_url })),
+        openMilestones: milestones.map((m) => ({ number: m.number, title: m.title, url: m.html_url, dueOn: m.due_on })),
         projectBoard,
     };
 }
