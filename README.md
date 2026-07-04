@@ -51,7 +51,7 @@ for the full rationale.
 
 ## What ships
 
-Three real plugins, vendored in-repo (two dependency-linked, one standalone):
+Five real plugins, vendored in-repo (two dependency-linked, three standalone):
 
 ```
 .claude-plugin/marketplace.json   # the catalog (name: "github-sdlc-plugins")
@@ -65,6 +65,15 @@ plugins/
                                     # to Projects v2. Depends on
                                     # github-sdlc-planning (same-marketplace,
                                     # real dependency edge).
+  github-repo-config/              # Tier-3 (deferred domain, narrowly
+                                    # scoped): branch protection/rulesets,
+                                    # org .github community health files,
+                                    # Pages status, custom repo properties.
+                                    # Standalone, no dependency edge.
+  github-insights/                 # Tier-3 (deferred domain): read-only
+                                    # traffic, contributor stats, community
+                                    # profile, dependency-graph/SBOM.
+                                    # Standalone, no dependency edge.
   github-org-identity/             # Near-term #2: organization roles and
                                     # teams — list roles/assignments, assign
                                     # or remove a role for a team or user.
@@ -113,13 +122,17 @@ the full PR-lifecycle scope of `github-pull-requests` (create, classify,
 review-route, link to issues, couple to Projects v2 — grown past the
 priority matrix's original narrower "near-term #1: review-routing +
 link-visibility" framing once that gap was confirmed as the project's chief
-requirement), and near-term #2 (`github-org-identity`: organization roles +
+requirement), near-term #2 (`github-org-identity`: organization roles +
 teams, read+write with a confirm-echo guard on writes; SAML/SSO out of
-scope) all ship. Six deferred domains (repo/org configuration, the broader
-Actions ecosystem, Insights, Packages, gitflow, the Audit Log) remain
-documented follow-ups — each already has a citation-backed tier rationale on
-record and is added as a new `plugins[]` entry when its tier comes due, no
-catalog schema change required.
+scope), and three narrowly-scoped Tier-3 domains (`github-repo-config`,
+`github-insights`, `github-packages`) all ship. Three remaining deferred
+domains (the broader Actions ecosystem beyond gh-aw, gitflow, the Audit Log)
+stay documented follow-ups — each already has a citation-backed tier
+rationale on record (and, for gitflow/Audit Log, a concrete reason it isn't
+buildable/verifiable against this org: no GitHub-native API surface for
+gitflow, and Audit Log requires GitHub Enterprise Cloud, confirmed 404
+against this org's Free plan) — added as a new `plugins[]` entry only if
+that changes.
 
 ## Gates and attestations
 
