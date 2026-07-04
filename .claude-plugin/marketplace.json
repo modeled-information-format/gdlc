@@ -62,6 +62,25 @@
       ]
     },
     {
+      "name": "github-repo-config",
+      "source": "./plugins/github-repo-config",
+      "description": "Repo/org governance: branch protection and rulesets, org-wide .github community health files, GitHub Pages status, and custom repository properties.",
+      "version": "0.1.0",
+      "author": {
+        "name": "modeled-information-format"
+      },
+      "category": "administration",
+      "license": "MIT",
+      "keywords": [
+        "github",
+        "branch-protection",
+        "rulesets",
+        "github-pages",
+        "custom-properties",
+        "community-health-files"
+      ]
+    },
+    {
       "name": "github-packages",
       "source": "./plugins/github-packages",
       "description": "List org packages and versions across npm, Maven, RubyGems, Docker (legacy registry), Container (ghcr.io), NuGet, and generic registries; delete/restore a package or version.",

@@ -1,0 +1,22 @@
+<evaluation>
+   <qa_pair id="1">
+      <question>How many tools does the github-repo-config MCP server expose? Answer with just the number.</question>
+      <answer>11</answer>
+   </qa_pair>
+   <qa_pair id="2">
+      <question>What field must equal "branch" for delete_branch_protection to succeed, instead of throwing before any API call?</question>
+      <answer>confirmBranch</answer>
+   </qa_pair>
+   <qa_pair id="3">
+      <question>What error code do delete_branch_protection and set_repo_custom_properties throw when their confirm-echo field doesn't match?</question>
+      <answer>confirmation_mismatch</answer>
+   </qa_pair>
+   <qa_pair id="4">
+      <question>Does list_org_health_files ever read from .github-private?</question>
+      <answer>No</answer>
+   </qa_pair>
+   <qa_pair id="5">
+      <question>Are rulesets read-only or read-write in this plugin's first version?</question>
+      <answer>Read-only</answer>
+   </qa_pair>
+</evaluation>

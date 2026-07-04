@@ -1,0 +1,37 @@
+{
+  "skill_name": "repo-config-audit",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Audit repo config for acme/widgets on main.",
+      "expected_output": "Lists branch protection, rulesets, Pages status, and custom properties, then presents a summary without changing any config.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "get_branch_protection",
+          "description": "Calls get_branch_protection before presenting a summary"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "update_branch_protection",
+          "description": "Never calls update_branch_protection during a read-only audit"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "delete_branch_protection",
+          "description": "Never calls delete_branch_protection during a read-only audit"
+        }
+      ],
+      "expectations": [
+        "Calls get_branch_protection and list_repo_rulesets for the named repo/branch",
+        "Calls get_pages_config and get_repo_custom_properties",
+        "Presents a summary a human can review, without mutating any config",
+        "Never calls update_branch_protection, delete_branch_protection, or set_repo_custom_properties"
+      ]
+    }
+  ]
+}

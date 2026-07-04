@@ -65,6 +65,11 @@ plugins/
                                     # to Projects v2. Depends on
                                     # github-sdlc-planning (same-marketplace,
                                     # real dependency edge).
+  github-repo-config/              # Tier-3 (deferred domain, narrowly
+                                    # scoped): branch protection/rulesets,
+                                    # org .github community health files,
+                                    # Pages status, custom repo properties.
+                                    # Standalone, no dependency edge.
   github-packages/                 # Tier-3 (deferred domain): list org
                                     # packages/versions across npm/Maven/
                                     # RubyGems/container/NuGet/generic;
