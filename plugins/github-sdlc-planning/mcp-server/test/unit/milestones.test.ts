@@ -8,22 +8,33 @@ describe('milestones (REST-only surface)', () => {
       number: 3,
       title: 'Sprint 4',
       html_url: 'https://github.com/acme/widgets/milestone/3',
+      due_on: '2026-08-01T00:00:00Z',
     });
     const result = await createMilestone({ owner: 'acme', repo: 'widgets', title: 'Sprint 4' });
-    expect(result).toEqual({ number: 3, title: 'Sprint 4', url: 'https://github.com/acme/widgets/milestone/3' });
+    expect(result).toEqual({
+      number: 3,
+      title: 'Sprint 4',
+      url: 'https://github.com/acme/widgets/milestone/3',
+      dueOn: '2026-08-01T00:00:00Z',
+    });
   });
 
-  it('lists open milestones by default', async () => {
+  it('lists open milestones by default, including each milestone\'s due date', async () => {
     mockRest('get', '/repos/acme/widgets/milestones', [
-      { number: 1, title: 'Sprint 1', html_url: 'https://x/1' },
-      { number: 2, title: 'Sprint 2', html_url: 'https://x/2' },
+      { number: 1, title: 'Sprint 1', html_url: 'https://x/1', due_on: '2026-07-10T00:00:00Z' },
+      { number: 2, title: 'Sprint 2', html_url: 'https://x/2', due_on: null },
     ]);
     const result = await listMilestones({ owner: 'acme', repo: 'widgets' });
-    expect(result).toHaveLength(2);
+    expect(result).toEqual([
+      { number: 1, title: 'Sprint 1', url: 'https://x/1', dueOn: '2026-07-10T00:00:00Z' },
+      { number: 2, title: 'Sprint 2', url: 'https://x/2', dueOn: null },
+    ]);
   });
 
   it('lists milestones with an explicit state filter', async () => {
-    mockRest('get', '/repos/acme/widgets/milestones', [{ number: 1, title: 'Done sprint', html_url: 'https://x/1' }]);
+    mockRest('get', '/repos/acme/widgets/milestones', [
+      { number: 1, title: 'Done sprint', html_url: 'https://x/1', due_on: null },
+    ]);
     const result = await listMilestones({ owner: 'acme', repo: 'widgets', state: 'all' });
     expect(result).toHaveLength(1);
   });

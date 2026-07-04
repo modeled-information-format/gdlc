@@ -17,10 +17,11 @@ interface RestMilestoneSummary {
   number: number;
   title: string;
   html_url: string;
+  due_on: string | null;
 }
 
 export interface SessionContextResult {
-  openMilestones: Array<{ number: number; title: string; url: string }>;
+  openMilestones: Array<{ number: number; title: string; url: string; dueOn: string | null }>;
   projectBoard: Awaited<ReturnType<typeof getProjectItems>> | null;
 }
 
@@ -44,7 +45,7 @@ export async function getSessionContext(input: GetSessionContextInput, deps: Git
   const [milestones, projectBoard] = await Promise.all([milestonesPromise, projectBoardPromise]);
 
   return {
-    openMilestones: milestones.map((m) => ({ number: m.number, title: m.title, url: m.html_url })),
+    openMilestones: milestones.map((m) => ({ number: m.number, title: m.title, url: m.html_url, dueOn: m.due_on })),
     projectBoard,
   };
 }

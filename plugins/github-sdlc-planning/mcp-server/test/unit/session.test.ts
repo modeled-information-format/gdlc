@@ -14,10 +14,12 @@ describe('getAgentCapabilities', () => {
 });
 
 describe('getSessionContext', () => {
-  it('returns open milestones without a project board when none is requested', async () => {
-    mockRest('get', '/repos/acme/widgets/milestones', [{ number: 1, title: 'Sprint 1', html_url: 'https://x/1' }]);
+  it('returns open milestones (including due date) without a project board when none is requested', async () => {
+    mockRest('get', '/repos/acme/widgets/milestones', [
+      { number: 1, title: 'Sprint 1', html_url: 'https://x/1', due_on: '2026-07-10T00:00:00Z' },
+    ]);
     const ctx = await getSessionContext({ owner: 'acme', repo: 'widgets' });
-    expect(ctx.openMilestones).toEqual([{ number: 1, title: 'Sprint 1', url: 'https://x/1' }]);
+    expect(ctx.openMilestones).toEqual([{ number: 1, title: 'Sprint 1', url: 'https://x/1', dueOn: '2026-07-10T00:00:00Z' }]);
     expect(ctx.projectBoard).toBeNull();
   });
 
