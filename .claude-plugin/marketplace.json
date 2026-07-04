@@ -7,7 +7,9 @@
   "metadata": {
     "pluginRoot": "plugins"
   },
-  "allowCrossMarketplaceDependenciesOn": ["modeled-information-format"],
+  "allowCrossMarketplaceDependenciesOn": [
+    "modeled-information-format"
+  ],
   "plugins": [
     {
       "name": "github-sdlc-planning",
@@ -15,11 +17,11 @@
         "source": "git-subdir",
         "url": "https://github.com/modeled-information-format/gdlc.git",
         "path": "plugins/github-sdlc-planning",
-        "ref": "v0.1.0",
-        "sha": "5b0de1626ce120110d51e83d90f887d78ef25d96"
+        "ref": "v0.2.0",
+        "sha": "19a5f9c1470b7eee6b784b8f817efbf5713149cf"
       },
       "description": "Issues, native sub-issues, Projects v2, Milestones, and Discussions behind a portable MCP core plus a Claude Code progressive-enhancement layer. Every issue/discussion body carries MIF-conformant frontmatter authored via mif-docs.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "modeled-information-format"
       },
@@ -42,11 +44,11 @@
         "source": "git-subdir",
         "url": "https://github.com/modeled-information-format/gdlc.git",
         "path": "plugins/github-pull-requests",
-        "ref": "v0.1.0",
-        "sha": "5b0de1626ce120110d51e83d90f887d78ef25d96"
+        "ref": "v0.2.0",
+        "sha": "19a5f9c1470b7eee6b784b8f817efbf5713149cf"
       },
       "description": "Full pull-request lifecycle control: create, classify (type/size/risk labels), review-route, link to issues, and couple to Projects v2. Depends on github-sdlc-planning for its shared MIF comment-block reader and Projects v2 tools.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "modeled-information-format"
       },
