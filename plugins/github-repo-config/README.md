@@ -67,5 +67,6 @@ repo, which is what GitHub actually reads for org-wide defaults.
 
 `scripts/verify-live.ts` exercises the read tools against a real
 org/repo (defaults to `modeled-information-format`/`gdlc`). Run
-manually — the four write tools are covered only by the mocked unit
-suite, never against a real repo/org.
+manually — the three write tools (`update_branch_protection`,
+`delete_branch_protection`, `set_repo_custom_properties`) are covered
+only by the mocked unit suite, never against a real repo/org.
