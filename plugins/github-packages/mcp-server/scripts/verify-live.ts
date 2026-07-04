@@ -14,6 +14,7 @@
  * entirely in the mocked unit suite.
  */
 import { listOrgPackages, getOrgPackage, listPackageVersions, getPackageVersion, type PackageType } from '../src/tools/packages.js';
+import { isPackagesError } from '../src/errors.js';
 
 const ORG = process.env.TARGET_ORG ?? 'modeled-information-format';
 
@@ -36,17 +37,30 @@ function step(name: string): void {
   process.stdout.write(`\n=== ${name} ===\n`);
 }
 
+/** True only for the specific, expected "token lacks read:packages scope"
+ * 403 -- every other error (network failure, 5xx, an unexpected 4xx, a real
+ * regression in listOrgPackages) must fail the script, not be waved through
+ * as an optimistic scope guess. */
+function isMissingPackagesScope(err: unknown): boolean {
+  return isPackagesError(err) && err.code === 'github_api_error' && err.details.status === 403 && /read:packages/i.test(err.message);
+}
+
 async function main(): Promise<void> {
   step(`list_org_packages (${ORG}, all known types)`);
   const found: Array<{ packageType: PackageType; name: string }> = [];
-  try {
-    for (const packageType of PACKAGE_TYPES) {
+  for (const packageType of PACKAGE_TYPES) {
+    try {
       const packages = await listOrgPackages({ org: ORG, packageType });
       assert(Array.isArray(packages), `list_org_packages(${packageType}) returned an array (${packages.length} package(s))`);
       for (const p of packages) found.push({ packageType, name: p.name });
+    } catch (err) {
+      if (isMissingPackagesScope(err)) {
+        process.stdout.write(`  SKIP list_org_packages(${packageType}) (token lacks read:packages scope): ${err instanceof Error ? err.message : String(err)}\n`);
+        break; // every other type would fail identically -- no point repeating 403s
+      }
+      failed = true;
+      process.stdout.write(`  FAIL list_org_packages(${packageType}): ${err instanceof Error ? err.message : String(err)}\n`);
     }
-  } catch (err) {
-    process.stdout.write(`  SKIP (token likely lacks read:packages scope): ${err instanceof Error ? err.message : String(err)}\n`);
   }
 
   const first = found[0];

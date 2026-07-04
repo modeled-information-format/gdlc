@@ -31191,12 +31191,13 @@ function wrap(fn) {
 }
 var packageTypeSchema = external_exports.enum(["npm", "maven", "rubygems", "docker", "container", "nuget", "generic"]);
 var packageRefSchema = { org: external_exports.string(), packageType: packageTypeSchema, packageName: external_exports.string() };
+var listOrgPackagesInputSchema = external_exports.object({ org: external_exports.string(), packageType: packageTypeSchema });
 server.registerTool(
   "list_org_packages",
   {
     title: "List org packages",
     description: "List an org's packages of a given package type. GitHub's real endpoint requires package_type -- there is no single call that lists every type at once.",
-    inputSchema: { org: external_exports.string(), packageType: packageTypeSchema }
+    inputSchema: listOrgPackagesInputSchema.shape
   },
   wrap(listOrgPackages)
 );
@@ -31255,8 +31256,13 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
-main().catch((err) => {
-  process.stderr.write(`github-packages MCP server failed to start: ${err instanceof Error ? err.stack : String(err)}
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err) => {
+    process.stderr.write(`github-packages MCP server failed to start: ${err instanceof Error ? err.stack : String(err)}
 `);
-  process.exit(1);
-});
+    process.exit(1);
+  });
+}
+export {
+  listOrgPackagesInputSchema
+};

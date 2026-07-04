@@ -147,6 +147,19 @@ jobs:
       # this org's six Apps with a packages permission (packages: write,
       # per auth/apps.json) -- reused here for read-only verification
       # rather than provisioning a new App.
+      #
+      # GET /orgs/{org}/packages is an org-wide listing, not scoped to any
+      # one repo -- omitting `repositories:` grants the token access to
+      # every repo the release App is installed on (install_on: all, per
+      # auth/apps.json), which is what an org-wide read actually needs.
+      # Scoping to a single repo here (as the sibling "issues" mint above
+      # correctly does for its repo-scoped sandbox tools) would silently
+      # narrow this job to that one repo's packages instead of the org's.
+      # Down-scoped to read: this job only ever calls the plugin's four
+      # read tools, never delete_package/restore_package, even though the
+      # App's own permission ceiling is packages:write (same down-scoping
+      # pattern as ontologies/.github/workflows/release.yml's
+      # permission-contents: write).
       - name: Mint the "release" App installation token
         id: release_token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
@@ -154,7 +167,7 @@ jobs:
           client-id: ${{ vars.RELEASE_CLIENT_APP_ID }}
           private-key: ${{ secrets.RELEASE_CLIENT_APP_PRIVATE_KEY }}
           owner: modeled-information-format
-          repositories: gdlc
+          permission-packages: read
 
       - name: Build github-packages/mcp-server
         working-directory: plugins/github-packages/mcp-server
