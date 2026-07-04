@@ -27,19 +27,27 @@ describe('updateBranchProtection', () => {
       repo: 'widgets',
       branch: 'main',
       requiredStatusChecks: { strict: true, contexts: ['ci'] },
+      enforceAdmins: false,
       requiredApprovingReviewCount: 2,
     });
     expect(result).toEqual({ requiredStatusChecks: { strict: true, contexts: ['ci'] }, enforceAdmins: false, requiredApprovingReviewCount: 2 });
   });
 
-  it('defaults requiredApprovingReviewCount to null when omitted', async () => {
+  it('requires the caller to state requiredApprovingReviewCount explicitly as null, not omit it -- an earlier version silently defaulted an omitted field to null/disabled, reintroducing the exact partial-patch risk this tool exists to avoid (caught in review)', async () => {
     mockRest('put', '/repos/acme/widgets/branches/main/protection', {
       required_status_checks: null,
-      enforce_admins: { enabled: false },
+      enforce_admins: { enabled: true },
       required_pull_request_reviews: null,
     });
-    const result = await updateBranchProtection({ owner: 'acme', repo: 'widgets', branch: 'main' });
-    expect(result.requiredApprovingReviewCount).toBeNull();
+    const result = await updateBranchProtection({
+      owner: 'acme',
+      repo: 'widgets',
+      branch: 'main',
+      requiredStatusChecks: null,
+      enforceAdmins: true,
+      requiredApprovingReviewCount: null,
+    });
+    expect(result).toEqual({ requiredStatusChecks: null, enforceAdmins: true, requiredApprovingReviewCount: null });
   });
 });
 

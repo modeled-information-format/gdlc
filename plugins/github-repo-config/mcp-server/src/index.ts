@@ -48,12 +48,12 @@ server.registerTool(
   {
     title: 'Update branch protection',
     description:
-      'Set the full branch-protection config for a branch (required status checks, enforce-admins, required approving review count). GitHub requires the full desired state in one call, not a partial patch.',
+      'Set the full branch-protection config for a branch (required status checks, enforce-admins, required approving review count). GitHub requires the full desired state in one call, not a partial patch — all three fields are required here for that reason: an omitted field is not "leave as-is", it would silently disable that protection.',
     inputSchema: {
       ...branchRefSchema,
-      requiredStatusChecks: z.object({ strict: z.boolean(), contexts: z.array(z.string()) }).nullable().optional(),
-      enforceAdmins: z.boolean().optional(),
-      requiredApprovingReviewCount: z.number().int().nullable().optional(),
+      requiredStatusChecks: z.object({ strict: z.boolean(), contexts: z.array(z.string()) }).nullable(),
+      enforceAdmins: z.boolean(),
+      requiredApprovingReviewCount: z.number().int().nullable(),
     },
   },
   wrap(updateBranchProtection),

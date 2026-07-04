@@ -31111,8 +31111,8 @@ async function getBranchProtection(input, deps = {}) {
 }
 async function updateBranchProtection(input, deps = {}) {
   const body = {
-    required_status_checks: input.requiredStatusChecks ?? null,
-    enforce_admins: input.enforceAdmins ?? false,
+    required_status_checks: input.requiredStatusChecks,
+    enforce_admins: input.enforceAdmins,
     required_pull_request_reviews: input.requiredApprovingReviewCount != null ? { required_approving_review_count: input.requiredApprovingReviewCount } : null,
     restrictions: null
   };
@@ -31229,12 +31229,12 @@ server.registerTool(
   "update_branch_protection",
   {
     title: "Update branch protection",
-    description: "Set the full branch-protection config for a branch (required status checks, enforce-admins, required approving review count). GitHub requires the full desired state in one call, not a partial patch.",
+    description: 'Set the full branch-protection config for a branch (required status checks, enforce-admins, required approving review count). GitHub requires the full desired state in one call, not a partial patch \u2014 all three fields are required here for that reason: an omitted field is not "leave as-is", it would silently disable that protection.',
     inputSchema: {
       ...branchRefSchema,
-      requiredStatusChecks: external_exports.object({ strict: external_exports.boolean(), contexts: external_exports.array(external_exports.string()) }).nullable().optional(),
-      enforceAdmins: external_exports.boolean().optional(),
-      requiredApprovingReviewCount: external_exports.number().int().nullable().optional()
+      requiredStatusChecks: external_exports.object({ strict: external_exports.boolean(), contexts: external_exports.array(external_exports.string()) }).nullable(),
+      enforceAdmins: external_exports.boolean(),
+      requiredApprovingReviewCount: external_exports.number().int().nullable()
     }
   },
   wrap(updateBranchProtection)

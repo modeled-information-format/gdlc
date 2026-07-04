@@ -5,7 +5,7 @@
  * suite — invoked manually with a token that has read access to the target
  * repo/org (`gh auth login` is enough for the read paths below).
  *
- * READ-ONLY BY DESIGN: none of the four write tools (update_branch_protection,
+ * READ-ONLY BY DESIGN: none of the three write tools (update_branch_protection,
  * delete_branch_protection, set_repo_custom_properties) are exercised here —
  * mutating a real repo's branch protection or an org's custom-property
  * values as part of an automated smoke test is exactly the kind of action

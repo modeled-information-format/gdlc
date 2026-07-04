@@ -33,21 +33,28 @@ export async function getBranchProtection(input: BranchRef, deps: GithubClientDe
 }
 
 export interface UpdateBranchProtectionInput extends BranchRef {
-  requiredStatusChecks?: { strict: boolean; contexts: string[] } | null;
-  enforceAdmins?: boolean;
-  requiredApprovingReviewCount?: number | null;
+  /** Required, not optional -- see the function doc comment: this tool's
+   * own safety only holds if every field is genuinely required, forcing
+   * the caller to state the full desired state on every call. */
+  requiredStatusChecks: { strict: boolean; contexts: string[] } | null;
+  enforceAdmins: boolean;
+  requiredApprovingReviewCount: number | null;
 }
 
 /** GitHub's PUT branch-protection endpoint requires the full desired
  * state in one call (not a partial patch), so there's no "silently
  * cleared a field the caller didn't mention" risk the way a partial
- * PATCH would have -- the caller must state every field it wants,
- * `restrictions: null` (no push restrictions) is passed explicitly since
- * the field is required by the API. */
+ * PATCH would have -- PROVIDED this tool actually forces the caller to
+ * state every field, which is why all three are required here (an
+ * earlier version made them optional with disabling defaults, silently
+ * reintroducing exactly the risk this comment claimed didn't exist --
+ * caught in review). `restrictions: null` (no push restrictions) is
+ * passed explicitly since the field is required by the API but this
+ * plugin doesn't yet expose push restrictions as a tool input. */
 export async function updateBranchProtection(input: UpdateBranchProtectionInput, deps: GithubClientDeps = {}): Promise<BranchProtection> {
   const body = {
-    required_status_checks: input.requiredStatusChecks ?? null,
-    enforce_admins: input.enforceAdmins ?? false,
+    required_status_checks: input.requiredStatusChecks,
+    enforce_admins: input.enforceAdmins,
     required_pull_request_reviews:
       input.requiredApprovingReviewCount != null ? { required_approving_review_count: input.requiredApprovingReviewCount } : null,
     restrictions: null,
