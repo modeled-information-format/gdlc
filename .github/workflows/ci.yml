@@ -27,8 +27,31 @@ jobs:
       contents: read
     uses: >-
       modeled-information-format/.github/.github/workflows/pin-check.yml@7c56346c4bc47b15f08d44889116486583a1a7ac
+  # Excludes *.lock.yml — gh-aw's compiler emits current GitHub Actions
+  # features (e.g. concurrency.queue) that no released actionlint (through
+  # 1.7.12, confirmed) recognizes yet; those files are linted by gh-aw's own
+  # `gh aw lint` below instead, which understands its own generated output.
+  # Update this list when a new hand-authored workflow is added.
   validate-workflows:
     permissions:
       contents: read
     uses: >-
       modeled-information-format/.github/.github/workflows/reusable-actionlint.yml@7c56346c4bc47b15f08d44889116486583a1a7ac
+    with:
+      files: >-
+        .github/workflows/ci.yml .github/workflows/catalog-admission.yml
+        .github/workflows/docker-publish.yml
+        .github/workflows/live-integration-tests.yml
+        .github/workflows/quality-gates.yml .github/workflows/release.yml
+  gh-aw-lint:
+    name: gh-aw-lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up gh-aw
+        uses: github/gh-aw-actions/setup@3fac1cfa7a5a375a6a5eb9839178f6dad7adb60a # v0.82.2
+      - name: Lint gh-aw-generated workflows
+        run: gh aw lint --dir .github/workflows
