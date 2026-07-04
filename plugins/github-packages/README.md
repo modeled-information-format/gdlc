@@ -32,7 +32,7 @@ No dependency on the sibling plugins — standalone, pure REST.
 
 | Tool | Purpose |
 | --- | --- |
-| `list_org_packages` | List an org's packages, optionally filtered by package type |
+| `list_org_packages` | List an org's packages of a given type — `packageType` is required; GitHub's real endpoint (verified live) has no "list every type at once" call |
 | `get_org_package` | Get a single package by name and type |
 | `list_package_versions` / `get_package_version` | List/get a package's versions |
 | `delete_package` / `delete_package_version` | Delete a package or a single version — restorable only within GitHub's ~30-day window and only if nothing has since republished under the same name/version |
@@ -58,6 +58,11 @@ attempt to expose one because none exists to expose.
 ## Live verification
 
 `scripts/verify-live.ts` exercises the four read tools against a real
-org (defaults to `modeled-information-format`). Run manually — the four
-write tools are covered by the mocked unit suite only, never against a
-real org's published packages.
+org (defaults to `modeled-information-format`). Wired into
+`.github/workflows/live-integration-tests.yml`'s `live-verify-packages`
+job, which mints a token from the `release` App — the only one of this
+org's six Apps with any `packages` permission (`packages: write`, reused
+here read-only) — and runs it on `workflow_dispatch`. A personal token
+without `read:packages` scope gets a graceful SKIP instead of a crash.
+The four write tools are covered by the mocked unit suite only, never
+against a real org's published packages.

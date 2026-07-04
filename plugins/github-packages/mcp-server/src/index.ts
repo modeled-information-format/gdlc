@@ -42,12 +42,18 @@ function wrap<TArgs>(fn: (args: TArgs) => Promise<unknown> | unknown) {
 const packageTypeSchema = z.enum(['npm', 'maven', 'rubygems', 'docker', 'container', 'nuget', 'generic']);
 const packageRefSchema = { org: z.string(), packageType: packageTypeSchema, packageName: z.string() };
 
+/** Exported for a regression test: packageType must be required here, not
+ * just in ListOrgPackagesInput's TS type -- this zod schema is the runtime
+ * boundary a real MCP caller actually hits, and TS-required alone would
+ * never catch a caller passing a bare object with no packageType. */
+export const listOrgPackagesInputSchema = z.object({ org: z.string(), packageType: packageTypeSchema });
+
 server.registerTool(
   'list_org_packages',
   {
     title: 'List org packages',
-    description: "List an org's packages, optionally filtered by package type.",
-    inputSchema: { org: z.string(), packageType: packageTypeSchema.optional() },
+    description: "List an org's packages of a given package type. GitHub's real endpoint requires package_type -- there is no single call that lists every type at once.",
+    inputSchema: listOrgPackagesInputSchema.shape,
   },
   wrap(listOrgPackages),
 );
@@ -117,7 +123,12 @@ async function main(): Promise<void> {
   await server.connect(transport);
 }
 
-main().catch((err: unknown) => {
-  process.stderr.write(`github-packages MCP server failed to start: ${err instanceof Error ? err.stack : String(err)}\n`);
-  process.exit(1);
-});
+// Only connect stdio when run directly (node dist/index.js) -- importing
+// this module for its exported schemas (as the regression test for
+// listOrgPackagesInputSchema does) must not also open a stdio transport.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err: unknown) => {
+    process.stderr.write(`github-packages MCP server failed to start: ${err instanceof Error ? err.stack : String(err)}\n`);
+    process.exit(1);
+  });
+}

@@ -9,8 +9,11 @@ allowed-tools: mcp__github-packages__*
 
 Audit published packages for **$ARGUMENTS**.
 
-1. Call `mcp__github-packages__list_org_packages`, optionally filtered
-   by package type if the user named one.
+1. Call `mcp__github-packages__list_org_packages`. `packageType` is
+   required by the real endpoint -- there is no single call that lists
+   every type at once. If the user named a type, use it; otherwise call
+   it once per known type (`npm`, `maven`, `rubygems`, `docker`,
+   `container`, `nuget`, `generic`) and combine the results.
 2. For each package of interest, call
    `mcp__github-packages__list_package_versions` to see its version
    history.
