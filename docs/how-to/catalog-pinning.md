@@ -81,14 +81,34 @@ first local relative-path source into a pinned one is a one-time manual step.
 
 ```bash
 TAG="v0.2.0"                                       # the tag you just released
-RELEASE_SHA="$(git rev-parse "${TAG}")"
+# git rev-parse alone returns the ANNOTATED TAG OBJECT's sha, not the commit
+# it points at -- peel with ^{commit} or this pins to the wrong sha entirely
+# (a real bug in an earlier version of this script, caught in review).
+RELEASE_SHA="$(git rev-parse "${TAG}^{commit}")"
 FILE=.claude-plugin/marketplace.json
 SELF_URL="https://github.com/modeled-information-format/gdlc.git"
 
+# Handles BOTH cases in one pass: re-pins an existing git-subdir entry to
+# the new tag/sha, AND promotes a plugin still on a local relative-path
+# string source (e.g. "source": "./plugins/<name>") into a pinned
+# git-subdir entry for the first time. An earlier version of this script
+# only matched entries already in object/git-subdir form -- for a
+# string source, `(.source | type) == "object"` is false, the `and`
+# short-circuits, and the entry is silently left untouched (caught in
+# review: this script could never actually do the "first-time promotion"
+# it claimed to document).
 jq --arg ref "${TAG}" --arg sha "${RELEASE_SHA}" --arg ver "${TAG#v}" --arg url "${SELF_URL}" '
   .plugins = [.plugins[] |
     if (.source | type) == "object" and .source.source == "git-subdir" and .source.url == $url
     then .version = $ver | .source.ref = $ref | .source.sha = $sha
+    elif (.source | type) == "string" and (.source | startswith("./plugins/"))
+    then .version = $ver | .source = {
+      source: "git-subdir",
+      url: $url,
+      path: (.source | sub("^\\./"; "")),
+      ref: $ref,
+      sha: $sha
+    }
     else . end]
 ' "${FILE}" > "${FILE}.tmp" && mv "${FILE}.tmp" "${FILE}"
 
