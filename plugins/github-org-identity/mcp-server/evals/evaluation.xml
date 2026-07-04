@@ -1,0 +1,26 @@
+<evaluation>
+   <qa_pair id="1">
+      <question>How many tools does the github-org-identity MCP server expose? Answer with just the number.</question>
+      <answer>7</answer>
+   </qa_pair>
+   <qa_pair id="2">
+      <question>What is the name of the tool that lists an org's predefined and custom organization roles?</question>
+      <answer>list_organization_roles</answer>
+   </qa_pair>
+   <qa_pair id="3">
+      <question>What two field names must match for assign_team_role, remove_team_role, assign_user_role, or remove_user_role to succeed, instead of throwing before any API call?</question>
+      <answer>roleId and confirmRoleId</answer>
+   </qa_pair>
+   <qa_pair id="4">
+      <question>What error code do the four write tools throw when roleId and confirmRoleId don't match?</question>
+      <answer>confirmation_mismatch</answer>
+   </qa_pair>
+   <qa_pair id="5">
+      <question>Is SAML/SSO management in scope for this plugin?</question>
+      <answer>No</answer>
+   </qa_pair>
+   <qa_pair id="6">
+      <question>Does github-org-identity declare a dependency on github-sdlc-planning in its plugin.json?</question>
+      <answer>No</answer>
+   </qa_pair>
+</evaluation>
