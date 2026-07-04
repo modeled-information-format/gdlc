@@ -142,7 +142,7 @@ jobs:
       - name: Validate marketplace + plugin manifests
         run: claude plugin validate .
 
-  # --- build/test/lint gates for the two vendored MCP servers ------------
+  # --- build/test/lint gates for the vendored MCP servers -----------------
   test-planning-mcp-server:
     name: test (github-sdlc-planning/mcp-server)
     runs-on: ubuntu-latest
