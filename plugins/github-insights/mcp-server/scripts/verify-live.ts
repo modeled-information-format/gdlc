@@ -2,8 +2,14 @@
 /**
  * Live verification script: exercises the real src/ implementation against
  * a real GitHub repo, not a mock. Not part of the CI-gating `npm test`
- * suite — invoked manually with any read-scoped token (`gh auth login` is
- * enough; every tool in this plugin is read-only).
+ * suite — invoked manually. Every tool here is read-only (no tool mutates
+ * state), but that is not the same as "any read-scoped token works": the
+ * traffic endpoints (get_repo_traffic_views/clones) specifically require
+ * write (push) access to the target repo despite being GETs, per GitHub's
+ * own docs (see the plugin README's "Auth note" section). A token with
+ * only read access gets a 403 from those two calls specifically; this
+ * script catches that and reports it as a SKIP rather than a failure, so
+ * a read-only token can still verify the other three tools.
  */
 import { getRepoTrafficViews, getRepoTrafficClones } from '../src/tools/traffic.js';
 import { getRepoContributorStats } from '../src/tools/stats.js';
