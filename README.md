@@ -70,6 +70,10 @@ plugins/
                                     # org .github community health files,
                                     # Pages status, custom repo properties.
                                     # Standalone, no dependency edge.
+  github-insights/                 # Tier-3 (deferred domain): read-only
+                                    # traffic, contributor stats, community
+                                    # profile, dependency-graph/SBOM.
+                                    # Standalone, no dependency edge.
   github-packages/                 # Tier-3 (deferred domain): list org
                                     # packages/versions across npm/Maven/
                                     # RubyGems/container/NuGet/generic;
