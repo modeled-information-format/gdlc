@@ -52,6 +52,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- CI workflows set up Node with `node-version: 'lts/*'` while every plugin's
+  `mcp-server/package.json` declares `engines.node: ">=24"`. `lts/*` tracks
+  whatever the current LTS major is at the time a job runs and could drift
+  below the declared floor with nothing catching the mismatch (#51). Pinned
+  `quality-gates.yml`, `release.yml`, and `live-integration-tests.yml` to
+  Node 24 explicitly, matching the pin the gh-aw-generated
+  `sprint-milestone-digest.lock.yml` already used.
 - All six vendored plugin manifests, `mcp-server/package.json` files, and
   server version strings were synced to `0.2.0` to match the catalog, which
   the `v0.2.0` release had already advertised without the manifests
