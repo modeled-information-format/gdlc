@@ -166,7 +166,13 @@
     },
     {
       "name": "github-bug-capture",
-      "source": "./plugins/github-bug-capture",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/modeled-information-format/gdlc.git",
+        "path": "plugins/github-bug-capture",
+        "ref": "v0.3.0",
+        "sha": "b70496af585d23d7d2d3aa2e6fc8df83bfaf6309"
+      },
       "description": "Development-time bug capture: diagnostics discovered while code is being written become structured, MIF-conformant, lifecycle-managed GitHub issues. Portable MCP core plus opt-in Claude Code enhancement packs; composes with github-pull-requests and github-sdlc-planning.",
       "version": "0.3.0",
       "author": {
