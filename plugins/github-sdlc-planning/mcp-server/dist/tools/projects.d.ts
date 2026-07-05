@@ -10,10 +10,17 @@ export interface AddItemToProjectInput {
 }
 export interface AddItemToProjectResult {
     itemId: string;
+    /** True when the issue already had an item on the target project and no
+     * mutation was issued (ADR-0003: native auto-add workflows can add an
+     * issue to the board before this tool ever runs; addProjectV2ItemById has
+     * no idempotency key and would otherwise create a duplicate item). */
+    existed: boolean;
 }
 /** AC-3: resolve node IDs (issue, project) before mutating, never a numeric
  * issue/project number. AC-4: fail with a named `project`-scope error, not
- * GitHub's raw GraphQL permission error. */
+ * GitHub's raw GraphQL permission error. ADR-0003: query whether the issue
+ * already has an item on the target project before mutating, and return
+ * that item instead of creating a duplicate. */
 export declare function addItemToProject(input: AddItemToProjectInput, deps?: GithubClientDeps): Promise<AddItemToProjectResult>;
 export type FieldValueInput = {
     kind: 'text';

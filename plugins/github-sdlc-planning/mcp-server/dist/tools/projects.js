@@ -7,17 +7,35 @@ const ADD_ITEM_MUTATION = `
     }
   }
 `;
+const ISSUE_PROJECT_ITEMS_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) {
+        projectItems(first: 100) {
+          nodes { id project { id } }
+        }
+      }
+    }
+  }
+`;
 /** AC-3: resolve node IDs (issue, project) before mutating, never a numeric
  * issue/project number. AC-4: fail with a named `project`-scope error, not
- * GitHub's raw GraphQL permission error. */
+ * GitHub's raw GraphQL permission error. ADR-0003: query whether the issue
+ * already has an item on the target project before mutating, and return
+ * that item instead of creating a duplicate. */
 export async function addItemToProject(input, deps = {}) {
     await assertProjectScope(deps.fetchImpl);
     const [contentId, projectId] = await Promise.all([
         resolveIssueNodeId(input.owner, input.repo, input.issueNumber, deps),
         resolveProjectNodeId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? 'organization', deps),
     ]);
+    const itemsData = await githubGraphQL(ISSUE_PROJECT_ITEMS_QUERY, { owner: input.owner, repo: input.repo, number: input.issueNumber }, {}, deps);
+    const existingItem = (itemsData.repository?.issue?.projectItems?.nodes ?? []).find((n) => n.project.id === projectId);
+    if (existingItem) {
+        return { itemId: existingItem.id, existed: true };
+    }
     const data = await githubGraphQL(ADD_ITEM_MUTATION, { projectId, contentId }, {}, deps);
-    return { itemId: data.addProjectV2ItemById.item.id };
+    return { itemId: data.addProjectV2ItemById.item.id, existed: false };
 }
 const UPDATE_FIELD_VALUE_MUTATION = `
   mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: ProjectV2FieldValue!) {

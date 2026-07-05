@@ -111,7 +111,10 @@ server.registerTool(
   'add_item_to_project',
   {
     title: 'Add item to project',
-    description: 'Add an issue to a Projects v2 board via addProjectV2ItemById, resolving node IDs first.',
+    description:
+      'Add an issue to a Projects v2 board via addProjectV2ItemById, resolving node IDs first. Idempotent: if the ' +
+      'issue already has an item on the target project (e.g. added by a native auto-add workflow), returns that ' +
+      'item with existed: true instead of creating a duplicate.',
     inputSchema: {
       owner: z.string(),
       repo: z.string(),

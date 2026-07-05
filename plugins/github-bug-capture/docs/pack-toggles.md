@@ -9,8 +9,9 @@ pack checks before acting.
 
 ## The settings file
 
-`.claude/github-bug-capture.local.md` in the consuming project (gitignored —
-it is per-project, per-user state):
+`.claude/github-bug-capture.local.md` in the consuming project. It is
+per-project, per-user state; keep it out of version control via that
+project's .gitignore or .git/info/exclude:
 
 ```markdown
 ---

@@ -14,7 +14,7 @@ tags:
   - bug-capture
   - mcp
   - plugin
-status: proposed
+status: accepted
 created: 2026-07-05
 updated: 2026-07-05
 author: MIF Maintainers
@@ -36,7 +36,7 @@ related:
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -302,6 +302,29 @@ until the status moves to accepted.
 
 **Action Required:** Maintainer review; on acceptance, epic #28 implements the
 core against this ADR.
+
+### 2026-07-05
+
+**Status:** Compliant
+
+**Findings:**
+
+| Finding                                                       | Files | Lines | Assessment |
+| ------------------------------------------------------------- | ----- | ----- | ---------- |
+| MCP-server core shipped (epics #28/#33/#38, PRs #50/#58)       | plugins/github-bug-capture/mcp-server/ | - | compliant |
+| gh wrapper library shipped as thin affordance (issue #29)      | plugins/github-bug-capture/scripts/gh-bug.sh | - | compliant |
+| Actions IssueOps templates shipped (issue #30)                 | plugins/github-bug-capture/workflows/ | - | compliant |
+| No duplicated business logic between core and affordances      | - | - | compliant |
+
+**Summary:** Accepted by the maintainer. Implementation verified before
+acceptance: the core passes the marketplace's full quality gates (typecheck,
+lint, coverage above the 90% thresholds, committed dist freshness), the gh
+wrapper library carries no retry/pacing/business logic beyond argument
+shaping and label/MIF conventions, and independent reviews of the delivering
+PRs confirmed zero business-logic duplication between the server and the
+affordances.
+
+**Action Required:** None; this decision is in force.
 
 [adr-0002]: adr-0002-pr-issue-linkage-ownership.md
 [blueprint]: https://github.com/modeled-information-format/gdlc/issues/43

@@ -25,6 +25,17 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "matcher": "^mcp__github-sdlc-planning__(add_sub_issue|update_issue)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/set-in-progress.mjs"],
+            "timeout": 15
+          }
+        ]
       }
     ],
     "PreToolUse": [

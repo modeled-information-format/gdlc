@@ -31468,14 +31468,35 @@ var ADD_ITEM_MUTATION = `
     }
   }
 `;
+var ISSUE_PROJECT_ITEMS_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) {
+        projectItems(first: 100) {
+          nodes { id project { id } }
+        }
+      }
+    }
+  }
+`;
 async function addItemToProject(input, deps = {}) {
   await assertProjectScope(deps.fetchImpl);
   const [contentId, projectId] = await Promise.all([
     resolveIssueNodeId(input.owner, input.repo, input.issueNumber, deps),
     resolveProjectNodeId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? "organization", deps)
   ]);
+  const itemsData = await githubGraphQL(
+    ISSUE_PROJECT_ITEMS_QUERY,
+    { owner: input.owner, repo: input.repo, number: input.issueNumber },
+    {},
+    deps
+  );
+  const existingItem = (itemsData.repository?.issue?.projectItems?.nodes ?? []).find((n) => n.project.id === projectId);
+  if (existingItem) {
+    return { itemId: existingItem.id, existed: true };
+  }
   const data = await githubGraphQL(ADD_ITEM_MUTATION, { projectId, contentId }, {}, deps);
-  return { itemId: data.addProjectV2ItemById.item.id };
+  return { itemId: data.addProjectV2ItemById.item.id, existed: false };
 }
 var UPDATE_FIELD_VALUE_MUTATION = `
   mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: ProjectV2FieldValue!) {
@@ -31786,7 +31807,7 @@ server.registerTool(
   "add_item_to_project",
   {
     title: "Add item to project",
-    description: "Add an issue to a Projects v2 board via addProjectV2ItemById, resolving node IDs first.",
+    description: "Add an issue to a Projects v2 board via addProjectV2ItemById, resolving node IDs first. Idempotent: if the issue already has an item on the target project (e.g. added by a native auto-add workflow), returns that item with existed: true instead of creating a duplicate.",
     inputSchema: {
       owner: external_exports.string(),
       repo: external_exports.string(),

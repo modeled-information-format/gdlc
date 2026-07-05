@@ -135,7 +135,9 @@ provisioning steps.
 ## Pack toggles (epic #38)
 
 Layer 2 packs are configured per project in
-`.claude/github-bug-capture.local.md` (YAML frontmatter, gitignored). Every
+`.claude/github-bug-capture.local.md` (YAML frontmatter; keep it out of
+version control via the consuming project's .gitignore or
+.git/info/exclude, since it is per-project, per-user state). Every
 pack defaults to **off**; the core works with all packs disabled. See
 [docs/pack-toggles.md](docs/pack-toggles.md) for the file format and the
 `packs:` key semantics — this section says what each pack concretely does.

@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- ADRs 0001-0003 moved from proposed to accepted, each with a compliance
+  audit entry recording what shipped. ADR-0003's two decision items are
+  implemented in `github-sdlc-planning`: `add_item_to_project` is now
+  idempotent (it checks for an existing item on the target project before
+  mutating, returning `{ itemId, existed: true }` instead of creating a
+  duplicate), and a new `set-in-progress` `PostToolUse` hook moves a
+  Todo-or-unset board item to In Progress when work starts against it (on
+  `add_sub_issue`/`update_issue`, gated on a per-project
+  `.claude/github-sdlc-planning.local.md` settings file). See
+  `plugins/github-sdlc-planning/README.md`'s Hooks section and
+  `docs/decisions/adr-0003-board-status-hygiene.md`.
 - `github-pull-requests`: full PR lifecycle control, closing a gap between
   the plugin's originally-scoped "near-term #1" framing (review-routing +
   link-visibility) and its actual chief requirement (create, classify, and

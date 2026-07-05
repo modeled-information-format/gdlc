@@ -14,7 +14,7 @@ tags:
   - bug-capture
   - pull-requests
   - plugin-composition
-status: proposed
+status: accepted
 created: 2026-07-05
 updated: 2026-07-05
 author: MIF Maintainers
@@ -35,7 +35,7 @@ related:
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -275,6 +275,27 @@ until the status moves to accepted.
 
 **Action Required:** Maintainer review; on acceptance, issues #37, #40, and
 #46 implement against this boundary.
+
+### 2026-07-05
+
+**Status:** Compliant
+
+**Findings:**
+
+| Finding                                                          | Files | Lines | Assessment |
+| ---------------------------------------------------------------- | ----- | ----- | ---------- |
+| Manifest declares the same-marketplace edge (issue #46)           | plugins/github-bug-capture/.claude-plugin/plugin.json | - | compliant |
+| Zero linkage GraphQL inside github-bug-capture (issues #37, #40)  | plugins/github-bug-capture/mcp-server/src/ | - | compliant |
+| Composition contract proven by live check (issue #48)             | plugins/github-bug-capture/mcp-server/scripts/verify-live-composition.ts | - | compliant |
+
+**Summary:** Accepted by the maintainer. Implementation verified before
+acceptance: the boundary held through every delivering PR's independent
+review, the composition verify-live script asserts that
+`get_linked_issues`/`sync_linked_issues_project_field` live only in
+`github-pull-requests`, and the triage-skill-pack shipped without a
+`link-pr-to-bug` skill, documenting the consumed tools instead.
+
+**Action Required:** None; this decision is in force.
 
 [adr-0001]: adr-0001-bug-capture-layer1-core.md
 [pr-plugin]: ../../plugins/github-pull-requests/README.md
