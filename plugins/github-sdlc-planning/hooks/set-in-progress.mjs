@@ -81,4 +81,7 @@ async function main() {
   }
 }
 
-main();
+// Top-level catch: nothing before main's inner try can throw today, but a
+// hook must never break the tool call it observes, so the fail-closed
+// contract is enforced here too rather than assumed of future edits.
+main().catch(() => emitEmpty());
