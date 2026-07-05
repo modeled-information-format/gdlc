@@ -23,10 +23,10 @@ File **$ARGUMENTS** as a bug issue.
    the diagnostic (if this was triggered by the hooks-pack, the captured
    excerpt goes verbatim into the body).
 
-3. **Check for duplicates first** (this is the dedup-check skill's job — call
-   it directly rather than re-implementing the search): use
-   `search_similar_issues` with `{ owner, repo, query: <a few keywords from
-   the title> }`. If candidates come back, show them to the user (number,
+3. **Check for duplicates first** (the same underlying search the dedup-check
+   skill uses, not re-implemented here): call `search_similar_issues` with
+   `{ owner, repo, query: <a few keywords from the title> }`. If candidates
+   come back, show them to the user (number,
    title, state, URL) and ask whether to proceed with a new issue anyway, or
    stop here so the user can comment on/reopen an existing one instead. Do
    not file a new issue without this check.

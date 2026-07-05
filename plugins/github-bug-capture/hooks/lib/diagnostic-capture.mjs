@@ -8,19 +8,23 @@
  * language-agnostic markers a failure leaves behind. Dependency-free, same
  * spirit as hooks/lib/settings.mjs, so hooks can run it with bare `node`.
  */
-import { readFileSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
 
 /** Ordered so the first match wins when several signatures could apply.
- * Anchored to line start (allowing leading whitespace, and Go's `--- `
- * prefix for test-failure) rather than matching anywhere in the text: a
- * real test-runner/compiler/linter marker starts its own line, whereas
- * mid-sentence prose ("this suite does not FAIL under normal conditions")
- * does not. generic-error is the least precise signature by design --
- * plain "Error:" at line start still has real false-positive potential
- * against --help-style text formatted one option per line -- accepted as
- * a low-cost tradeoff since this hook only injects informational context
- * for an opt-in, default-off pack; it never files an issue or mutates
- * anything on its own. */
+ * test-failure, lint-error, and generic-error are anchored to line start
+ * (allowing leading whitespace, and Go's `--- ` prefix for test-failure):
+ * a real test-runner/linter marker, or a bare stderr-style "Error:" line,
+ * starts its own line, whereas mid-sentence prose ("this suite does not
+ * FAIL under normal conditions") does not. typescript-error and
+ * nonzero-exit are deliberately NOT line-anchored, because their real
+ * shape is itself mid-line ("src/index.ts(10,5): error TS2322: ...",
+ * "Command failed with exit code 1"); anchoring those would miss the
+ * common case entirely. generic-error is the least precise signature by
+ * design even with the anchor: plain "Error:" at line start still has real
+ * false-positive potential against --help-style text formatted one option
+ * per line, accepted as a low-cost tradeoff since this hook only injects
+ * informational context for an opt-in, default-off pack; it never files an
+ * issue or mutates anything on its own. */
 export const FAILURE_SIGNATURES = [
   { name: 'test-failure', pattern: /^\s*(?:---\s*)?FAIL\b/m },
   { name: 'typescript-error', pattern: /error TS\d+:/ },
@@ -62,17 +66,35 @@ export function extractOutputText(toolOutput) {
 }
 
 /** Read the tail of a file (a session transcript, in practice) and run the
- * same signature scan over it. Missing/unreadable files are a clean no-op,
- * matching isPackEnabled's fail-closed style. */
+ * same signature scan over it. Seeks and reads only the last `tailBytes`
+ * bytes rather than loading the whole file, since a session transcript can
+ * be arbitrarily large and only the tail is ever inspected. A multi-byte
+ * UTF-8 character split at the read boundary can mangle the first
+ * character or two of the tail; acceptable for a best-effort scan (same
+ * "informational only" tradeoff as generic-error's precision). Missing/
+ * unreadable files are a clean no-op, matching isPackEnabled's
+ * fail-closed style. */
 export function detectFailureInFile(path, tailBytes = 20000) {
-  let text;
+  let fd;
   try {
-    text = readFileSync(path, 'utf8');
+    fd = openSync(path, 'r');
+    const size = fstatSync(fd).size;
+    const length = Math.min(size, tailBytes);
+    const position = Math.max(0, size - tailBytes);
+    const buffer = Buffer.alloc(length);
+    readSync(fd, buffer, 0, length, position);
+    return detectFailure(buffer.toString('utf8'));
   } catch {
     return { detected: false };
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        // already closed or never opened; nothing to clean up
+      }
+    }
   }
-  const tail = text.length > tailBytes ? text.slice(text.length - tailBytes) : text;
-  return detectFailure(tail);
 }
 
 export function buildAdditionalContext(detection) {

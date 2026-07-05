@@ -11,16 +11,6 @@ engine:
   id: copilot
   model: claude-sonnet-5
 
-pre-steps:
-  - name: Mint the "issues" App installation token
-    id: issues_token
-    uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-    with:
-      client-id: ${{ vars.ISSUES_CLIENT_APP_ID }}
-      private-key: ${{ secrets.ISSUES_CLIENT_APP_PRIVATE_KEY }}
-      owner: modeled-information-format
-      repositories: gdlc
-
 tools:
   github:
     toolsets: [context, issues]

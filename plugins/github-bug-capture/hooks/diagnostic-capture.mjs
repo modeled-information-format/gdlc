@@ -25,8 +25,17 @@ function emitContext(hookEventName, text) {
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext: text } }));
 }
 
+const KNOWN_MODES = new Set(['post-tool-use', 'stop']);
+
 function main() {
   const mode = process.argv[2];
+  if (!KNOWN_MODES.has(mode)) {
+    // Unrecognized invocation (missing/typo'd argv, hooks.json misconfigured
+    // elsewhere): a safe no-op rather than silently treating it as
+    // post-tool-use.
+    emitEmpty();
+    return;
+  }
   const input = readStdin();
   const cwd = input.cwd ?? process.cwd();
 
