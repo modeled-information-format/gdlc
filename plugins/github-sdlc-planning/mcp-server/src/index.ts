@@ -12,7 +12,7 @@ import { getSessionContext, getAgentCapabilities } from './tools/session.js';
 import { formatMifIssueBody, parseMifIssueBody, MIF_ISSUE_TYPES, type MifIssueType } from './mif.js';
 import { isPlanningError } from './errors.js';
 
-const server = new McpServer({ name: 'github-sdlc-planning', version: '0.1.0' });
+const server = new McpServer({ name: 'github-sdlc-planning', version: '0.2.0' });
 
 function toolResult(data: unknown): { content: Array<{ type: 'text'; text: string }> } {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };

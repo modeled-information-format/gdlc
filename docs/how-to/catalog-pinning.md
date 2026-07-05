@@ -9,14 +9,14 @@ diataxis_type: how-to
 ---
 # How the marketplace catalog gets pinned to a release
 
-Both plugins listed in `.claude-plugin/marketplace.json` — `github-sdlc-planning`
-and `github-pull-requests` — reside *inside* this same repository, and their
-entries point back at it: a `git-subdir` source with `url:
+The vendored plugins listed in `.claude-plugin/marketplace.json` reside
+*inside* this same repository, and their entries point back at it: a
+`git-subdir` source with `url:
 https://github.com/modeled-information-format/gdlc.git`. A vendored,
 self-hosted catalog entry gets the same discipline an external SHA-pinned
 entry gets — see [add-a-plugin.md](add-a-plugin.md) and
 [../explanation/attested-marketplace.md](../explanation/attested-marketplace.md).
-Every release must re-pin both entries to the released commit's exact SHA.
+Every release must re-pin every vendored entry to the released commit's exact SHA.
 This re-pin is *triggered by* the release (via `pin-catalog`, no separate
 manual step required for a routine release) — but it lands in a follow-up
 commit on `main` merged *after* `publish` finishes, so a given release vN's
@@ -27,6 +27,16 @@ not vN's own commit — a commit cannot contain its own hash. Fetch
 need the pin that actually reflects the release you just verified. This
 document is the runbook for both the automated path and the manual fallback.
 
+## Before tagging: bump the plugin manifests
+
+`pin-catalog` stamps every self-referential catalog entry's `version` from
+the release tag, but it never touches `plugins/*/.claude-plugin/plugin.json`
+— bumping those to the tag version is a manual pre-tag step. Two gates
+enforce it (issue #49): the release workflow's *"Vendored plugin manifests
+must match the release version"* step fails the release before anything
+publishes, and `catalog-admission`'s version-sync check blocks any PR whose
+catalog and manifest versions disagree.
+
 ## What happens automatically
 
 `.github/workflows/release.yml`'s `pin-catalog` job runs after `publish`
@@ -36,9 +46,9 @@ succeeds, on every tag push (`v*.*.*`), never on `workflow_dispatch` dry-runs:
    App (`CATALOG_CLIENT_APP_ID` / `CATALOG_CLIENT_APP_PRIVATE_KEY` — see
    [Why an App, not a PAT](#why-an-app-not-a-pat) below) and checks out `main`
    with it.
-2. Rewrites both plugin entries' `source.ref`/`source.sha` (and their
+2. Rewrites every vendored entry's `source.ref`/`source.sha` (and its
    `version` field) to the just-published tag/commit, in **one** commit —
-   both entries always move together, since they ship from the same repo
+   the entries always move together, since they ship from the same repo
    tarball. If the catalog is already pinned to that tag/sha, it exits
    without committing anything — idempotent if the job (or the whole release)
    is ever re-run.
@@ -155,9 +165,9 @@ or `CATALOG_CLIENT_APP_ID`/`CATALOG_CLIENT_APP_PRIVATE_KEY` org secrets
 rotated/revoked) — check `auth/apps.json` in the `.github` repo and the org's
 Actions secrets/variables, not a per-repo credential.
 
-## Why this only applies to the two vendored entries
+## Why this only applies to the vendored entries
 
-Both entries are matched generically — any `plugins[]` entry whose `source`
+Vendored entries are matched generically — any `plugins[]` entry whose `source`
 is already an object with `source.source == "git-subdir"` **and** whose
 `source.url` points back at this repo (`https://github.com/modeled-information-format/gdlc.git`)
 gets its `ref`/`sha`/`version` rewritten to this release's tag/commit. A

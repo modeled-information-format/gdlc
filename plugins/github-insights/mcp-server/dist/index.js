@@ -31115,7 +31115,7 @@ async function getDependencyGraphSbom(input, deps = {}) {
 }
 
 // src/index.ts
-var server = new McpServer({ name: "github-insights", version: "0.1.0" });
+var server = new McpServer({ name: "github-insights", version: "0.2.0" });
 function toolResult(data) {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }

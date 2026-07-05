@@ -52,6 +52,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- All six vendored plugin manifests, `mcp-server/package.json` files, and
+  server version strings were synced to `0.2.0` to match the catalog, which
+  the `v0.2.0` release had already advertised without the manifests
+  following (#49). Two fail-closed gates now hold this invariant going
+  forward: `catalog-admission` rejects a PR where a self-referential
+  catalog entry's version disagrees with its manifest, and the release
+  workflow refuses to publish a tag whose vendored manifests are not
+  already bumped to the tag version.
 - Corrected the `[0.1.0]` entry below: it claimed "workflow-scaffolding-as-code
   templates (add-to-project.yml, IssueOps board-command.yml), and an adaptive
   board-health gh-aw scaffold" shipped alongside `github-sdlc-planning`. None
