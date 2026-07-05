@@ -24,7 +24,14 @@ describe('resolveToken', () => {
     const execImpl = vi.fn().mockImplementation(() => {
       throw new Error('gh: command not found');
     });
-    expect(() => resolveToken(execImpl)).toThrowError(BugCaptureError);
+    let thrown: unknown;
+    try {
+      resolveToken(execImpl);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(BugCaptureError);
+    expect((thrown as BugCaptureError).code).toBe('missing_scope');
   });
 });
 

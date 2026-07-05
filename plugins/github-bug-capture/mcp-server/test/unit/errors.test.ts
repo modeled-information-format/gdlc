@@ -14,7 +14,7 @@ describe('BugCaptureError', () => {
 });
 
 describe('isBugCaptureError', () => {
-  it('returns true for an BugCaptureError instance', () => {
+  it('returns true for a BugCaptureError instance', () => {
     expect(isBugCaptureError(new BugCaptureError('missing_scope', 'no token'))).toBe(true);
   });
 
