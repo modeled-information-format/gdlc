@@ -132,13 +132,60 @@ runtime — see [docs/org-provisioning.md](docs/org-provisioning.md) for the
 verified current state, detection commands, and the manual (org-owner-only)
 provisioning steps.
 
-## Pack toggles
+## Pack toggles (epic #38)
 
 Layer 2 packs are configured per project in
 `.claude/github-bug-capture.local.md` (YAML frontmatter, gitignored). Every
 pack defaults to **off**; the core works with all packs disabled. See
-[docs/pack-toggles.md](docs/pack-toggles.md) for the file format and per-pack
-semantics.
+[docs/pack-toggles.md](docs/pack-toggles.md) for the file format and the
+`packs:` key semantics — this section says what each pack concretely does.
+
+**`hooks` — diagnostic capture ([#39](https://github.com/modeled-information-format/gdlc/issues/39)).**
+[`hooks/hooks.json`](hooks/hooks.json) registers a `PostToolUse` hook
+(matching `Bash`) and a `Stop` hook, both running
+[`hooks/diagnostic-capture.mjs`](hooks/diagnostic-capture.mjs). They scan
+tool output (and, for `Stop`, the tail of the session transcript) for common
+test/lint/build failure signatures — `FAIL`, `error TS\d+:`, an eslint
+`line:col error` marker, a non-zero exit-code mention, or a generic
+`Error:` line. On a match, the hook injects `additionalContext` pointing the
+agent at the `file-bug` skill with the captured excerpt; it never calls an
+MCP tool itself. Disabled (the default), or when no signature matches, both
+hooks are a silent no-op.
+
+**`triage-skills` — file-bug / triage / dedup-check ([#40](https://github.com/modeled-information-format/gdlc/issues/40)).**
+Three skills, each checking the pack toggle before acting and explaining
+(never erroring) when it is off:
+
+- [`skills/file-bug`](skills/file-bug/SKILL.md) — dedup-checks a draft bug
+  first, infers a severity, files it via `github-sdlc-planning`'s
+  `create_issue` (per [ADR-0002](../../docs/decisions/adr-0002-pr-issue-linkage-ownership.md),
+  this plugin composes rather than reimplements issue creation), then
+  applies the severity via this plugin's own `set_severity`/`ensure_severity_field`.
+- [`skills/triage`](skills/triage/SKILL.md) — reads an existing issue,
+  suggests (and, on confirmation, applies) a severity to both its label and
+  the triage board.
+- [`skills/dedup-check`](skills/dedup-check/SKILL.md) — reports candidate
+  duplicates for a draft title/body via `search_similar_issues`, without
+  filing or closing anything itself.
+
+**`mcp-integration` — always-on by construction ([#41](https://github.com/modeled-information-format/gdlc/issues/41)).**
+Per [ADR-0001](../../docs/decisions/adr-0001-bug-capture-layer1-core.md),
+Layer 1 already **is** an MCP server, so the blueprint's opt-in
+mcp-integration pack has nothing left to bolt on here — this toggle is
+documentation-only. See
+[docs/mcp-integration-pack.md](docs/mcp-integration-pack.md) for the full
+reasoning.
+
+**`gh-aw` — batch triage, technical preview ([#42](https://github.com/modeled-information-format/gdlc/issues/42)).**
+[`workflows-gh-aw/bug-triage-batch.md`](workflows-gh-aw/bug-triage-batch.md)
+is a [GitHub Agentic Workflows](https://github.com/github/gh-aw) template
+(compiled with `gh aw compile`/validated with `gh aw validate`, both real
+`gh aw` CLI commands — not a hand-authored `.lock.yml`) that batch-triages
+open `bug`-labeled issues for duplicates and severity. It ships disabled and
+outside this repo's own `.github/workflows/`, same convention as the Actions
+IssueOps templates in [`workflows/`](workflows/README.md) — see
+[workflows-gh-aw/README.md](workflows-gh-aw/README.md) for the technical-preview
+notice and installation steps.
 
 ## Development
 

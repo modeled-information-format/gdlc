@@ -34,7 +34,7 @@ Notes for humans go here; only the frontmatter is machine-read.
 
 | Key | Pack | Effect when `true` |
 | --- | --- | --- |
-| `hooks` | hooks-pack | PostToolUse/PostToolUseFailure/Stop diagnostic capture may file issues. |
+| `hooks` | hooks-pack | PostToolUse (Bash) and Stop hooks scan for failure signatures and inject informational context pointing at file-bug; they never file an issue themselves. |
 | `triage-skills` | triage-skill-pack | `file-bug`, `triage`, `dedup-check` skills act; otherwise they explain how to enable. |
 | `mcp-integration` | mcp-integration-pack | The bundled GitHub-MCP wiring is treated as active documentation. |
 | `gh-aw` | gh-aw-pack | gh-aw batch workflows may be installed/compiled. Technical preview — read the pack docs first. |
