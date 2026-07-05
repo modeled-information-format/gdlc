@@ -10,13 +10,23 @@
  */
 import { readFileSync } from 'node:fs';
 
-/** Ordered so the first match wins when several signatures could apply. */
+/** Ordered so the first match wins when several signatures could apply.
+ * Anchored to line start (allowing leading whitespace, and Go's `--- `
+ * prefix for test-failure) rather than matching anywhere in the text: a
+ * real test-runner/compiler/linter marker starts its own line, whereas
+ * mid-sentence prose ("this suite does not FAIL under normal conditions")
+ * does not. generic-error is the least precise signature by design --
+ * plain "Error:" at line start still has real false-positive potential
+ * against --help-style text formatted one option per line -- accepted as
+ * a low-cost tradeoff since this hook only injects informational context
+ * for an opt-in, default-off pack; it never files an issue or mutates
+ * anything on its own. */
 export const FAILURE_SIGNATURES = [
-  { name: 'test-failure', pattern: /(?:^|\s)FAIL(?:\s|$)/m },
+  { name: 'test-failure', pattern: /^\s*(?:---\s*)?FAIL\b/m },
   { name: 'typescript-error', pattern: /error TS\d+:/ },
   { name: 'lint-error', pattern: /^\s*\d+:\d+\s+error\s/m },
   { name: 'nonzero-exit', pattern: /exit code (?!0\b)\d+/i },
-  { name: 'generic-error', pattern: /\bError:\s/ },
+  { name: 'generic-error', pattern: /^\s*Error:\s/m },
 ];
 
 const EXCERPT_RADIUS = 160;

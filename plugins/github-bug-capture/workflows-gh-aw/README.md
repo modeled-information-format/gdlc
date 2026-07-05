@@ -13,7 +13,7 @@ production-critical workflow this repository runs.
 AI-driven batch triage over open `bug`-labeled issues: it lists them, flags
 likely duplicates via plain keyword matching (mirroring the `dedup-check`
 skill), suggests a severity per issue, and reports through the declared
-`safe-outputs` (`add-labels`, `add-comments`) — nothing else.
+`safe-outputs` (`add-labels`, `add-comment`) — nothing else.
 
 ## Why this lives outside `.github/workflows/`
 

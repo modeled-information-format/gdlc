@@ -60,6 +60,22 @@ describe('detectFailure', () => {
     expect(result.signature).toBe('generic-error');
   });
 
+  it('does not treat "FAIL" appearing mid-sentence as a test failure', () => {
+    expect(detectFailure('This test suite does not FAIL under normal conditions')).toEqual({ detected: false });
+  });
+
+  it('accepts the known generic-error tradeoff: line-start "Error:" in help-style text still triggers', () => {
+    // Documents a deliberate, accepted limitation (see FAILURE_SIGNATURES'
+    // doc comment): a language-agnostic, dependency-free heuristic cannot
+    // distinguish a real stderr error line from --help text that happens
+    // to format an option description starting with "Error:" on its own
+    // line. Anchoring to line start (this diff) already rejects the
+    // mid-sentence case; this residual case is accepted, not a bug.
+    const result = detectFailure('Usage: mytool [options]\nError: handling mode configures failure behavior');
+    expect(result.detected).toBe(true);
+    expect(result.signature).toBe('generic-error');
+  });
+
   it('returns a bounded excerpt around the match, not the whole input', () => {
     const noise = 'x'.repeat(1000);
     const result = detectFailure(`${noise}\nError: boom\n${noise}`);
