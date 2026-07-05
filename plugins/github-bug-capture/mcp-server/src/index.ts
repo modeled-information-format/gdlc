@@ -8,7 +8,7 @@ import { isBugCaptureError } from './errors.js';
 import { ensureSeverityField, setSeverity, SEVERITY_LEVELS } from './tools/triage-board.js';
 import { getLifecycleState, setLifecycleState, searchSimilarIssues, closeAsDuplicate } from './tools/lifecycle.js';
 
-const server = new McpServer({ name: 'github-bug-capture', version: '0.1.0' });
+const server = new McpServer({ name: 'github-bug-capture', version: '0.3.0' });
 
 function toolResult(data: unknown): { content: Array<{ type: 'text'; text: string }> } {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };

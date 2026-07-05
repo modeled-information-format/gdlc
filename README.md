@@ -106,6 +106,12 @@ resolved dependency. `github-pull-requests@github-sdlc-plugins` reads as
 *plugin `github-pull-requests` from the `github-sdlc-plugins` marketplace* —
 the marketplace name, not the repo name.
 
+Then follow the usage how-tos:
+[plan and track work](docs/how-to/plan-work-with-the-plugins.md) (issues,
+sub-issues, boards, milestones, PRs, linkage) and
+[capture and triage bugs](docs/how-to/use-bug-capture.md) (severity,
+dedup, lifecycle, hooks and skills).
+
 Before trusting a release, verify it yourself: see [SECURITY.md](SECURITY.md)
 and [docs/security/verify.md](docs/security/verify.md).
 
