@@ -30,6 +30,10 @@ function main(): void {
   const caps = getAgentCapabilities();
   assert(caps.plugin === 'github-bug-capture', 'identifies itself as github-bug-capture');
   assert(caps.tools.includes('get_agent_capabilities'), 'advertises its own feature-detection tool');
+  assert(
+    caps.tools.includes('ensure_severity_field') && caps.tools.includes('set_severity'),
+    'advertises the Layer 1 triage-board tools',
+  );
   assert(caps.mifConformance === 'L1', 'declares MIF L1 conformance');
   assert(
     caps.composesWith.includes('github-pull-requests') && caps.composesWith.includes('github-sdlc-planning'),

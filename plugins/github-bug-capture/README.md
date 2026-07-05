@@ -49,10 +49,46 @@ which transitively brings in `github-sdlc-planning`.
 | Tool | Purpose |
 | --- | --- |
 | `get_agent_capabilities` | Feature detection: tool surface, MIF conformance level, composition boundary. |
+| `ensure_severity_field` | Ensure the triage board has a `Severity` single-select field (Critical/High/Medium/Low), creating it if absent. Idempotent. |
+| `set_severity` | Set an issue's `Severity` value on the triage board; typed errors when the issue is not on the board or the field/option is missing. |
 
-The Layer 1 core tools (bug filing, severity, dedup) land with epic #28; the
-lifecycle tools with epic #33. `get_agent_capabilities().tools` is always the
+The remaining Layer 1 core tools (bug filing, dedup) and the lifecycle tools
+land with epic #33. `get_agent_capabilities().tools` is always the
 authoritative list.
+
+## gh CLI affordance
+
+[`scripts/gh-bug.sh`](scripts/gh-bug.sh) is the agent-neutral shell surface
+of Layer 1 (ADR-0001): a bash function library over `gh issue ...` that any
+operator or CI job can drive with no MCP runtime present. It applies the
+plugin's conventions — the `bug` label plus exactly one
+`severity:<critical|high|medium|low>` label, and the MIF L1 comment block
+(`mif-id` / `mif-type: Bug` / `mif-ns`) prepended to created bodies — and
+passes `--repo`, `--json`, and every unrecognized flag through to `gh`
+unchanged.
+
+```bash
+source scripts/gh-bug.sh
+
+bug_create --title "Crash on save" --body "steps to reproduce..." \
+  --severity high --ns myproject --id crash-on-save --repo owner/repo
+bug_edit 42 --severity critical --repo owner/repo   # swaps the severity:* label
+bug_close 42 --comment "fixed in #43" --repo owner/repo
+bug_list --severity high --json number,title --repo owner/repo
+```
+
+Deliberately thin (argument shaping only): no retry, pacing, or dedup logic —
+that lives once, in the MCP server. Point bulk or automated operations at the
+MCP tools or at the [Actions IssueOps templates](workflows/README.md), the
+CI-side substrate of the same layer.
+
+## Org provisioning
+
+The org-wide `Bug` issue type and the severity/priority typed issue fields
+(GitHub public preview) are one-time org configuration, not plugin
+runtime — see [docs/org-provisioning.md](docs/org-provisioning.md) for the
+verified current state, detection commands, and the manual (org-owner-only)
+provisioning steps.
 
 ## Pack toggles
 

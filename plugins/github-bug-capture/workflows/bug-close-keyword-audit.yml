@@ -1,0 +1,66 @@
+# Template: copy into a consumer repo's .github/workflows/ to activate.
+# Part of the github-bug-capture plugin's Actions IssueOps library — the
+# agent-free automation substrate (ADR-0001). Not an active workflow of the
+# plugin repo itself.
+#
+# On issue close: when the close came from a merged pull request (a close
+# keyword like "Fixes #N"), comments a one-line audit trail naming the
+# closing PR. Close-keyword *reads* stay owned by the github-pull-requests
+# plugin (ADR-0002); this template only annotates the event GitHub already
+# resolved, via the ClosedEvent's closer.
+name: Bug close-keyword audit
+
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  issues: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const result = await github.graphql(
+              `query($owner: String!, $repo: String!, $number: Int!) {
+                repository(owner: $owner, name: $repo) {
+                  issue(number: $number) {
+                    timelineItems(last: 5, itemTypes: [CLOSED_EVENT]) {
+                      nodes {
+                        ... on ClosedEvent {
+                          closer {
+                            __typename
+                            ... on PullRequest { number }
+                            ... on Commit {
+                              associatedPullRequests(first: 1) { nodes { number } }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }`,
+              { owner: context.repo.owner, repo: context.repo.repo, number: issue.number },
+            );
+
+            const events = result.repository?.issue?.timelineItems?.nodes ?? [];
+            const closer = events.length > 0 ? events[events.length - 1].closer : null;
+            let prNumber = null;
+            if (closer?.__typename === 'PullRequest') {
+              prNumber = closer.number;
+            } else if (closer?.__typename === 'Commit') {
+              prNumber = closer.associatedPullRequests?.nodes?.[0]?.number ?? null;
+            }
+
+            if (prNumber !== null) {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: issue.number,
+                body: `Audit trail: closed by merged pull request #${prNumber}.`,
+              });
+            }

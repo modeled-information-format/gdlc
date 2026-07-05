@@ -9,6 +9,8 @@ describe('getAgentCapabilities', () => {
   it('lists every registered tool exactly once', () => {
     const { tools } = getAgentCapabilities();
     expect(tools).toContain('get_agent_capabilities');
+    expect(tools).toContain('ensure_severity_field');
+    expect(tools).toContain('set_severity');
     expect(new Set(tools).size).toBe(tools.length);
   });
 

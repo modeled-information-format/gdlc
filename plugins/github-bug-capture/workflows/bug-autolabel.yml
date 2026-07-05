@@ -1,0 +1,65 @@
+# Template: copy into a consumer repo's .github/workflows/ to activate.
+# Part of the github-bug-capture plugin's Actions IssueOps library — the
+# agent-free automation substrate (ADR-0001). Not an active workflow of the
+# plugin repo itself.
+#
+# On issue open/edit: parses the body for a "Severity: <level>" line or a
+# checked severity checkbox and applies the matching severity:* label
+# (removing any stale severity:* label), plus a "bug" label when the MIF L1
+# comment block declares mif-type: Bug.
+name: Bug auto-label
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  autolabel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body ?? '';
+            const levels = ['critical', 'high', 'medium', 'low'];
+
+            // "Severity: <level>" line, or a checked checkbox naming a level
+            // (issue-form / template style: "- [x] High").
+            let level = null;
+            const line = body.match(/^\s*Severity:\s*(critical|high|medium|low)\b/im);
+            if (line) level = line[1].toLowerCase();
+            if (!level) {
+              const checkbox = body.match(/^\s*-\s*\[[xX]\]\s*(Critical|High|Medium|Low)\b/m);
+              if (checkbox) level = checkbox[1].toLowerCase();
+            }
+
+            const toAdd = [];
+            if (level) toAdd.push(`severity:${level}`);
+            if (/^<!-- mif-type: Bug -->$/m.test(body)) toAdd.push('bug');
+
+            const current = issue.labels.map((l) => (typeof l === 'string' ? l : l.name));
+            if (level) {
+              // Convention: exactly one severity:* label per issue.
+              for (const stale of levels.map((v) => `severity:${v}`)) {
+                if (stale !== `severity:${level}` && current.includes(stale)) {
+                  await github.rest.issues.removeLabel({
+                    ...context.repo,
+                    issue_number: issue.number,
+                    name: stale,
+                  });
+                }
+              }
+            }
+
+            const missing = toAdd.filter((l) => !current.includes(l));
+            if (missing.length > 0) {
+              await github.rest.issues.addLabels({
+                ...context.repo,
+                issue_number: issue.number,
+                labels: missing,
+              });
+            }

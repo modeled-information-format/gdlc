@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { z } from 'zod';
 
 import { getAgentCapabilities } from './capabilities.js';
 import { isBugCaptureError } from './errors.js';
+import { ensureSeverityField, setSeverity, SEVERITY_LEVELS } from './tools/triage-board.js';
 
 const server = new McpServer({ name: 'github-bug-capture', version: '0.1.0' });
 
@@ -38,6 +40,42 @@ server.registerTool(
     inputSchema: {},
   },
   wrap(() => getAgentCapabilities()),
+);
+
+const projectOwnerTypeSchema = z.enum(['organization', 'user']);
+
+server.registerTool(
+  'ensure_severity_field',
+  {
+    title: 'Ensure Severity field',
+    description:
+      'Ensure the triage board (a Projects v2 board) has a "Severity" single-select field with options Critical/High/Medium/Low, creating it if absent. Idempotent: an existing field is returned with its option IDs without mutating.',
+    inputSchema: {
+      projectOwnerLogin: z.string(),
+      projectNumber: z.number().int(),
+      projectOwnerType: projectOwnerTypeSchema.optional(),
+    },
+  },
+  wrap(ensureSeverityField),
+);
+
+server.registerTool(
+  'set_severity',
+  {
+    title: 'Set severity',
+    description:
+      "Set an issue's Severity single-select value on the triage board. Fails with a typed error if the issue is not on the board or the Severity field/option is missing.",
+    inputSchema: {
+      owner: z.string(),
+      repo: z.string(),
+      issueNumber: z.number().int(),
+      projectOwnerLogin: z.string(),
+      projectNumber: z.number().int(),
+      projectOwnerType: projectOwnerTypeSchema.optional(),
+      severity: z.enum(SEVERITY_LEVELS),
+    },
+  },
+  wrap(setSeverity),
 );
 
 async function main(): Promise<void> {

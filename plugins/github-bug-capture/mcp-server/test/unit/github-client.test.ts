@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '../setup.js';
-import { mockRest } from '../helpers.js';
-import { githubGet, resolveToken, resetAuthCacheForTests } from '../../src/github-client.js';
+import { mockRest, mockGraphQL } from '../helpers.js';
+import { githubGet, githubGraphQL, resolveToken, resetAuthCacheForTests } from '../../src/github-client.js';
 import { BugCaptureError } from '../../src/errors.js';
 
 describe('resolveToken', () => {
@@ -189,5 +189,107 @@ describe('githubGet', () => {
     );
     const data = await githubGet('/repos/acme/widgets/stats/contributors');
     expect(data).toEqual([]);
+  });
+});
+
+describe('githubGraphQL', () => {
+  it('returns the data payload of a successful response', async () => {
+    mockGraphQL((body) => {
+      expect(body.variables).toEqual({ login: 'acme' });
+      return { organization: { id: 'O_1' } };
+    });
+    const data = await githubGraphQL('query($login: String!) { organization(login: $login) { id } }', { login: 'acme' });
+    expect(data).toEqual({ organization: { id: 'O_1' } });
+  });
+
+  it('wraps a GraphQL error array in github_api_error with the messages preserved', async () => {
+    mockGraphQL(() => ({ __errors: [{ message: 'Field not found' }, { message: 'Something else' }] }));
+    await expect(githubGraphQL('query { viewer { login } }')).rejects.toMatchObject({
+      code: 'github_api_error',
+      message: expect.stringContaining('Field not found'),
+    });
+  });
+
+  it('rejects a response with neither data nor errors', async () => {
+    server.use(http.post('https://api.github.com/graphql', () => HttpResponse.json({})));
+    await expect(githubGraphQL('query { viewer { login } }')).rejects.toMatchObject({
+      code: 'github_api_error',
+      message: expect.stringContaining('no data and no errors'),
+    });
+  });
+
+  it('retries after a rate-limit response like the REST path does', async () => {
+    let calls = 0;
+    server.use(
+      http.post('https://api.github.com/graphql', () => {
+        calls += 1;
+        if (calls === 1) return HttpResponse.json({ message: 'limited' }, { status: 429, headers: { 'retry-after': '0' } });
+        return HttpResponse.json({ data: { viewer: { login: 'octocat' } } });
+      }),
+    );
+    const data = await githubGraphQL('query { viewer { login } }', {}, { sleep: () => Promise.resolve() });
+    expect(data).toEqual({ viewer: { login: 'octocat' } });
+    expect(calls).toBe(2);
+  });
+
+  it('paces back-to-back mutations at least MIN_MUTATION_INTERVAL_MS apart', async () => {
+    mockGraphQL(() => ({ ok: true }));
+    const sleeps: number[] = [];
+    const sleep = (ms: number): Promise<void> => {
+      sleeps.push(ms);
+      return Promise.resolve();
+    };
+    await githubGraphQL('mutation { a }', {}, { sleep });
+    await githubGraphQL('mutation { b }', {}, { sleep });
+    // First mutation runs immediately (fresh pacing state); the second must
+    // wait out the remainder of the 1000ms window.
+    expect(sleeps.length).toBe(1);
+    expect(sleeps[0]).toBeGreaterThan(0);
+    expect(sleeps[0]).toBeLessThanOrEqual(1000);
+  });
+
+  it('does not pace queries', async () => {
+    mockGraphQL(() => ({ ok: true }));
+    const sleeps: number[] = [];
+    const sleep = (ms: number): Promise<void> => {
+      sleeps.push(ms);
+      return Promise.resolve();
+    };
+    await githubGraphQL('mutation { a }', {}, { sleep });
+    await githubGraphQL('query { b }', {}, { sleep });
+    await githubGraphQL('query { c }', {}, { sleep });
+    expect(sleeps).toEqual([]);
+  });
+
+  it('detects a mutation behind leading GraphQL comment lines', async () => {
+    mockGraphQL(() => ({ ok: true }));
+    const sleeps: number[] = [];
+    const sleep = (ms: number): Promise<void> => {
+      sleeps.push(ms);
+      return Promise.resolve();
+    };
+    await githubGraphQL('mutation { a }', {}, { sleep });
+    await githubGraphQL('# create the field\nmutation { b }', {}, { sleep });
+    expect(sleeps.length).toBe(1);
+  });
+
+  it('serializes concurrent mutations so the pacing window cannot be raced', async () => {
+    mockGraphQL(() => ({ ok: true }));
+    const sleeps: number[] = [];
+    const sleep = (ms: number): Promise<void> => {
+      sleeps.push(ms);
+      return Promise.resolve();
+    };
+    await Promise.all([
+      githubGraphQL('mutation { a }', {}, { sleep }),
+      githubGraphQL('mutation { b }', {}, { sleep }),
+    ]);
+    expect(sleeps.length).toBe(1);
+  });
+
+  it('uses the real default sleep implementation when no sleep override is given', async () => {
+    mockGraphQL(() => ({ ok: true }));
+    const data = await githubGraphQL('query { viewer { login } }');
+    expect(data).toEqual({ ok: true });
   });
 });
