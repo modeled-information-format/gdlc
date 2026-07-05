@@ -326,3 +326,32 @@ jobs:
             echo "::error::plugins/github-org-identity/mcp-server/dist/ is stale — run 'npm run build' and commit the result."
             exit 1
           fi
+
+  test-bug-capture-mcp-server:
+    name: test (github-bug-capture/mcp-server)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: plugins/github-bug-capture/mcp-server
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up Node (lts/*)
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 'lts/*'
+          cache: npm
+          cache-dependency-path: plugins/github-bug-capture/mcp-server/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run test:coverage
+      - name: Committed dist/ must match a fresh build
+        run: |
+          if ! git diff --exit-code -- dist/; then
+            echo "::error::plugins/github-bug-capture/mcp-server/dist/ is stale — run 'npm run build' and commit the result."
+            exit 1
+          fi

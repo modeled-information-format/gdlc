@@ -163,6 +163,26 @@
         "org-bootstrap",
         "access-audit"
       ]
+    },
+    {
+      "name": "github-bug-capture",
+      "source": "./plugins/github-bug-capture",
+      "description": "Development-time bug capture: diagnostics discovered while code is being written become structured, MIF-conformant, lifecycle-managed GitHub issues. Portable MCP core plus opt-in Claude Code enhancement packs; composes with github-pull-requests and github-sdlc-planning.",
+      "version": "0.1.0",
+      "author": {
+        "name": "modeled-information-format"
+      },
+      "category": "planning",
+      "license": "MIT",
+      "keywords": [
+        "github",
+        "bugs",
+        "bug-capture",
+        "diagnostics",
+        "issues",
+        "triage",
+        "mif"
+      ]
     }
   ]
 }
