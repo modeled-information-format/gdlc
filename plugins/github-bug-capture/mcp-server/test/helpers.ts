@@ -5,3 +5,35 @@ export function mockRest(method: 'get' | 'post' | 'put' | 'patch' | 'delete', pa
   const handler = http[method](`https://api.github.com${path}`, () => HttpResponse.json(body, { status }));
   server.use(handler);
 }
+
+export function mockUserScopes(scopes: string[]): void {
+  server.use(
+    http.get('https://api.github.com/user', () =>
+      HttpResponse.json({ login: 'test-user' }, { headers: { 'x-oauth-scopes': scopes.join(', ') } }),
+    ),
+  );
+}
+
+export interface GraphQLRequestBody {
+  query: string;
+  variables: Record<string, unknown>;
+}
+
+/** Registers a single GraphQL POST handler for the current test. The
+ * supplied resolver inspects the query text / variables of each call (a test
+ * may trigger several GraphQL round-trips) and returns the `data` payload,
+ * or a `{ __errors }` marker to simulate a GraphQL error array. */
+export function mockGraphQL(
+  resolver: (body: GraphQLRequestBody) => unknown | { __errors: Array<{ message: string }> },
+): void {
+  server.use(
+    http.post('https://api.github.com/graphql', async ({ request }) => {
+      const body = (await request.json()) as GraphQLRequestBody;
+      const result = resolver(body);
+      if (result !== null && typeof result === 'object' && '__errors' in result) {
+        return HttpResponse.json({ errors: (result as { __errors: Array<{ message: string }> }).__errors });
+      }
+      return HttpResponse.json({ data: result });
+    }),
+  );
+}

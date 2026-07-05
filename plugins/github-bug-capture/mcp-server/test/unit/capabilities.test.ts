@@ -9,6 +9,12 @@ describe('getAgentCapabilities', () => {
   it('lists every registered tool exactly once', () => {
     const { tools } = getAgentCapabilities();
     expect(tools).toContain('get_agent_capabilities');
+    expect(tools).toContain('ensure_severity_field');
+    expect(tools).toContain('set_severity');
+    expect(tools).toContain('get_lifecycle_state');
+    expect(tools).toContain('set_lifecycle_state');
+    expect(tools).toContain('search_similar_issues');
+    expect(tools).toContain('close_as_duplicate');
     expect(new Set(tools).size).toBe(tools.length);
   });
 
@@ -25,7 +31,7 @@ describe('getAgentCapabilities', () => {
     }
   });
 
-  it('does not claim hook support before the hooks-pack exists', () => {
-    expect(getAgentCapabilities().hooksSupported).toBe(false);
+  it('claims hook support now that the hooks-pack (epic #38) exists', () => {
+    expect(getAgentCapabilities().hooksSupported).toBe(true);
   });
 });

@@ -1,13 +1,22 @@
-export type BugCaptureErrorCode = 'github_api_error' | 'missing_scope';
+export type BugCaptureErrorCode =
+  | 'github_api_error'
+  | 'missing_scope'
+  | 'resolve_project_id'
+  | 'resolve_issue_id'
+  | 'issue_not_on_board'
+  | 'field_type_conflict'
+  | 'missing_field'
+  | 'missing_option';
 
 export interface BugCaptureErrorDetails {
   [key: string]: unknown;
 }
 
 /** Structured tool-call error, matching the error-shape convention the
- * sibling plugins use. The scaffold's tool surface is read-only; write
- * tools arriving with the Layer 1 core (epic #28) extend the code union
- * as they add write guards. */
+ * sibling plugins use. Resolution failures (`resolve_*`) and the triage-board
+ * preconditions (`issue_not_on_board`, `field_type_conflict`,
+ * `missing_field`, `missing_option`) are named so a caller can branch on the
+ * code instead of parsing GitHub's raw error text. */
 export class BugCaptureError extends Error {
   readonly code: BugCaptureErrorCode;
   readonly details: BugCaptureErrorDetails;

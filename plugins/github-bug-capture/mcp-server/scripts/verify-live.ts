@@ -6,9 +6,10 @@
  * At scaffold stage the surface is feature detection only; this script
  * asserts the capabilities contract that sibling plugins and MCP hosts
  * rely on. The Layer 1 core (epic #28) and lifecycle tools (epic #33)
- * extend this script as they extend the surface, and the composition
- * check against github-sdlc-planning / github-pull-requests (issue #48)
- * lands with the full stack.
+ * are both asserted here; Layer 2 pack tools (epic #38) extend this
+ * script as they extend the surface, and the composition check against
+ * github-sdlc-planning / github-pull-requests (issue #48) lands with the
+ * full stack.
  */
 import { getAgentCapabilities } from '../src/capabilities.js';
 
@@ -30,6 +31,16 @@ function main(): void {
   const caps = getAgentCapabilities();
   assert(caps.plugin === 'github-bug-capture', 'identifies itself as github-bug-capture');
   assert(caps.tools.includes('get_agent_capabilities'), 'advertises its own feature-detection tool');
+  assert(
+    caps.tools.includes('ensure_severity_field') && caps.tools.includes('set_severity'),
+    'advertises the Layer 1 triage-board tools',
+  );
+  assert(
+    ['get_lifecycle_state', 'set_lifecycle_state', 'search_similar_issues', 'close_as_duplicate'].every((name) =>
+      caps.tools.includes(name),
+    ),
+    'advertises the epic #33 lifecycle tools',
+  );
   assert(caps.mifConformance === 'L1', 'declares MIF L1 conformance');
   assert(
     caps.composesWith.includes('github-pull-requests') && caps.composesWith.includes('github-sdlc-planning'),

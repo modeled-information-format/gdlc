@@ -2,22 +2,22 @@ import { execFileSync } from 'node:child_process';
 import { BugCaptureError } from './errors.js';
 
 const GITHUB_API = 'https://api.github.com';
+const GITHUB_GRAPHQL = 'https://api.github.com/graphql';
 const API_VERSION = '2022-11-28';
 const MAX_RATE_LIMIT_RETRIES = 3;
 
 let cachedToken: string | undefined;
+let projectScopeChecked = false;
 
 export type ExecFileSyncFn = (command: string, args: string[], options: { encoding: 'utf8' }) => string;
 
 const defaultExecFileSync: ExecFileSyncFn = (command, args, options) => execFileSync(command, args, options);
 
 /** Same auth path as the sibling plugins: env var first, `gh auth token`
- * fallback. This scaffold's own tool surface (get_agent_capabilities) is
- * read-only, so no mutation-pacing governor is wired in yet -- but per
- * ADR-0001 this client IS the intended home for it: epic #28's triage-board
- * tools file and mutate issues, and must reuse the sibling plugins'
- * rate-limit classification and deterministic mutation-pacing discipline
- * here rather than re-deriving it. */
+ * fallback. The mutation-pacing governor and rate-limit classification
+ * below are what ADR-0001 anticipated this client would grow into: the
+ * triage-board tools (epic #28) are the first write path through it,
+ * reusing the sibling plugins' discipline rather than re-deriving it. */
 export function resolveToken(execImpl: ExecFileSyncFn = defaultExecFileSync): string {
   if (cachedToken) return cachedToken;
   const envToken = process.env.GITHUB_TOKEN;
@@ -37,8 +37,102 @@ export function resolveToken(execImpl: ExecFileSyncFn = defaultExecFileSync): st
   throw new BugCaptureError('missing_scope', 'No GitHub token available. Set GITHUB_TOKEN, or run `gh auth login`.');
 }
 
+/** Deterministic governor, not incidental pacing from how fast a given agent
+ * happens to call tools: GitHub's secondary (abuse-detection) rate limit for
+ * content-creating mutations is undocumented in /rate_limit and triggers on
+ * burst *pattern*, not primary-budget exhaustion. A reactive
+ * catch-403-and-retry loop alone isn't sufficient for tools that mutate in
+ * sequence (severity sweeps across a triage board). MIN_MUTATION_INTERVAL_MS
+ * caps mutating calls at 60/minute, comfortably under GitHub's informally
+ * documented ~80/minute secondary-limit guidance, enforced unconditionally
+ * regardless of which MCP host or model is driving the calls -- the same
+ * discipline as the sibling plugins' github-client.ts. */
+const MIN_MUTATION_INTERVAL_MS = 1000;
+let lastMutationAt = 0;
+/** Serializes concurrent enforceMutationPacing() calls: each invocation
+ * chains onto the previous one's completion, so the check-then-update of
+ * lastMutationAt can never race even if callers fire mutations via
+ * Promise.all. */
+let mutationGate: Promise<void> = Promise.resolve();
+
+function enforceMutationPacing(sleep: (ms: number) => Promise<void>): Promise<void> {
+  const turn = mutationGate.then(async () => {
+    const elapsed = Date.now() - lastMutationAt;
+    if (elapsed < MIN_MUTATION_INTERVAL_MS) {
+      await sleep(MIN_MUTATION_INTERVAL_MS - elapsed);
+    }
+    lastMutationAt = Date.now();
+  });
+  mutationGate = turn.catch(() => undefined);
+  return turn;
+}
+
+/** GraphQL comments are full lines starting with `#` (spec-defined, not a
+ * heuristic) -- strip them before checking for the mutation keyword so a
+ * mutation preceded by a leading comment is still detected. */
+function isGraphQLMutation(query: string): boolean {
+  const withoutComments = query
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('#'))
+    .join('\n');
+  return withoutComments.trim().startsWith('mutation');
+}
+
 export function resetAuthCacheForTests(): void {
   cachedToken = undefined;
+  projectScopeChecked = false;
+  lastMutationAt = 0;
+  mutationGate = Promise.resolve();
+}
+
+/** Classic PATs (`ghp_`) and OAuth App user tokens (`gho_`) carry the
+ * `X-OAuth-Scopes` response header the check below reads. GitHub App
+ * installation tokens (`ghs_`) and fine-grained PATs (`github_pat_`) use a
+ * fixed-permissions model instead and never populate that header; treating
+ * its absence as "missing project scope" would reject a token that is
+ * actually fine, so those token shapes skip this check entirely (matching
+ * the sibling plugins' github-client.ts). */
+function tokenHasOAuthScopeModel(token: string): boolean {
+  return token.startsWith('ghp_') || token.startsWith('gho_');
+}
+
+/** Checked once per process. Names the missing scope explicitly instead of
+ * surfacing GitHub's raw GraphQL permission error, so a Projects v2 write
+ * fails with a typed, remediable error rather than a generic 403. Only
+ * meaningful for classic OAuth-scoped tokens; App installation tokens and
+ * fine-grained PATs skip the check and rely on the actual GraphQL call to
+ * surface a real permission error if the token genuinely lacks access. */
+export async function assertProjectScope(fetchImpl: typeof fetch = fetch): Promise<void> {
+  if (projectScopeChecked) return;
+  const token = resolveToken();
+  if (!tokenHasOAuthScopeModel(token)) {
+    projectScopeChecked = true;
+    return;
+  }
+  const res = await fetchImpl(`${GITHUB_API}/user`, {
+    headers: { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': API_VERSION },
+  });
+  if (!res.ok) {
+    // An invalid/expired token or a blocked request should surface as a
+    // real auth failure, not be misread as an empty scope list -- let the
+    // actual mutation call right after this check report the genuine
+    // error. Not cached: a transient failure here should not permanently
+    // suppress the scope check for a token that later turns out fine.
+    return;
+  }
+  const scopesHeader = res.headers.get('x-oauth-scopes') ?? '';
+  const scopes = scopesHeader
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!scopes.includes('project')) {
+    throw new BugCaptureError(
+      'missing_scope',
+      'GitHub token is missing the `project` scope required for Projects v2 writes. Run `gh auth login --scopes project`.',
+      { missingScope: 'project', presentScopes: scopes },
+    );
+  }
+  projectScopeChecked = true;
 }
 
 class RateLimitError extends Error {
@@ -128,21 +222,87 @@ export interface GithubClientDeps {
 
 const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-export async function githubGet(path: string, deps: GithubClientDeps = {}): Promise<unknown> {
+interface RestOptions {
+  method?: string;
+  body?: unknown;
+}
+
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/** Generalizes the GET-only path below to every REST verb the lifecycle
+ * tools need (PATCH to close/update an issue, POST to comment) -- same
+ * pacing/backoff discipline, gated on method rather than always-GET. */
+export async function githubRest(path: string, opts: RestOptions = {}, deps: GithubClientDeps = {}): Promise<unknown> {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const sleep = deps.sleep ?? defaultSleep;
+  const method = (opts.method ?? 'GET').toUpperCase();
+  const isMutating = MUTATING_METHODS.has(method);
   return withRateLimitBackoff(
     async () => {
+      if (isMutating) {
+        await enforceMutationPacing(sleep);
+      }
       const token = resolveToken();
       const res = await fetchImpl(`${GITHUB_API}${path}`, {
-        method: 'GET',
+        method,
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github+json',
           'X-GitHub-Api-Version': API_VERSION,
+          ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         },
+        body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       });
       return handleResponse(res);
+    },
+    sleep,
+  );
+}
+
+export async function githubGet(path: string, deps: GithubClientDeps = {}): Promise<unknown> {
+  return githubRest(path, {}, deps);
+}
+
+export interface GraphQLResponse<T> {
+  data?: T;
+  errors?: Array<{ message: string; extensions?: Record<string, unknown> }>;
+}
+
+export async function githubGraphQL<T = unknown>(
+  query: string,
+  variables: Record<string, unknown> = {},
+  deps: GithubClientDeps = {},
+): Promise<T> {
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const sleep = deps.sleep ?? defaultSleep;
+  const isMutating = isGraphQLMutation(query);
+  return withRateLimitBackoff(
+    async () => {
+      // Paced on every attempt (including retries after a rate-limit wait),
+      // not just the first -- a retry-after of 0 or a few seconds could
+      // otherwise let back-to-back retries bypass the governor entirely.
+      if (isMutating) {
+        await enforceMutationPacing(sleep);
+      }
+      const token = resolveToken();
+      const res = await fetchImpl(GITHUB_GRAPHQL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query, variables }),
+      });
+      const json = (await handleResponse(res)) as GraphQLResponse<T>;
+      if (json.errors?.length) {
+        throw new BugCaptureError('github_api_error', `GitHub GraphQL error: ${json.errors.map((e) => e.message).join('; ')}`, {
+          graphqlErrors: json.errors,
+        });
+      }
+      if (json.data === undefined) {
+        throw new BugCaptureError('github_api_error', 'GitHub GraphQL response had no data and no errors');
+      }
+      return json.data;
     },
     sleep,
   );
