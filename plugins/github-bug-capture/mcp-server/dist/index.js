@@ -30957,7 +30957,15 @@ var StdioServerTransport = class {
 function getAgentCapabilities() {
   return {
     plugin: "github-bug-capture",
-    tools: ["get_agent_capabilities", "ensure_severity_field", "set_severity"],
+    tools: [
+      "get_agent_capabilities",
+      "ensure_severity_field",
+      "set_severity",
+      "get_lifecycle_state",
+      "set_lifecycle_state",
+      "search_similar_issues",
+      "close_as_duplicate"
+    ],
     mifConformance: "L1",
     composesWith: ["github-pull-requests", "github-sdlc-planning"],
     hooksSupported: false
@@ -31107,6 +31115,33 @@ async function handleResponse(res) {
   return text ? JSON.parse(text) : void 0;
 }
 var defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+var MUTATING_METHODS = /* @__PURE__ */ new Set(["POST", "PUT", "PATCH", "DELETE"]);
+async function githubRest(path, opts = {}, deps = {}) {
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const sleep = deps.sleep ?? defaultSleep;
+  const method = (opts.method ?? "GET").toUpperCase();
+  const isMutating = MUTATING_METHODS.has(method);
+  return withRateLimitBackoff(
+    async () => {
+      if (isMutating) {
+        await enforceMutationPacing(sleep);
+      }
+      const token = resolveToken();
+      const res = await fetchImpl(`${GITHUB_API}${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": API_VERSION,
+          ...opts.body !== void 0 ? { "Content-Type": "application/json" } : {}
+        },
+        body: opts.body !== void 0 ? JSON.stringify(opts.body) : void 0
+      });
+      return handleResponse(res);
+    },
+    sleep
+  );
+}
 async function githubGraphQL(query, variables = {}, deps = {}) {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const sleep = deps.sleep ?? defaultSleep;
@@ -31140,15 +31175,7 @@ async function githubGraphQL(query, variables = {}, deps = {}) {
   );
 }
 
-// src/tools/triage-board.ts
-var SEVERITY_FIELD_NAME = "Severity";
-var SEVERITY_LEVELS = ["Critical", "High", "Medium", "Low"];
-var SEVERITY_OPTION_COLORS = {
-  Critical: "RED",
-  High: "ORANGE",
-  Medium: "YELLOW",
-  Low: "GREEN"
-};
+// src/tools/project-board.ts
 var ORG_PROJECT_ID_QUERY = `
   query($login: String!, $number: Int!) {
     organization(login: $login) { projectV2(number: $number) { id } }
@@ -31203,11 +31230,66 @@ var PROJECT_FIELDS_QUERY = `
     }
   }
 `;
-async function getFieldByName(projectId, name, deps) {
+async function getFieldByName(projectId, name, deps = {}) {
   const data = await githubGraphQL(PROJECT_FIELDS_QUERY, { projectId }, deps);
   const nodes = data.node?.fields?.nodes ?? [];
   return nodes.find((n) => n.name === name);
 }
+var ISSUE_PROJECT_ITEMS_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) {
+        projectItems(first: 100) {
+          nodes { id project { id } }
+        }
+      }
+    }
+  }
+`;
+async function resolveProjectItem(coords, projectId, owner, repo, issueNumber, deps = {}) {
+  const itemsData = await githubGraphQL(
+    ISSUE_PROJECT_ITEMS_QUERY,
+    { owner, repo, number: issueNumber },
+    deps
+  );
+  const issue2 = itemsData.repository?.issue;
+  if (!issue2) {
+    throw new BugCaptureError("resolve_issue_id", `Issue ${owner}/${repo}#${issueNumber} not found`, {
+      lookupStep: "resolve_issue_id"
+    });
+  }
+  const item = issue2.projectItems.nodes.find((n) => n.project.id === projectId);
+  if (!item) {
+    throw new BugCaptureError(
+      "issue_not_on_board",
+      `Issue ${owner}/${repo}#${issueNumber} is not an item on ${coords.projectOwnerLogin} project #${coords.projectNumber}; add it to the board first (github-sdlc-planning's add_item_to_project)`,
+      { issueNumber, projectNumber: coords.projectNumber }
+    );
+  }
+  return { itemId: item.id };
+}
+var UPDATE_FIELD_VALUE_MUTATION = `
+  mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+    updateProjectV2ItemFieldValue(
+      input: { projectId: $projectId, itemId: $itemId, fieldId: $fieldId, value: { singleSelectOptionId: $optionId } }
+    ) {
+      projectV2Item { id }
+    }
+  }
+`;
+async function setSingleSelectFieldValue(projectId, itemId, fieldId, optionId, deps = {}) {
+  await githubGraphQL(UPDATE_FIELD_VALUE_MUTATION, { projectId, itemId, fieldId, optionId }, deps);
+}
+
+// src/tools/triage-board.ts
+var SEVERITY_FIELD_NAME = "Severity";
+var SEVERITY_LEVELS = ["Critical", "High", "Medium", "Low"];
+var SEVERITY_OPTION_COLORS = {
+  Critical: "RED",
+  High: "ORANGE",
+  Medium: "YELLOW",
+  Low: "GREEN"
+};
 var CREATE_SEVERITY_FIELD_MUTATION = `
   mutation($projectId: ID!, $name: String!, $options: [ProjectV2SingleSelectFieldOptionInput!]!) {
     createProjectV2Field(
@@ -31245,48 +31327,10 @@ async function ensureSeverityField(input, deps = {}) {
   const field = data.createProjectV2Field.projectV2Field;
   return { fieldId: field.id, created: true, options: field.options };
 }
-var ISSUE_PROJECT_ITEMS_QUERY = `
-  query($owner: String!, $repo: String!, $number: Int!) {
-    repository(owner: $owner, name: $repo) {
-      issue(number: $number) {
-        projectItems(first: 100) {
-          nodes { id project { id } }
-        }
-      }
-    }
-  }
-`;
-var UPDATE_FIELD_VALUE_MUTATION = `
-  mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-    updateProjectV2ItemFieldValue(
-      input: { projectId: $projectId, itemId: $itemId, fieldId: $fieldId, value: { singleSelectOptionId: $optionId } }
-    ) {
-      projectV2Item { id }
-    }
-  }
-`;
 async function setSeverity(input, deps = {}) {
   await assertProjectScope(deps.fetchImpl);
   const projectId = await resolveProjectNodeId(input, deps);
-  const itemsData = await githubGraphQL(
-    ISSUE_PROJECT_ITEMS_QUERY,
-    { owner: input.owner, repo: input.repo, number: input.issueNumber },
-    deps
-  );
-  const issue2 = itemsData.repository?.issue;
-  if (!issue2) {
-    throw new BugCaptureError("resolve_issue_id", `Issue ${input.owner}/${input.repo}#${input.issueNumber} not found`, {
-      lookupStep: "resolve_issue_id"
-    });
-  }
-  const item = issue2.projectItems.nodes.find((n) => n.project.id === projectId);
-  if (!item) {
-    throw new BugCaptureError(
-      "issue_not_on_board",
-      `Issue ${input.owner}/${input.repo}#${input.issueNumber} is not an item on ${input.projectOwnerLogin} project #${input.projectNumber}; add it to the board first (github-sdlc-planning's add_item_to_project)`,
-      { issueNumber: input.issueNumber, projectNumber: input.projectNumber }
-    );
-  }
+  const { itemId } = await resolveProjectItem(input, projectId, input.owner, input.repo, input.issueNumber, deps);
   const field = await getFieldByName(projectId, SEVERITY_FIELD_NAME, deps);
   if (!field || field.__typename !== "ProjectV2SingleSelectField" || !field.id) {
     throw new BugCaptureError(
@@ -31303,12 +31347,113 @@ async function setSeverity(input, deps = {}) {
       { fieldName: SEVERITY_FIELD_NAME, severity: input.severity, available: (field.options ?? []).map((o) => o.name) }
     );
   }
-  await githubGraphQL(
-    UPDATE_FIELD_VALUE_MUTATION,
-    { projectId, itemId: item.id, fieldId: field.id, optionId: option.id },
+  await setSingleSelectFieldValue(projectId, itemId, field.id, option.id, deps);
+  return { itemId, fieldId: field.id, optionId: option.id, severity: input.severity };
+}
+
+// src/tools/lifecycle.ts
+var STATUS_FIELD_NAME = "Status";
+var ISSUE_LIFECYCLE_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) {
+        state
+        projectItems(first: 100) {
+          nodes {
+            project { id }
+            fieldValueByName(name: "Status") {
+              ... on ProjectV2ItemFieldSingleSelectValue { name }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+async function getLifecycleState(input, deps = {}) {
+  const projectId = await resolveProjectNodeId(input, deps);
+  const data = await githubGraphQL(
+    ISSUE_LIFECYCLE_QUERY,
+    { owner: input.owner, repo: input.repo, number: input.issueNumber },
     deps
   );
-  return { itemId: item.id, fieldId: field.id, optionId: option.id, severity: input.severity };
+  const issue2 = data.repository?.issue;
+  if (!issue2) {
+    throw new BugCaptureError("resolve_issue_id", `Issue ${input.owner}/${input.repo}#${input.issueNumber} not found`, {
+      lookupStep: "resolve_issue_id"
+    });
+  }
+  const item = issue2.projectItems.nodes.find((n) => n.project.id === projectId);
+  return {
+    issueNumber: input.issueNumber,
+    nativeState: issue2.state === "CLOSED" ? "closed" : "open",
+    onBoard: item !== void 0,
+    status: item?.fieldValueByName?.name ?? null
+  };
+}
+async function setLifecycleState(input, deps = {}) {
+  await assertProjectScope(deps.fetchImpl);
+  const projectId = await resolveProjectNodeId(input, deps);
+  const { itemId } = await resolveProjectItem(input, projectId, input.owner, input.repo, input.issueNumber, deps);
+  const field = await getFieldByName(projectId, STATUS_FIELD_NAME, deps);
+  if (!field || field.__typename !== "ProjectV2SingleSelectField" || !field.id) {
+    throw new BugCaptureError(
+      "missing_field",
+      `Project ${input.projectOwnerLogin}#${input.projectNumber} has no "${STATUS_FIELD_NAME}" single-select field`,
+      { fieldName: STATUS_FIELD_NAME }
+    );
+  }
+  const option = (field.options ?? []).find((o) => o.name === input.status);
+  if (!option) {
+    throw new BugCaptureError(
+      "missing_option",
+      `"${STATUS_FIELD_NAME}" field has no "${input.status}" option`,
+      { fieldName: STATUS_FIELD_NAME, status: input.status, available: (field.options ?? []).map((o) => o.name) }
+    );
+  }
+  await setSingleSelectFieldValue(projectId, itemId, field.id, option.id, deps);
+  let closed = false;
+  if (input.closeIfDone) {
+    await githubRest(
+      `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}`,
+      { method: "PATCH", body: { state: "closed" } },
+      deps
+    );
+    closed = true;
+  }
+  return { itemId, fieldId: field.id, optionId: option.id, status: input.status, closed };
+}
+async function searchSimilarIssues(input, deps = {}) {
+  const q = `repo:${input.owner}/${input.repo} is:issue ${input.query}`;
+  const data = await githubRest(`/search/issues?q=${encodeURIComponent(q)}`, {}, deps);
+  return {
+    candidates: data.items.map((item) => ({
+      number: item.number,
+      title: item.title,
+      state: item.state === "closed" ? "closed" : "open",
+      htmlUrl: item.html_url
+    })),
+    totalCount: data.total_count
+  };
+}
+async function closeAsDuplicate(input, deps = {}) {
+  await githubRest(
+    `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}`,
+    { method: "PATCH", body: { state: "closed", state_reason: "duplicate" } },
+    deps
+  );
+  const comment = await githubRest(
+    `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}/comments`,
+    { method: "POST", body: { body: `Closing as a duplicate of #${input.duplicateOfNumber}.` } },
+    deps
+  );
+  return {
+    issueNumber: input.issueNumber,
+    duplicateOfNumber: input.duplicateOfNumber,
+    state: "closed",
+    stateReason: "duplicate",
+    commentUrl: comment.html_url
+  };
 }
 
 // src/index.ts
@@ -31371,6 +31516,67 @@ server.registerTool(
     }
   },
   wrap(setSeverity)
+);
+server.registerTool(
+  "get_lifecycle_state",
+  {
+    title: "Get lifecycle state",
+    description: "Read an issue's lifecycle state: native GitHub state (open/closed) plus the triage board's Status single-select value, if the issue is on that board. Never errors when the issue is off the board or the Status field/value is absent -- both report as a null status.",
+    inputSchema: {
+      owner: external_exports.string(),
+      repo: external_exports.string(),
+      issueNumber: external_exports.number().int(),
+      projectOwnerLogin: external_exports.string(),
+      projectNumber: external_exports.number().int(),
+      projectOwnerType: projectOwnerTypeSchema.optional()
+    }
+  },
+  wrap(getLifecycleState)
+);
+server.registerTool(
+  "set_lifecycle_state",
+  {
+    title: "Set lifecycle state",
+    description: `Set an issue's Status single-select value on the triage board via the project's existing "Status" field (looked up by name, never created), optionally closing the underlying issue afterward when closeIfDone is true. Fails with a typed error if the issue is not on the board or the Status field/option is missing.`,
+    inputSchema: {
+      owner: external_exports.string(),
+      repo: external_exports.string(),
+      issueNumber: external_exports.number().int(),
+      projectOwnerLogin: external_exports.string(),
+      projectNumber: external_exports.number().int(),
+      projectOwnerType: projectOwnerTypeSchema.optional(),
+      status: external_exports.string(),
+      closeIfDone: external_exports.boolean().optional()
+    }
+  },
+  wrap(setLifecycleState)
+);
+server.registerTool(
+  "search_similar_issues",
+  {
+    title: "Search similar issues",
+    description: "Find candidate duplicate issues via the REST search/issues endpoint (plain keyword search, not AI/embedding similarity -- out of scope per the research report).",
+    inputSchema: {
+      owner: external_exports.string(),
+      repo: external_exports.string(),
+      query: external_exports.string()
+    }
+  },
+  wrap(searchSimilarIssues)
+);
+server.registerTool(
+  "close_as_duplicate",
+  {
+    title: "Close as duplicate",
+    description: "Close an issue with state_reason: duplicate via the REST PATCH endpoint, and post a comment linking to the canonical issue it duplicates.",
+    inputSchema: {
+      owner: external_exports.string(),
+      repo: external_exports.string(),
+      issueNumber: external_exports.number().int(),
+      duplicateOfNumber: external_exports.number().int()
+    }
+  },
+  wrap(closeAsDuplicate)
 );
 async function main() {
   const transport = new StdioServerTransport();

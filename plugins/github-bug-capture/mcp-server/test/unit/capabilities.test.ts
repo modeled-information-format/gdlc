@@ -11,6 +11,10 @@ describe('getAgentCapabilities', () => {
     expect(tools).toContain('get_agent_capabilities');
     expect(tools).toContain('ensure_severity_field');
     expect(tools).toContain('set_severity');
+    expect(tools).toContain('get_lifecycle_state');
+    expect(tools).toContain('set_lifecycle_state');
+    expect(tools).toContain('search_similar_issues');
+    expect(tools).toContain('close_as_duplicate');
     expect(new Set(tools).size).toBe(tools.length);
   });
 

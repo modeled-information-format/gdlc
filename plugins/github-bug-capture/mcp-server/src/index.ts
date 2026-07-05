@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { getAgentCapabilities } from './capabilities.js';
 import { isBugCaptureError } from './errors.js';
 import { ensureSeverityField, setSeverity, SEVERITY_LEVELS } from './tools/triage-board.js';
+import { getLifecycleState, setLifecycleState, searchSimilarIssues, closeAsDuplicate } from './tools/lifecycle.js';
 
 const server = new McpServer({ name: 'github-bug-capture', version: '0.1.0' });
 
@@ -76,6 +77,75 @@ server.registerTool(
     },
   },
   wrap(setSeverity),
+);
+
+server.registerTool(
+  'get_lifecycle_state',
+  {
+    title: 'Get lifecycle state',
+    description:
+      "Read an issue's lifecycle state: native GitHub state (open/closed) plus the triage board's Status single-select value, if the issue is on that board. Never errors when the issue is off the board or the Status field/value is absent -- both report as a null status.",
+    inputSchema: {
+      owner: z.string(),
+      repo: z.string(),
+      issueNumber: z.number().int(),
+      projectOwnerLogin: z.string(),
+      projectNumber: z.number().int(),
+      projectOwnerType: projectOwnerTypeSchema.optional(),
+    },
+  },
+  wrap(getLifecycleState),
+);
+
+server.registerTool(
+  'set_lifecycle_state',
+  {
+    title: 'Set lifecycle state',
+    description:
+      'Set an issue\'s Status single-select value on the triage board via the project\'s existing "Status" field (looked up by name, never created), optionally closing the underlying issue afterward when closeIfDone is true. Fails with a typed error if the issue is not on the board or the Status field/option is missing.',
+    inputSchema: {
+      owner: z.string(),
+      repo: z.string(),
+      issueNumber: z.number().int(),
+      projectOwnerLogin: z.string(),
+      projectNumber: z.number().int(),
+      projectOwnerType: projectOwnerTypeSchema.optional(),
+      status: z.string(),
+      closeIfDone: z.boolean().optional(),
+    },
+  },
+  wrap(setLifecycleState),
+);
+
+server.registerTool(
+  'search_similar_issues',
+  {
+    title: 'Search similar issues',
+    description:
+      'Find candidate duplicate issues via the REST search/issues endpoint (plain keyword search, not AI/embedding similarity -- out of scope per the research report).',
+    inputSchema: {
+      owner: z.string(),
+      repo: z.string(),
+      query: z.string(),
+    },
+  },
+  wrap(searchSimilarIssues),
+);
+
+server.registerTool(
+  'close_as_duplicate',
+  {
+    title: 'Close as duplicate',
+    description:
+      "Close an issue with state_reason: duplicate via the REST PATCH endpoint, and post a comment linking to the canonical issue it duplicates.",
+    inputSchema: {
+      owner: z.string(),
+      repo: z.string(),
+      issueNumber: z.number().int(),
+      duplicateOfNumber: z.number().int(),
+    },
+  },
+  wrap(closeAsDuplicate),
 );
 
 async function main(): Promise<void> {

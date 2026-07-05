@@ -51,10 +51,52 @@ which transitively brings in `github-sdlc-planning`.
 | `get_agent_capabilities` | Feature detection: tool surface, MIF conformance level, composition boundary. |
 | `ensure_severity_field` | Ensure the triage board has a `Severity` single-select field (Critical/High/Medium/Low), creating it if absent. Idempotent. |
 | `set_severity` | Set an issue's `Severity` value on the triage board; typed errors when the issue is not on the board or the field/option is missing. |
+| `get_lifecycle_state` | Read an issue's lifecycle state: native GitHub state (open/closed) plus the triage board's `Status` value, if the issue is on that board. |
+| `set_lifecycle_state` | Set an issue's `Status` value on the triage board; optionally closes the issue afterward when `closeIfDone` is true. |
+| `search_similar_issues` | Find candidate duplicate issues via the REST search/issues endpoint (plain keyword search). |
+| `close_as_duplicate` | Close an issue with `state_reason: duplicate` and comment linking to the canonical issue. |
 
-The remaining Layer 1 core tools (bug filing, dedup) and the lifecycle tools
-land with epic #33. `get_agent_capabilities().tools` is always the
-authoritative list.
+The remaining Layer 1 core tool (bug filing) lands with epic #28.
+`get_agent_capabilities().tools` is always the authoritative list.
+
+## Bug lifecycle (epic #33)
+
+**Severity ([#34](https://github.com/modeled-information-format/gdlc/issues/34)).**
+Delivered by the triage-board tools above (`ensure_severity_field` /
+`set_severity`): a `Severity` single-select field (Critical/High/Medium/Low)
+on the triage board.
+
+**Lifecycle state mapping ([#35](https://github.com/modeled-information-format/gdlc/issues/35)).**
+`get_lifecycle_state` / `set_lifecycle_state` read and write the composite of
+native GitHub issue state (open/closed) and the triage board's `Status`
+single-select value. The research blueprint's five conceptual states (Open,
+Triaged, In Progress, Resolved, Closed) are a mapping a caller applies onto
+this composite: the tools resolve the board's actual `Status` options
+dynamically rather than assuming specific option names, and fail with a
+typed error (`missing_field` / `missing_option`) if the board has no
+`Status` field or the requested value isn't one of its options.
+`set_lifecycle_state`'s `closeIfDone` flag closes the underlying issue once
+the caller considers the status it just set to be terminal.
+
+**Deduplication ([#36](https://github.com/modeled-information-format/gdlc/issues/36)).**
+`search_similar_issues` is a plain REST keyword search (`GET /search/issues`)
+for duplicate candidates, deliberately not AI/embedding similarity, which
+the research report flags as a separate, out-of-scope concern.
+`close_as_duplicate` closes an issue with `state_reason: duplicate` via the
+REST PATCH endpoint and posts a comment linking to the canonical issue.
+
+**PR/commit close-keyword linkage ([#37](https://github.com/modeled-information-format/gdlc/issues/37)), composed with `github-pull-requests`.**
+A merged pull request whose body contains a close keyword (`Fixes #N`,
+`Closes #N`) closes the referenced bug through GitHub's native behavior;
+no code in this plugin is involved in that leg. To read or sync that state
+from this plugin's side, use `github-pull-requests`' own tools:
+`get_linked_issues` (closingIssuesReferences, with a Timeline/text-parsing
+fallback) and `sync_linked_issues_project_field` (propagates a merged PR's
+linked-issue closure onto a Projects v2 field). Per
+[ADR-0002](../../docs/decisions/adr-0002-pr-issue-linkage-ownership.md), this
+plugin does not reimplement linkage; the manifest's existing
+`dependencies: [{ "name": "github-pull-requests" }]` is what makes those
+tools available wherever this plugin is installed.
 
 ## gh CLI affordance
 

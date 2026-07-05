@@ -214,24 +214,45 @@ export interface GithubClientDeps {
 
 const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-export async function githubGet(path: string, deps: GithubClientDeps = {}): Promise<unknown> {
+interface RestOptions {
+  method?: string;
+  body?: unknown;
+}
+
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/** Generalizes the GET-only path below to every REST verb the lifecycle
+ * tools need (PATCH to close/update an issue, POST to comment) -- same
+ * pacing/backoff discipline, gated on method rather than always-GET. */
+export async function githubRest(path: string, opts: RestOptions = {}, deps: GithubClientDeps = {}): Promise<unknown> {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const sleep = deps.sleep ?? defaultSleep;
+  const method = (opts.method ?? 'GET').toUpperCase();
+  const isMutating = MUTATING_METHODS.has(method);
   return withRateLimitBackoff(
     async () => {
+      if (isMutating) {
+        await enforceMutationPacing(sleep);
+      }
       const token = resolveToken();
       const res = await fetchImpl(`${GITHUB_API}${path}`, {
-        method: 'GET',
+        method,
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github+json',
           'X-GitHub-Api-Version': API_VERSION,
+          ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         },
+        body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       });
       return handleResponse(res);
     },
     sleep,
   );
+}
+
+export async function githubGet(path: string, deps: GithubClientDeps = {}): Promise<unknown> {
+  return githubRest(path, {}, deps);
 }
 
 export interface GraphQLResponse<T> {
