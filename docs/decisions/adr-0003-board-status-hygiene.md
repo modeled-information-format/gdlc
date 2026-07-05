@@ -83,9 +83,10 @@ against a different (often the wrong, duplicate) item.
    a PR; there is no built-in transition for "an agent or contributor
    started working on this issue" before any PR exists to link.
 4. **No Claude Code hook currently addresses any of this.**
-   `github-sdlc-planning`'s two hooks (`validate-mif.mjs`, MIF frontmatter
-   conformance; `confirm-mutation.mjs`, a confirmation prompt before a board
-   mutation) do not watch for or nudge a status transition of any kind.
+   `github-sdlc-planning`'s three hooks (`session-start.mjs`, session
+   bootstrap; `validate-mif.mjs`, MIF frontmatter conformance;
+   `confirm-mutation.mjs`, a confirmation prompt before a board mutation) do
+   not watch for or nudge a status transition of any kind.
 
 ## Decision Drivers
 
