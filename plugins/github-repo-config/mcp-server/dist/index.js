@@ -31198,7 +31198,7 @@ async function setRepoCustomProperties(input, deps = {}) {
 }
 
 // src/index.ts
-var server = new McpServer({ name: "github-repo-config", version: "0.2.0" });
+var server = new McpServer({ name: "github-repo-config", version: "0.3.0" });
 function toolResult(data) {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }

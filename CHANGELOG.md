@@ -7,8 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-05
+
+Covers everything since v0.1.0; v0.2.0 was tagged without a changelog cut,
+so its changes appear here as well.
+
 ### Added
 
+- Consumer usage how-tos: `docs/how-to/plan-work-with-the-plugins.md`
+  (decompose, board, milestone, PR, linkage, end to end) and
+  `docs/how-to/use-bug-capture.md` (install, packs, severity, dedup,
+  lifecycle, automation), linked from the root README's quick start.
+- `github-bug-capture`: seventh vendored plugin, realizing the bug-capture
+  research deliverable's BUILD decision. Layer 1 MCP core (severity
+  triage-board tools, lifecycle state, keyword dedup,
+  `close_as_duplicate` with `state_reason`), gh CLI wrapper library,
+  Actions IssueOps templates, and four opt-in Layer 2 packs (diagnostic
+  hooks, triage skills, MCP-integration doc, gh-aw batch triage
+  template). Composes with `github-pull-requests` (linkage) and
+  `github-sdlc-planning` (boards) per ADR-0001/0002.
 - ADRs 0001-0003 moved from proposed to accepted, each with a compliance
   audit entry recording what shipped. ADR-0003's two decision items are
   implemented in `github-sdlc-planning`: `add_item_to_project` is now
