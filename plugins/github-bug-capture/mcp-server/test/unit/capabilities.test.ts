@@ -31,7 +31,7 @@ describe('getAgentCapabilities', () => {
     }
   });
 
-  it('does not claim hook support before the hooks-pack exists', () => {
-    expect(getAgentCapabilities().hooksSupported).toBe(false);
+  it('claims hook support now that the hooks-pack (epic #38) exists', () => {
+    expect(getAgentCapabilities().hooksSupported).toBe(true);
   });
 });

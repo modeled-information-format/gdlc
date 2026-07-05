@@ -29,6 +29,6 @@ export function getAgentCapabilities(): AgentCapabilities {
     ],
     mifConformance: 'L1',
     composesWith: ['github-pull-requests', 'github-sdlc-planning'],
-    hooksSupported: false,
+    hooksSupported: true,
   };
 }
