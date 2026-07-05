@@ -8,8 +8,11 @@ name: CI
 "on":
   push:
     branches: [main]
+  # No branches filter: matches catalog-admission.yml's own convention, and
+  # lets stacked PRs (base = another feature branch, not main) still get
+  # pin-check and validate-workflows coverage. A PR targeting main behaves
+  # exactly as before.
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
