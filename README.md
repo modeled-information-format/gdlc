@@ -83,6 +83,12 @@ plugins/
                                     # or remove a role for a team or user.
                                     # Standalone (no dependency edge); SAML/SSO
                                     # is out of scope.
+  github-bug-capture/              # Development-time bug capture: diagnostics
+                                    # become MIF-conformant, lifecycle-managed
+                                    # issues. Depends on github-pull-requests
+                                    # (linkage, per ADR-0002; transitively
+                                    # github-sdlc-planning). ADRs in
+                                    # docs/decisions/.
 external_plugins/                  # reserved for future git-subdir + sha plugins
 docs/                               # Diátaxis docs (this README links into them)
 ```

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "github-bug-capture": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp-server/dist/index.js"]
+    }
+  }
+}

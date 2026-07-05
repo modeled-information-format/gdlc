@@ -1,0 +1,24 @@
+{
+  "name": "github-bug-capture",
+  "displayName": "GitHub Bug Capture",
+  "version": "0.1.0",
+  "description": "Development-time bug capture: diagnostics discovered while code is being written become structured, MIF-conformant, lifecycle-managed GitHub issues. Portable MCP core plus opt-in Claude Code enhancement packs; composes with github-pull-requests (linkage) and github-sdlc-planning (milestones, boards).",
+  "author": {
+    "name": "modeled-information-format"
+  },
+  "homepage": "https://github.com/modeled-information-format/gdlc",
+  "repository": "https://github.com/modeled-information-format/gdlc",
+  "license": "MIT",
+  "keywords": [
+    "github",
+    "bugs",
+    "bug-capture",
+    "diagnostics",
+    "issues",
+    "triage",
+    "mif"
+  ],
+  "dependencies": [
+    { "name": "github-pull-requests" }
+  ]
+}
