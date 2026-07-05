@@ -31047,6 +31047,9 @@ async function assertProjectScope(fetchImpl = fetch) {
   const res = await fetchImpl(`${GITHUB_API}/user`, {
     headers: { Authorization: `Bearer ${token}`, "X-GitHub-Api-Version": API_VERSION }
   });
+  if (!res.ok) {
+    return;
+  }
   const scopesHeader = res.headers.get("x-oauth-scopes") ?? "";
   const scopes = scopesHeader.split(",").map((s) => s.trim()).filter(Boolean);
   if (!scopes.includes("project")) {

@@ -206,6 +206,13 @@ describe('assertProjectScope', () => {
     });
   });
 
+  it('does not misreport missing_scope when the /user request itself fails', async () => {
+    mockRest('get', '/user', { message: 'Bad credentials' }, 401);
+    // An invalid/expired token should surface through the real mutation
+    // call that follows, not as a misleading "no scopes present" error.
+    await expect(assertProjectScope()).resolves.toBeUndefined();
+  });
+
   it('skips the OAuth-scope check for a GitHub App installation token (ghs_)', async () => {
     process.env.GITHUB_TOKEN = 'ghs_installation-token-1234567890';
     resetAuthCacheForTests();

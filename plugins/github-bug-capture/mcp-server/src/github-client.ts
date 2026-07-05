@@ -112,6 +112,14 @@ export async function assertProjectScope(fetchImpl: typeof fetch = fetch): Promi
   const res = await fetchImpl(`${GITHUB_API}/user`, {
     headers: { Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': API_VERSION },
   });
+  if (!res.ok) {
+    // An invalid/expired token or a blocked request should surface as a
+    // real auth failure, not be misread as an empty scope list -- let the
+    // actual mutation call right after this check report the genuine
+    // error. Not cached: a transient failure here should not permanently
+    // suppress the scope check for a token that later turns out fine.
+    return;
+  }
   const scopesHeader = res.headers.get('x-oauth-scopes') ?? '';
   const scopes = scopesHeader
     .split(',')

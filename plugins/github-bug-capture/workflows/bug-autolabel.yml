@@ -33,7 +33,7 @@ jobs:
             const line = body.match(/^\s*Severity:\s*(critical|high|medium|low)\b/im);
             if (line) level = line[1].toLowerCase();
             if (!level) {
-              const checkbox = body.match(/^\s*-\s*\[[xX]\]\s*(Critical|High|Medium|Low)\b/m);
+              const checkbox = body.match(/^\s*-\s*\[[xX]\]\s*(critical|high|medium|low)\b/im);
               if (checkbox) level = checkbox[1].toLowerCase();
             }
 
