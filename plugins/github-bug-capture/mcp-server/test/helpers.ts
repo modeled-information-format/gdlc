@@ -6,6 +6,14 @@ export function mockRest(method: 'get' | 'post' | 'put' | 'patch' | 'delete', pa
   server.use(handler);
 }
 
+export function mockUserScopes(scopes: string[]): void {
+  server.use(
+    http.get('https://api.github.com/user', () =>
+      HttpResponse.json({ login: 'test-user' }, { headers: { 'x-oauth-scopes': scopes.join(', ') } }),
+    ),
+  );
+}
+
 export interface GraphQLRequestBody {
   query: string;
   variables: Record<string, unknown>;

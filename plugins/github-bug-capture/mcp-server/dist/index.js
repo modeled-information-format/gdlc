@@ -30984,9 +30984,12 @@ function isBugCaptureError(err) {
 
 // src/github-client.ts
 import { execFileSync } from "node:child_process";
+var GITHUB_API = "https://api.github.com";
 var GITHUB_GRAPHQL = "https://api.github.com/graphql";
+var API_VERSION = "2022-11-28";
 var MAX_RATE_LIMIT_RETRIES = 3;
 var cachedToken;
+var projectScopeChecked = false;
 var defaultExecFileSync = (command, args, options) => execFileSync(command, args, options);
 function resolveToken(execImpl = defaultExecFileSync) {
   if (cachedToken) return cachedToken;
@@ -31022,6 +31025,30 @@ function enforceMutationPacing(sleep) {
 function isGraphQLMutation(query) {
   const withoutComments = query.split("\n").filter((line) => !line.trim().startsWith("#")).join("\n");
   return withoutComments.trim().startsWith("mutation");
+}
+function tokenHasOAuthScopeModel(token) {
+  return token.startsWith("ghp_") || token.startsWith("gho_");
+}
+async function assertProjectScope(fetchImpl = fetch) {
+  if (projectScopeChecked) return;
+  const token = resolveToken();
+  if (!tokenHasOAuthScopeModel(token)) {
+    projectScopeChecked = true;
+    return;
+  }
+  const res = await fetchImpl(`${GITHUB_API}/user`, {
+    headers: { Authorization: `Bearer ${token}`, "X-GitHub-Api-Version": API_VERSION }
+  });
+  const scopesHeader = res.headers.get("x-oauth-scopes") ?? "";
+  const scopes = scopesHeader.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!scopes.includes("project")) {
+    throw new BugCaptureError(
+      "missing_scope",
+      "GitHub token is missing the `project` scope required for Projects v2 writes. Run `gh auth login --scopes project`.",
+      { missingScope: "project", presentScopes: scopes }
+    );
+  }
+  projectScopeChecked = true;
 }
 var RateLimitError = class extends Error {
   retryAfterSeconds;
@@ -31193,6 +31220,7 @@ var CREATE_SEVERITY_FIELD_MUTATION = `
   }
 `;
 async function ensureSeverityField(input, deps = {}) {
+  await assertProjectScope(deps.fetchImpl);
   const projectId = await resolveProjectNodeId(input, deps);
   const existing = await getFieldByName(projectId, SEVERITY_FIELD_NAME, deps);
   if (existing) {
@@ -31238,6 +31266,7 @@ var UPDATE_FIELD_VALUE_MUTATION = `
   }
 `;
 async function setSeverity(input, deps = {}) {
+  await assertProjectScope(deps.fetchImpl);
   const projectId = await resolveProjectNodeId(input, deps);
   const itemsData = await githubGraphQL(
     ISSUE_PROJECT_ITEMS_QUERY,

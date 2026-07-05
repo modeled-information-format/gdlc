@@ -1,6 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { mockGraphQL, type GraphQLRequestBody } from '../helpers.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { mockGraphQL, mockUserScopes, type GraphQLRequestBody } from '../helpers.js';
 import { ensureSeverityField, setSeverity, SEVERITY_LEVELS } from '../../src/tools/triage-board.js';
+
+// Every tool call here now asserts the project OAuth scope first (test/unit/
+// github-client.test.ts covers that check's own behavior in isolation);
+// grant it by default so these tests exercise the triage-board logic, not
+// the preflight.
+beforeEach(() => mockUserScopes(['repo', 'project']));
 
 const SEVERITY_OPTIONS = [
   { id: 'OPT_critical', name: 'Critical' },

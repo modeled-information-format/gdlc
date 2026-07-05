@@ -8,11 +8,11 @@ their own repos.
 
 ## Installation
 
-Copy the template(s) into the consuming repository:
+Copy the template(s), run from this directory, into the consuming repository:
 
 ```bash
-cp workflows/bug-autolabel.yml            <your-repo>/.github/workflows/
-cp workflows/bug-close-keyword-audit.yml  <your-repo>/.github/workflows/
+cp bug-autolabel.yml            <your-repo>/.github/workflows/
+cp bug-close-keyword-audit.yml  <your-repo>/.github/workflows/
 ```
 
 Both run on the workflow's own `GITHUB_TOKEN` with an explicit least-privilege

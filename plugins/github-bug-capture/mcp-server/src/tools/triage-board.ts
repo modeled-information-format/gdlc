@@ -1,4 +1,4 @@
-import { githubGraphQL, type GithubClientDeps } from '../github-client.js';
+import { assertProjectScope, githubGraphQL, type GithubClientDeps } from '../github-client.js';
 import { BugCaptureError } from '../errors.js';
 
 /** Triage-board Severity field (issue #31). The board itself and every other
@@ -144,6 +144,7 @@ export async function ensureSeverityField(
   input: EnsureSeverityFieldInput,
   deps: GithubClientDeps = {},
 ): Promise<EnsureSeverityFieldResult> {
+  await assertProjectScope(deps.fetchImpl);
   const projectId = await resolveProjectNodeId(input, deps);
   const existing = await getFieldByName(projectId, SEVERITY_FIELD_NAME, deps);
   if (existing) {
@@ -217,6 +218,7 @@ const UPDATE_FIELD_VALUE_MUTATION = `
  * error when the issue is not on the board, or the field/option is missing
  * (run ensure_severity_field first). */
 export async function setSeverity(input: SetSeverityInput, deps: GithubClientDeps = {}): Promise<SetSeverityResult> {
+  await assertProjectScope(deps.fetchImpl);
   const projectId = await resolveProjectNodeId(input, deps);
 
   const itemsData = await githubGraphQL<IssueProjectItemsResponse>(

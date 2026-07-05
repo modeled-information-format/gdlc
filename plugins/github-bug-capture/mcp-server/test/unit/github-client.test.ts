@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '../setup.js';
-import { mockRest, mockGraphQL } from '../helpers.js';
-import { githubGet, githubGraphQL, resolveToken, resetAuthCacheForTests } from '../../src/github-client.js';
+import { mockRest, mockGraphQL, mockUserScopes } from '../helpers.js';
+import { assertProjectScope, githubGet, githubGraphQL, resolveToken, resetAuthCacheForTests } from '../../src/github-client.js';
 import { BugCaptureError } from '../../src/errors.js';
 
 describe('resolveToken', () => {
@@ -189,6 +189,35 @@ describe('githubGet', () => {
     );
     const data = await githubGet('/repos/acme/widgets/stats/contributors');
     expect(data).toEqual([]);
+  });
+});
+
+describe('assertProjectScope', () => {
+  it('resolves when the token has the project scope', async () => {
+    mockUserScopes(['repo', 'project', 'read:org']);
+    await expect(assertProjectScope()).resolves.toBeUndefined();
+  });
+
+  it('throws a named missing_scope error when project scope is absent', async () => {
+    mockUserScopes(['repo', 'read:org']);
+    await expect(assertProjectScope()).rejects.toMatchObject({
+      code: 'missing_scope',
+      details: { missingScope: 'project', presentScopes: ['repo', 'read:org'] },
+    });
+  });
+
+  it('skips the OAuth-scope check for a GitHub App installation token (ghs_)', async () => {
+    process.env.GITHUB_TOKEN = 'ghs_installation-token-1234567890';
+    resetAuthCacheForTests();
+    // No /user mock registered -- if the check ran, this would throw an
+    // unhandled-request error from msw, proving the /user call is skipped.
+    await expect(assertProjectScope()).resolves.toBeUndefined();
+  });
+
+  it('skips the OAuth-scope check for a fine-grained PAT (github_pat_)', async () => {
+    process.env.GITHUB_TOKEN = 'github_pat_11ABCDEFG_1234567890';
+    resetAuthCacheForTests();
+    await expect(assertProjectScope()).resolves.toBeUndefined();
   });
 });
 
