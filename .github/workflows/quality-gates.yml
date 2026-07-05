@@ -23,8 +23,11 @@ name: quality-gates
 "on":
   push:
     branches: [main]
+  # No branches filter: matches catalog-admission.yml's own convention, and
+  # lets stacked PRs (base = another feature branch, not main) still get the
+  # real test/lint/build/coverage/SAST gates instead of only catalog-admission
+  # and Copilot. A PR targeting main behaves exactly as before.
   pull_request:
-    branches: [main]
   schedule:
     - cron: "37 8 * * 1"
   workflow_dispatch:
