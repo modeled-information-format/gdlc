@@ -497,12 +497,13 @@ jobs:
 
   # --- self-referential catalog pin: this catalog lists in-repo plugins --------
   #
-  # Both plugins[] entries are git-subdir sources pointing at THIS repo (see
-  # docs/how-to/catalog-pinning.md) — the same attested-pin discipline an
-  # external catalog entry gets. This job re-pins them to the tag/sha just
-  # published above, in one commit (both entries always move together, since
-  # they ship from the same tarball), gated through catalog-admission and
-  # every other required check like any other change to main.
+  # The vendored plugins[] entries are git-subdir sources pointing at THIS
+  # repo (see docs/how-to/catalog-pinning.md) — the same attested-pin
+  # discipline an external catalog entry gets. This job re-pins every one of
+  # them to the tag/sha just published above, in one commit (they always
+  # move together, since they ship from the same tarball), gated through
+  # catalog-admission and every other required check like any other change
+  # to main.
   pin-catalog:
     name: Pin Catalog (self-referential)
     if: startsWith(github.ref, 'refs/tags/')

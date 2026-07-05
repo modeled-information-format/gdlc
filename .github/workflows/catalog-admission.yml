@@ -169,9 +169,13 @@ jobs:
           import json, os, pathlib, sys
           mp = json.load(open(sys.argv[1]))
           self_slug = os.environ["GITHUB_REPOSITORY"].strip("/")
-          # Same URL normalization the pin-resolution step above applies, so a
-          # self-referential entry in any tolerated shape is checked, never
-          # silently skipped.
+          # Broader than the pin-resolution step above: that step only
+          # strips URL prefixes for git-subdir/url sources and takes a
+          # github-source repo field verbatim, whereas this normalizes all
+          # three source types uniformly, so a self-referential entry in any
+          # tolerated shape is checked, never silently skipped. Harmless
+          # today since every self-referential entry is git-subdir; revisit
+          # if a self-referential github-source entry is ever added.
           def slug_of(src):
               raw = (src.get("repo") or src.get("url") or "").strip().rstrip("/")
               for pre in ("https://github.com/", "git@github.com:", "ssh://git@github.com/"):
