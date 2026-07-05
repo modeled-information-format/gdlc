@@ -9,6 +9,9 @@ describe('addItemToProject', () => {
     let capturedVars: Record<string, unknown> = {};
     mockGraphQL((body) => {
       if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      if (body.query.includes('projectItems')) {
+        return { repository: { issue: { projectItems: { nodes: [] } } } };
+      }
       capturedVars = body.variables;
       return { addProjectV2ItemById: { item: { id: 'PVTI_1' } } };
     });
@@ -24,6 +27,7 @@ describe('addItemToProject', () => {
     expect(capturedVars.contentId).toBe('I_9');
     expect(capturedVars.projectId).toBe('PVT_1');
     expect(result.itemId).toBe('PVTI_1');
+    expect(result.existed).toBe(false);
   });
 
   it('AC-4: fails with a named missing_scope error, not the raw GraphQL permission error', async () => {
@@ -31,6 +35,64 @@ describe('addItemToProject', () => {
     await expect(
       addItemToProject({ owner: 'acme', repo: 'widgets', issueNumber: 9, projectOwnerLogin: 'acme', projectNumber: 4 }),
     ).rejects.toMatchObject({ code: 'missing_scope' });
+  });
+
+  it('ADR-0003: returns the existing item without mutating when the issue is already on the target project', async () => {
+    mockUserScopes(['repo', 'project']);
+    mockRest('get', '/repos/acme/widgets/issues/9', { node_id: 'I_9' });
+    let mutationCalls = 0;
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      if (body.query.includes('projectItems')) {
+        return {
+          repository: {
+            issue: {
+              projectItems: {
+                nodes: [
+                  { id: 'PVTI_other', project: { id: 'PVT_other' } },
+                  { id: 'PVTI_existing', project: { id: 'PVT_1' } },
+                ],
+              },
+            },
+          },
+        };
+      }
+      mutationCalls += 1;
+      return { addProjectV2ItemById: { item: { id: 'PVTI_should_not_happen' } } };
+    });
+
+    const result = await addItemToProject({
+      owner: 'acme',
+      repo: 'widgets',
+      issueNumber: 9,
+      projectOwnerLogin: 'acme',
+      projectNumber: 4,
+    });
+
+    expect(result).toEqual({ itemId: 'PVTI_existing', existed: true });
+    expect(mutationCalls).toBe(0);
+  });
+
+  it('ADR-0003: an issue not yet on the board still creates a new item (existed: false)', async () => {
+    mockUserScopes(['repo', 'project']);
+    mockRest('get', '/repos/acme/widgets/issues/9', { node_id: 'I_9' });
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      if (body.query.includes('projectItems')) {
+        return { repository: { issue: { projectItems: { nodes: [] } } } };
+      }
+      return { addProjectV2ItemById: { item: { id: 'PVTI_new' } } };
+    });
+
+    const result = await addItemToProject({
+      owner: 'acme',
+      repo: 'widgets',
+      issueNumber: 9,
+      projectOwnerLogin: 'acme',
+      projectNumber: 4,
+    });
+
+    expect(result).toEqual({ itemId: 'PVTI_new', existed: false });
   });
 });
 

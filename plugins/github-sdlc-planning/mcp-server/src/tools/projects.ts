@@ -12,6 +12,11 @@ export interface AddItemToProjectInput {
 
 export interface AddItemToProjectResult {
   itemId: string;
+  /** True when the issue already had an item on the target project and no
+   * mutation was issued (ADR-0003: native auto-add workflows can add an
+   * issue to the board before this tool ever runs; addProjectV2ItemById has
+   * no idempotency key and would otherwise create a duplicate item). */
+  existed: boolean;
 }
 
 const ADD_ITEM_MUTATION = `
@@ -26,17 +31,49 @@ interface AddItemResponse {
   addProjectV2ItemById: { item: { id: string } };
 }
 
+const ISSUE_PROJECT_ITEMS_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) {
+        projectItems(first: 100) {
+          nodes { id project { id } }
+        }
+      }
+    }
+  }
+`;
+
+interface IssueProjectItemsResponse {
+  repository?: {
+    issue?: { projectItems: { nodes: Array<{ id: string; project: { id: string } }> } } | null;
+  } | null;
+}
+
 /** AC-3: resolve node IDs (issue, project) before mutating, never a numeric
  * issue/project number. AC-4: fail with a named `project`-scope error, not
- * GitHub's raw GraphQL permission error. */
+ * GitHub's raw GraphQL permission error. ADR-0003: query whether the issue
+ * already has an item on the target project before mutating, and return
+ * that item instead of creating a duplicate. */
 export async function addItemToProject(input: AddItemToProjectInput, deps: GithubClientDeps = {}): Promise<AddItemToProjectResult> {
   await assertProjectScope(deps.fetchImpl);
   const [contentId, projectId] = await Promise.all([
     resolveIssueNodeId(input.owner, input.repo, input.issueNumber, deps),
     resolveProjectNodeId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? 'organization', deps),
   ]);
+
+  const itemsData = await githubGraphQL<IssueProjectItemsResponse>(
+    ISSUE_PROJECT_ITEMS_QUERY,
+    { owner: input.owner, repo: input.repo, number: input.issueNumber },
+    {},
+    deps,
+  );
+  const existingItem = (itemsData.repository?.issue?.projectItems?.nodes ?? []).find((n) => n.project.id === projectId);
+  if (existingItem) {
+    return { itemId: existingItem.id, existed: true };
+  }
+
   const data = await githubGraphQL<AddItemResponse>(ADD_ITEM_MUTATION, { projectId, contentId }, {}, deps);
-  return { itemId: data.addProjectV2ItemById.item.id };
+  return { itemId: data.addProjectV2ItemById.item.id, existed: false };
 }
 
 export type FieldValueInput =

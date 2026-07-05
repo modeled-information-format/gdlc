@@ -14,7 +14,7 @@ tags:
   - automation
   - github-sdlc-planning
   - hooks
-status: proposed
+status: accepted
 created: 2026-07-05
 updated: 2026-07-05
 author: MIF Maintainers
@@ -33,7 +33,7 @@ related: []
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -329,6 +329,32 @@ binding until the status moves to accepted.
 **Action Required:** Maintainer review; on acceptance, implement the
 idempotent-add fix and the in-progress hook in
 `plugins/github-sdlc-planning`.
+
+### 2026-07-05
+
+**Status:** Compliant
+
+**Findings:**
+
+| Finding                                                            | Files | Lines | Assessment |
+| ------------------------------------------------------------------ | ----- | ----- | ---------- |
+| add_item_to_project is idempotent: existing item returned, no dup   | plugins/github-sdlc-planning/mcp-server/src/tools/projects.ts | - | compliant |
+| In-progress hook shipped, config-gated, no-ops without a configured board | plugins/github-sdlc-planning/hooks/ | - | compliant |
+| Native Done-on-close validated live: issues #28-49/#51/#55 auto-set | - | - | compliant |
+
+**Summary:** Accepted by the maintainer, with the two decision items
+implemented in the same change that records this acceptance. One
+implementation detail differs from the decision text: a hook process runs
+outside the MCP JSON-RPC session and cannot invoke `set_field_value`
+directly, so the in-progress hook performs the identical
+`updateProjectV2ItemFieldValue` GraphQL mutation through `gh api graphql`
+(the same graceful-degradation path `session-start.mjs` documents), gated
+on a per-project settings file and skipping items already In Progress or
+Done. The native-workflow half of the decision was validated live before
+acceptance: every issue closed by the campaign's merges had its board item
+set to Done by the native `Item closed` automation with no manual call.
+
+**Action Required:** None; this decision is in force.
 
 [gh-workflows]: https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-built-in-automations
 [gh-projects-api]: https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-api-to-manage-projects
