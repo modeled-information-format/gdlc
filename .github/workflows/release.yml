@@ -64,6 +64,55 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      # pin-catalog (below) stamps every self-referential catalog entry's
+      # version from this tag, but only a human bumps the plugin manifests.
+      # Fail the release BEFORE anything publishes if a manifest was not
+      # bumped to the tag version — otherwise the auto-generated pin PR
+      # ships a catalog that disagrees with the manifests it points at
+      # (issue #49), and catalog-admission's version-sync gate then blocks
+      # that PR only after the release already published.
+      - name: Vendored plugin manifests must match the release version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - .claude-plugin/marketplace.json <<'PY'
+          import json, os, pathlib, sys
+          version = os.environ["VERSION"]
+          self_slug = os.environ["GITHUB_REPOSITORY"].strip("/")
+          def slug_of(src):
+              raw = (src.get("repo") or src.get("url") or "").strip().rstrip("/")
+              for pre in ("https://github.com/", "git@github.com:", "ssh://git@github.com/"):
+                  if raw.startswith(pre):
+                      raw = raw[len(pre):]
+                      break
+              return raw.removesuffix(".git").strip("/")
+          mp = json.load(open(sys.argv[1]))
+          errs, checked = [], 0
+          for p in mp.get("plugins", []):
+              src = p.get("source")
+              if not (isinstance(src, dict) and src.get("source") in ("github", "git-subdir", "url")):
+                  continue
+              if slug_of(src) != self_slug:
+                  continue
+              path = (src.get("path") or src.get("subdir") or "").strip("/")
+              man = pathlib.Path(path) / ".claude-plugin" / "plugin.json"
+              manifest_version = json.load(open(man)).get("version") if man.is_file() else None
+              if manifest_version != version:
+                  errs.append(
+                      "%s: %s declares %r but this release is %r — bump the manifest before tagging"
+                      % (p.get("name"), man, manifest_version, version))
+              checked += 1
+          if errs:
+              for e in errs:
+                  print("::error::%s" % e)
+              sys.exit(1)
+          if checked == 0:
+              print("::error::release version-sync check matched no self-referential catalog entries — refusing to pass (fail-closed)")
+              sys.exit(1)
+          print("release version sync OK: %d vendored manifest(s) at %s" % (checked, version))
+          PY
       - name: Set up Node (lts/*)
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:

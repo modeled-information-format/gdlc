@@ -17,14 +17,15 @@ name: catalog-admission
 #      unlike the soft-fail quality-gates manifest-review), and
 #   3. each external entry's pinned artifact attestations verify (when
 #      present).
-# A plugin enters the catalog only when these hold. This catalog's own two
-# vendored plugins — github-sdlc-planning and github-pull-requests — are
-# THEMSELVES external (git-subdir) entries pointing back at this repo: a
+# A plugin enters the catalog only when these hold. This catalog's own
+# vendored plugins are THEMSELVES external (git-subdir) entries pointing
+# back at this repo: a
 # self-referential pin gets the same discipline any other external catalog
 # entry gets (see docs/how-to/catalog-pinning.md). release.yml's pin-catalog
-# job keeps both re-pinned to the just-published tag/sha after every release,
-# so the SHA-pin check here is a real, always-on invariant, not a dormant one
-# waiting for a future external plugin (e.g. github-org-identity) to arrive.
+# job keeps every vendored entry re-pinned to the just-published tag/sha
+# after every release, so the SHA-pin check here is a real, always-on
+# invariant, not a dormant one waiting for a genuinely external plugin to
+# arrive.
 # The one real cross-marketplace edge this catalog carries
 # today — github-sdlc-planning's plugin.json depends on
 # mif-docs@modeled-information-format — is NOT a marketplace.json plugins[]
@@ -152,3 +153,60 @@ jobs:
           rm -f entries.tsv
           [ "${fail}" -eq 0 ] || { echo "::error::catalog admission failed — one or more pins do not resolve to a plugin"; exit 1; }
           echo "All external entries resolve to a plugin manifest at their pinned SHA."
+
+      # A catalog entry's advertised `version` must agree with the vendored
+      # plugin's own manifest in this working tree. release.yml's pin-catalog
+      # job stamps each self-referential entry's version from the release tag,
+      # but nothing bumps plugins/*/.claude-plugin/plugin.json — a tag cut
+      # without manifest bumps published a catalog claiming 0.2.0 over
+      # manifests declaring 0.1.0, and installs cached the manifest's version
+      # while the catalog advertised another (issue #49). This step makes that
+      # release fail at the pin PR instead of shipping the skew.
+      - name: Enforce catalog-version == plugin-manifest-version (self-referential entries)
+        run: |
+          set -euo pipefail
+          python3 - .claude-plugin/marketplace.json <<'PY'
+          import json, os, pathlib, sys
+          mp = json.load(open(sys.argv[1]))
+          self_slug = os.environ["GITHUB_REPOSITORY"].strip("/")
+          # Same URL normalization the pin-resolution step above applies, so a
+          # self-referential entry in any tolerated shape is checked, never
+          # silently skipped.
+          def slug_of(src):
+              raw = (src.get("repo") or src.get("url") or "").strip().rstrip("/")
+              for pre in ("https://github.com/", "git@github.com:", "ssh://git@github.com/"):
+                  if raw.startswith(pre):
+                      raw = raw[len(pre):]
+                      break
+              return raw.removesuffix(".git").strip("/")
+          errs, checked = [], 0
+          for p in mp.get("plugins", []):
+              src = p.get("source")
+              if not (isinstance(src, dict) and src.get("source") in ("github", "git-subdir", "url")):
+                  continue
+              if slug_of(src) != self_slug:
+                  continue
+              path = (src.get("path") or src.get("subdir") or "").strip("/")
+              man = pathlib.Path(path) / ".claude-plugin" / "plugin.json"
+              if not man.is_file():
+                  errs.append("%s: catalog path %r has no plugin manifest in this tree" % (p.get("name"), str(man)))
+                  continue
+              manifest_version = json.load(open(man)).get("version")
+              if not p.get("version") or not manifest_version:
+                  errs.append(
+                      "%s: version field missing (catalog %r, manifest %r) — both sides must declare one"
+                      % (p.get("name"), p.get("version"), manifest_version))
+              elif p.get("version") != manifest_version:
+                  errs.append(
+                      "%s: catalog advertises version %r but %s declares %r"
+                      % (p.get("name"), p.get("version"), man, manifest_version))
+              checked += 1
+          if errs:
+              for e in errs:
+                  print("::error::%s" % e)
+              sys.exit(1)
+          if checked == 0:
+              print("::error::version-sync check matched no self-referential catalog entries — refusing to pass (fail-closed). Check the source url/repo fields against %s." % self_slug)
+              sys.exit(1)
+          print("catalog/manifest version sync OK: %d self-referential entr(y/ies) agree" % checked)
+          PY
