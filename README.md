@@ -8,7 +8,8 @@ title: gdlc
 diataxis_type: reference
 ---
 <p align="center">
-  <img src=".github/social-preview.png" width="860" alt="">
+  <img src=".github/social-preview.png" width="860"
+       alt="gdlc — github-sdlc-plugins: a Claude Code plugin suite for the GitHub software development lifecycle, covering planning, pull requests, bug capture, repo config, insights, packages, and org identity.">
 </p>
 
 <p align="center">
@@ -56,7 +57,7 @@ for the full rationale.
 
 ## What ships
 
-Six real plugins, vendored in-repo (two dependency-linked, four standalone):
+Seven real plugins, vendored in-repo (one foundation, two dependency-linked, four standalone):
 
 ```
 .claude-plugin/marketplace.json   # the catalog (name: "github-sdlc-plugins")
