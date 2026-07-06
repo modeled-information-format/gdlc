@@ -39068,7 +39068,7 @@ function isPlainObject3(value) {
 }
 function normalizeStringArray(value) {
   if (!Array.isArray(value)) return void 0;
-  return value.filter((v) => typeof v === "string" || typeof v === "number" || typeof v === "boolean").map((v) => String(v));
+  return value.map((v) => typeof v === "string" ? v : String(v));
 }
 function normalizeConfig(parsed) {
   if (!isPlainObject3(parsed)) return {};
