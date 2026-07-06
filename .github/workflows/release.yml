@@ -504,6 +504,79 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" --title "Release ${VERSION}" \
             --generate-notes "${PRERELEASE[@]}"
 
+  # --- per-plugin dependency tags: {name}--v{version} at the release commit ---
+  #
+  # Claude Code resolves a plugin.json semver-range dependency (e.g.
+  # "version": "^0.3.1") by running `git ls-remote --tags` against the
+  # dependency's own repo, matching ONLY tags shaped `{pluginName}--v{version}`
+  # -- never the bare `vX.Y.Z` tag this release already cuts. None of this
+  # repo's 7 plugins currently has a versioned dependent, but any of them
+  # could become one, so every release stamps all 7 per-plugin tags
+  # automatically instead of relying on someone to run
+  # `claude plugin tag --push` by hand for each plugin (see
+  # docs/how-to/catalog-pinning.md).
+  #
+  # Loops the raw `plugins/*/.claude-plugin/plugin.json` glob (not filtered
+  # by marketplace.json registration) -- today every plugin directory is
+  # catalog-registered, so this is equivalent to looping the catalog itself.
+  tag-plugins:
+    name: Tag Per-Plugin Dependency Refs
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [meta, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Mint release app token (tag-push identity)
+        id: tag_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_CLIENT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_CLIENT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Checkout release commit (release app token — push access)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          token: ${{ steps.tag_token.outputs.token }}
+          ref: ${{ github.sha }}
+
+      - name: Create and push {name}--v{version} tags for every plugin
+        env:
+          APP_SLUG: ${{ steps.tag_token.outputs.app-slug }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
+          tags=()
+          for manifest in plugins/*/.claude-plugin/plugin.json; do
+            name="$(jq -r '.name // empty' "${manifest}")"
+            version="$(jq -r '.version // empty' "${manifest}")"
+            if [ -z "${name}" ] || [ -z "${version}" ]; then
+              echo "::error::${manifest} is missing name or version"
+              exit 1
+            fi
+            dep_tag="${name}--v${version}"
+            # Idempotent: a re-run of this job (transient failure, manual
+            # re-trigger) may find some tags already pushed from a prior
+            # attempt — skip those instead of failing on a non-fast-forward
+            # tag push.
+            if [ -n "$(git ls-remote --tags origin "refs/tags/${dep_tag}")" ]; then
+              echo "Tag ${dep_tag} already exists on origin — skipping."
+              continue
+            fi
+            git tag -a "${dep_tag}" -m "Dependency-resolution tag for ${name} ${version} (release ${TAG})"
+            tags+=("${dep_tag}")
+          done
+          if [ "${#tags[@]}" -eq 0 ]; then
+            echo "All per-plugin dependency tags already exist — nothing to push."
+            exit 0
+          fi
+          git push origin "${tags[@]}"
+          printf 'Pushed dependency tags: %s\n' "${tags[*]}"
+
   # --- self-referential catalog pin: this catalog lists in-repo plugins --------
   #
   # The vendored plugins[] entries are git-subdir sources pointing at THIS
