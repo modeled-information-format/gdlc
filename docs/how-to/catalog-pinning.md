@@ -3,7 +3,7 @@ id: 7d3f4e21-9a6c-4b8e-8f2d-3c1a9e5b6d70
 type: procedural
 created: 2026-07-04T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-04T00:00:00Z
+modified: 2026-07-06T00:00:00Z
 title: How the marketplace catalog gets pinned to a release
 diataxis_type: how-to
 ---
@@ -58,6 +58,24 @@ succeeds, on every tag push (`v*.*.*`), never on `workflow_dispatch` dry-runs:
    and `validate-workflows` — exactly like any other change. `catalog-admission`
    in particular re-verifies the new pin resolves to a real
    `.claude-plugin/plugin.json` at that commit before it can merge.
+
+## Per-plugin dependency tags
+
+Claude Code resolves a `plugin.json` semver-range dependency (e.g. a
+different plugin declaring `"version": "^0.4.1"` against one of this repo's
+7 plugins) by running `git ls-remote --tags` against this repo and matching
+only tags shaped `{pluginName}--v{version}` — never the bare `vX.Y.Z` release
+tag above. `release.yml`'s `tag-plugins` job runs right after `publish`, on
+every tag push, and creates + pushes one such tag per plugin
+(`plugins/*/.claude-plugin/plugin.json`) at the release commit, using the
+same release App token as `publish`. It is idempotent: a re-run skips any
+`{name}--v{version}` tag that already exists on `origin`.
+
+Verify after a release:
+
+```bash
+git ls-remote --tags https://github.com/modeled-information-format/gdlc.git | grep -- '--v<X.Y.Z>'
+```
 
 ## Verify it worked
 
