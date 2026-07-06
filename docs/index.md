@@ -1,15 +1,16 @@
 ---
-title: gdlc — the github-sdlc-plugins marketplace
-description: Attested Claude Code plugin marketplace for the GitHub SDLC planning domain — seven plugins, one MCP server each, SHA-pinned and admitted only when their attestation verifies fail-closed.
+title: The github-sdlc-plugins marketplace
+description: Seven Claude Code plugins for the GitHub SDLC — planning, pull requests, bug capture, repo config, insights, packages, and org identity.
 template: splash
 hero:
-  tagline: Seven attested plugins for the GitHub SDLC — SHA-pinned and admitted only when they verify, fail-closed.
+  title: gdlc
+  tagline: Seven Claude Code plugins for the GitHub SDLC — planning, pull requests, bug capture, repo config, insights, packages, and org identity.
   actions:
     - text: Add a plugin
       link: how-to/add-a-plugin/
       icon: right-arrow
-    - text: Verify a release
-      link: security/verify/
+    - text: Plan your first sprint
+      link: how-to/plan-work-with-the-plugins/
       variant: minimal
 ---
 
@@ -29,6 +30,4 @@ hero:
 
 - [Add a plugin](how-to/add-a-plugin/) to the catalog
 - [Plan and track work with the planning and PR plugins](how-to/plan-work-with-the-plugins/)
-- [Verify a release](security/verify/)
-- Browse the [architecture decisions](decisions/) behind the marketplace's design
-- Read [why an attested marketplace](explanation/attested-marketplace/)
+- [Capture and triage bugs](how-to/use-bug-capture/)

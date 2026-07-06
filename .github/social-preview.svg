@@ -63,13 +63,6 @@
     <text x="712" y="402" dx="112" fill="#7C8AA0" font-size="15">roles · team &amp; user assignment</text>
   </g>
 
-  <!-- ===== Divider ===== -->
-  <line x1="84" y1="476" x2="1196" y2="476" stroke="#222C3C" stroke-width="1.5"/>
-
-  <!-- ===== Bottom line: what ties them together ===== -->
-  <text x="84" y="524" font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
-        font-size="20" fill="#AEBCCF">Seven independent MCP servers, one attested catalog — SHA-pinned, verified fail-closed.</text>
-
   <!-- ===== Footer locators ===== -->
   <text x="84" y="572" font-family="Menlo, 'SF Mono', 'JetBrains Mono', monospace"
         font-size="15" fill="#7C8AA0" letter-spacing="0.01em">modeled-information-format/gdlc</text>
