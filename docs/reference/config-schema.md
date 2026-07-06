@@ -10,37 +10,33 @@ diataxis_type: reference
 
 Epic [#78](https://github.com/modeled-information-format/gdlc/issues/78)'s
 layered global/project configuration system. The carrier and path were
-decided by ADR-0004 (staged in
-[PR #97](https://github.com/modeled-information-format/gdlc/pull/97), not
-yet merged as of this page's writing — linking to the PR rather than
-`docs/decisions/adr-0004-project-config-surface.md` directly so this page
-isn't a broken relative link if merged independently; issue
-[#79](https://github.com/modeled-information-format/gdlc/issues/79)); this
-page is the schema those two layers share (issues
+decided by [ADR-0004](../decisions/adr-0004-project-config-surface.md)
+(issue [#79](https://github.com/modeled-information-format/gdlc/issues/79));
+this page is the schema those two layers share (issues
 [#80](https://github.com/modeled-information-format/gdlc/issues/80) and
 [#81](https://github.com/modeled-information-format/gdlc/issues/81)).
 Machine-readable copy: [`schema/gdlc-config.schema.json`](../../schema/gdlc-config.schema.json).
 
 ## Files and resolution
 
-Both layers will be plain YAML, no frontmatter wrapper, same relative
-suffix. The config-loader (issue #82, not yet implemented as of this page's
-writing) is intended to compute the file path from a root with one
-function, `resolveConfigPath(root) => path.join(root, 'gdlc', 'config.yml')`,
-handing it a different root per layer:
+Both layers are plain YAML, no frontmatter wrapper, same relative suffix.
+One function computes the file path given a root:
+`resolveConfigPath(root) => path.join(root, 'gdlc', 'config.yml')`; the two
+layers differ only in which root they hand it (issue #82's implementation,
+`loadGdlcConfig`):
 
-| Layer | Root handed to `resolveConfigPath` | Resulting path |
+| Layer | Root passed to `resolveConfigPath` | Resulting path |
 | --- | --- | --- |
 | Global | `$XDG_CONFIG_HOME` (env var, default `~/.config`) | `$XDG_CONFIG_HOME/gdlc/config.yml` |
 | Project | `<projectRoot>/.config` | `<projectRoot>/.config/gdlc/config.yml` |
 
-The project root itself is **not** meant to be handed to `resolveConfigPath`
-directly — the loader should join on `.config` first, since
-`$XDG_CONFIG_HOME` (the global root) already points at what `.config`
-conceptually is for that layer; handing the bare project root would
-resolve to `<projectRoot>/gdlc/config.yml`, missing the `.config/` segment
-entirely. Neither file will be required to exist; a missing file is meant
-to be an empty config at that layer, not an error.
+The project root is *not* passed to `resolveConfigPath` directly — the
+caller joins on `.config` first, since `$XDG_CONFIG_HOME` (the global
+root) already points at what `.config` conceptually is for that layer;
+passing the bare project root would resolve to
+`<projectRoot>/gdlc/config.yml`, missing the `.config/` segment entirely.
+Neither file is required to exist; a missing file is an empty config at
+that layer, not an error.
 
 ## Schema
 
@@ -73,9 +69,8 @@ wins" direction without an ambiguous array-concatenation rule for
 
 ## Migration: the legacy `board:` key
 
-The config-loader (issue #82, not yet implemented as of this page's
-writing) is intended to try `.config/gdlc/config.yml`'s `board` section
-first. If that section is absent, it should fall back for one release to
+The config-loader (issue #82) tries `.config/gdlc/config.yml`'s `board`
+section first. If that section is absent, it falls back for one release to
 the legacy `board:` map in `.claude/github-sdlc-planning.local.md`
 (`docs/how-to/plan-work-with-the-plugins.md` step 3), emitting one
 deprecation notice on first use. `` `.claude/<plugin>.local.md` `` files
@@ -83,19 +78,18 @@ otherwise keep their original, narrower purpose: personal, uncommitted,
 per-developer runtime toggles (e.g. github-bug-capture's `packs:` map),
 never team-shared targeting/board policy.
 
-## Where the loader will live
+## Where the loader lives
 
 The config-loader is Layer-1 (portable-core) scope, not a Claude-Code-only
 enhancement: `targeting`/`destination`/`board` values must resolve
 identically for any MCP host, matching
 [ADR-0001](../decisions/adr-0001-bug-capture-layer1-core.md)'s core/enhancement
-split. It is intended to ship as
-`plugins/github-sdlc-planning/mcp-server/src/config.ts` (issue #82, not yet
-implemented as of this page's writing), exported via a new `./config`
-subpath on that package — the same subpath-export mechanism already used
-for `mif.ts`: `github-sdlc-planning/mcp-server/package.json` defines the
-`exports` map, and `github-pull-requests` consumes it via a `file:`
-dependency (see `plugins/github-pull-requests/mcp-server/package.json`).
+split. It ships as `plugins/github-sdlc-planning/mcp-server/src/config.ts`
+(issue #82), exported via a `./config` subpath on that package — the same
+subpath-export mechanism already used for `mif.ts`:
+`github-sdlc-planning/mcp-server/package.json` defines the `exports` map,
+and `github-pull-requests` consumes it via a `file:` dependency (see
+`plugins/github-pull-requests/mcp-server/package.json`).
 
 **New dependency edge, decided here.** `github-bug-capture` has no existing
 direct dependency on `github-sdlc-planning` — today it only depends on
@@ -119,3 +113,57 @@ constraint for its own plugin) and cannot import an npm-backed module. It
 keeps its own minimal, dependency-free reader for the `board` section of
 the new plain-YAML files, mirroring its existing hand-rolled `board:`
 frontmatter parser rather than sharing code with the MCP-server loader.
+Both readers are kept behaviorally identical on purpose (issue #83's
+review caught and fixed a real divergence between them) — see *Verified
+end-to-end* below.
+
+## Verified end-to-end (issue #84)
+
+A project value overriding a global default, confirmed against the built
+`dist/config.js` and the hooks-layer reader independently, given:
+
+```yaml
+# $XDG_CONFIG_HOME/gdlc/config.yml (global)
+board:
+  projectOwnerLogin: acme-global
+  projectNumber: 1
+destination:
+  repo: "acme/global-default-repo"
+```
+
+```yaml
+# <projectRoot>/.config/gdlc/config.yml (project)
+board:
+  projectOwnerLogin: acme-project
+  projectNumber: 42
+```
+
+```console
+$ cd <projectRoot> && XDG_CONFIG_HOME=<global root> node -e \
+  "import('<gdlcRepoRoot>/plugins/github-sdlc-planning/mcp-server/dist/config.js').then(m => \
+     console.log(JSON.stringify(m.loadGdlcConfig(process.cwd()), null, 2)))"
+{
+  "destination": {
+    "repo": "acme/global-default-repo"
+  },
+  "board": {
+    "projectOwnerLogin": "acme-project",
+    "projectNumber": 42
+  }
+}
+```
+
+The project's `board` section replaces the global one wholly
+(`acme-project`/`42`, not `acme-global`/`1`); the global's `destination`
+shows through untouched, since the project file doesn't define that
+section at all — exactly the section-wise cascade above. The
+hooks-layer `readBoardConfig()` resolves the identical pair of files to
+the same `projectOwnerLogin`/`projectNumber` --
+`{ projectOwnerLogin: "acme-project", projectNumber: 42, projectOwnerType: "organization" }`.
+The extra `projectOwnerType` key is expected, not a divergence:
+`readBoardConfig` (like `resolveBoardCoordinates`) always fills it with
+the `"organization"` default when the YAML omits it, while
+`loadGdlcConfig`'s raw merged config only carries a key that was actually
+present in a source file — the two readers agree on every field the
+*schema* defines, they just return that field at different stages
+(raw merged config vs. a fully-defaulted board-coordinates result).

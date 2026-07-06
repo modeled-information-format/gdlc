@@ -3,7 +3,7 @@ id: 8b5d1e73-6a2f-4c08-b9d4-2f7e9a1c6d52
 type: procedural
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-05T00:00:00Z
+modified: 2026-07-06T00:00:00Z
 title: Plan and track work with the planning and PR plugins
 diataxis_type: how-to
 ---
@@ -21,7 +21,11 @@ not task-list checkboxes), each body carrying the MIF comment block
 (`mif-id`/`mif-type`/`mif-ns`) so downstream tooling can read what each
 issue *is*. Under the hood: `create_issue` + `add_sub_issue`; use those
 tools directly for one-off issues. Progress on a parent is visible via
-`list_sub_issues` (total/completed/percent).
+`list_sub_issues` (total/completed/percent). `create_issue`'s `owner`/`repo`
+are optional if `destination.repo` is set in
+[`.config/gdlc/config.yml`](../reference/config-schema.md); when either a
+`targeting` allowlist is configured there, every `create_issue` call --
+explicit or defaulted -- is checked against it.
 
 ## 2. Put work on the board
 
@@ -42,21 +46,28 @@ tools directly for one-off issues. Progress on a parent is visible via
 
 ## 3. Mark work In Progress automatically
 
-Configure once per consuming project in
-`.claude/github-sdlc-planning.local.md` (keep out of version control):
+Configure the board mapping once per consuming project in
+`.config/gdlc/config.yml` (committed, team-shared -- see
+[the layered config schema](../reference/config-schema.md) for the full
+shape and how a project value overrides a global default):
 
-```markdown
----
+```yaml
 board:
   projectOwnerLogin: <org-or-user>
   projectNumber: <n>
----
 ```
 
 With that in place, starting work through the tools (adding a sub-issue,
 updating an open issue) moves the affected item to In Progress when its
 Status is unset or Todo. Done needs nothing: the native workflows set it
-on close/merge.
+on close/merge. The same mapping also fills in `projectOwnerLogin`/
+`projectNumber` on `add_item_to_project`/`set_field_value`/
+`get_project_items`/`get_session_context` when a call omits them.
+
+> The legacy carrier -- a `board:` key in
+> `.claude/github-sdlc-planning.local.md` frontmatter -- still works for one
+> release as a fallback if `.config/gdlc/config.yml` has no `board:`
+> section, but is deprecated (ADR-0004); migrate when convenient.
 
 ## 4. Open, classify, and route the PR
 

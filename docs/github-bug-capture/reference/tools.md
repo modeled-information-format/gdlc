@@ -3,7 +3,7 @@ id: f06237a1-2144-4d8f-b83d-7853a944a6d4
 type: semantic
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-05T00:00:00Z
+modified: 2026-07-06T00:00:00Z
 title: github-bug-capture MCP tool reference
 diataxis_type: reference
 ---
@@ -42,8 +42,8 @@ mutating.
 
 | Parameter | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `projectOwnerLogin` | `string` | yes | Org or user login that owns the Projects v2 board. |
-| `projectNumber` | `number` (int) | yes | The board's project number. |
+| `projectOwnerLogin` | `string` | no | Org or user login that owns the Projects v2 board. Defaults, with `projectNumber`, from the configured `board:` mapping when both are omitted (issues #82/#83) — see [the layered config schema](../../reference/config-schema.md). |
+| `projectNumber` | `number` (int) | no | The board's project number. Both or neither of `projectOwnerLogin`/`projectNumber` — supplying exactly one, or omitting both with no mapping configured anywhere, throws `missing_board_config`. |
 | `projectOwnerType` | `'organization' \| 'user'` | no | Defaults to `'organization'` if omitted. |
 
 ## `set_severity`
@@ -59,8 +59,8 @@ is missing.
 | `owner` | `string` | yes | Repo owner. |
 | `repo` | `string` | yes | Repo name. |
 | `issueNumber` | `number` (int) | yes | |
-| `projectOwnerLogin` | `string` | yes | |
-| `projectNumber` | `number` (int) | yes | |
+| `projectOwnerLogin` | `string` | no | Both or neither of `projectOwnerLogin`/`projectNumber` — defaults from the configured `board:` mapping, see `ensure_severity_field`. |
+| `projectNumber` | `number` (int) | no | See `ensure_severity_field`. |
 | `projectOwnerType` | `'organization' \| 'user'` | no | Defaults to `'organization'`. |
 | `severity` | `'Critical' \| 'High' \| 'Medium' \| 'Low'` | yes | One of `SEVERITY_LEVELS`. |
 
@@ -78,8 +78,8 @@ absent — both report as a null status.
 | `owner` | `string` | yes | |
 | `repo` | `string` | yes | |
 | `issueNumber` | `number` (int) | yes | |
-| `projectOwnerLogin` | `string` | yes | |
-| `projectNumber` | `number` (int) | yes | |
+| `projectOwnerLogin` | `string` | no | Both or neither of `projectOwnerLogin`/`projectNumber` — defaults from the configured `board:` mapping, see `ensure_severity_field`. |
+| `projectNumber` | `number` (int) | no | See `ensure_severity_field`. |
 | `projectOwnerType` | `'organization' \| 'user'` | no | Defaults to `'organization'`. |
 
 **Returns:** `{ issueNumber, nativeState: 'open'|'closed', onBoard: boolean, status: string | null }`.
@@ -99,8 +99,8 @@ Status field/option is missing.
 | `owner` | `string` | yes | |
 | `repo` | `string` | yes | |
 | `issueNumber` | `number` (int) | yes | |
-| `projectOwnerLogin` | `string` | yes | |
-| `projectNumber` | `number` (int) | yes | |
+| `projectOwnerLogin` | `string` | no | Both or neither of `projectOwnerLogin`/`projectNumber` — defaults from the configured `board:` mapping, see `ensure_severity_field`. |
+| `projectNumber` | `number` (int) | no | See `ensure_severity_field`. |
 | `projectOwnerType` | `'organization' \| 'user'` | no | Defaults to `'organization'`. |
 | `status` | `string` | yes | Must match an existing option name on the board's `Status` field exactly. |
 | `closeIfDone` | `boolean` | no | Closes the issue via REST PATCH after the Status value is set. |
@@ -151,3 +151,4 @@ Structured failures (`BugCaptureError`, `src/errors.ts`) carry one of:
 | `field_type_conflict` | A field with the expected name exists but is not a single-select field. |
 | `missing_field` | The expected single-select field (`Severity` or `Status`) does not exist on the board. |
 | `missing_option` | The field exists but has no option matching the requested value. |
+| `missing_board_config` | `projectOwnerLogin`/`projectNumber` were partially or fully omitted, and no complete pair resolved from `.config/gdlc/config.yml` or the global gdlc config (issues #82/#83). |

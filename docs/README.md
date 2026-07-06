@@ -3,7 +3,7 @@ id: d1fe77a5-98cb-4891-929a-8114a2fe82a1
 type: semantic
 created: 2026-07-03T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-03T00:00:00Z
+modified: 2026-07-06T00:00:00Z
 title: gdlc documentation
 diataxis_type: index
 ---
