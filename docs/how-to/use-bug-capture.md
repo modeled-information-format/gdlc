@@ -3,7 +3,7 @@ id: 6f2a8c41-3d7e-4b95-a1c8-9e4d2f7b5a30
 type: procedural
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-05T00:00:00Z
+modified: 2026-07-06T00:00:00Z
 title: Capture and triage bugs with github-bug-capture
 diataxis_type: how-to
 ---
@@ -55,8 +55,12 @@ ensure_severity_field { projectOwnerLogin, projectNumber }
 ```
 
 Idempotent: creates a Severity single-select (Critical/High/Medium/Low) or
-returns the existing field untouched. Org-level issue-type/field
-provisioning steps and their current API caveats:
+returns the existing field untouched. `projectOwnerLogin`/`projectNumber`
+(here and on `set_severity`/`get_lifecycle_state`/`set_lifecycle_state`)
+are optional once a `board:` mapping exists in
+[`.config/gdlc/config.yml`](../reference/config-schema.md) -- the same
+mapping section 7 configures. Org-level issue-type/field provisioning
+steps and their current API caveats:
 [org-provisioning](../../plugins/github-bug-capture/docs/org-provisioning.md).
 
 ## 4. File a bug
@@ -109,15 +113,13 @@ become the issue body's MIF identity (`urn:mif:concept:<ns>:<id>`).
 
 ## 7. Automate In Progress (planning plugin)
 
-Create `.claude/github-sdlc-planning.local.md` in the consuming project
-(also kept out of version control):
+Create `.config/gdlc/config.yml` in the consuming project (committed,
+team-shared -- same file and `board:` section as step 3):
 
-```markdown
----
+```yaml
 board:
   projectOwnerLogin: <org-or-user>
   projectNumber: <n>
----
 ```
 
 From then on, `add_sub_issue`/`update_issue` calls move the affected
@@ -126,3 +128,8 @@ unset or Todo, never overriding a later state. No config, no effect.
 Repo-level CI automation (auto-label on open, close-keyword audit) is
 available as copyable templates:
 [workflows](../../plugins/github-bug-capture/workflows/README.md).
+
+> The legacy carrier -- a `board:` key in
+> `.claude/github-sdlc-planning.local.md` frontmatter -- still works for one
+> release as a fallback if `.config/gdlc/config.yml` has no `board:`
+> section, but is deprecated (ADR-0004); migrate when convenient.

@@ -23,16 +23,24 @@ Machine-readable copy: [`schema/gdlc-config.schema.json`](../../schema/gdlc-conf
 
 ## Files and resolution
 
-Both layers are plain YAML, no frontmatter wrapper, same relative suffix:
+Both layers are plain YAML, no frontmatter wrapper, same relative suffix.
+One function computes the file path given a root:
+`resolveConfigPath(root) => path.join(root, 'gdlc', 'config.yml')`; the two
+layers differ only in which root they hand it (issue #82's implementation,
+`loadGdlcConfig`):
 
-| Layer | Path | Resolution |
+| Layer | Root passed to `resolveConfigPath` | Resulting path |
 | --- | --- | --- |
-| Global | `$XDG_CONFIG_HOME/gdlc/config.yml` | `XDG_CONFIG_HOME` env var, default `~/.config` |
-| Project | `.config/gdlc/config.yml` | project root (repo root) |
+| Global | `$XDG_CONFIG_HOME` (env var, default `~/.config`) | `$XDG_CONFIG_HOME/gdlc/config.yml` |
+| Project | `<projectRoot>/.config` | `<projectRoot>/.config/gdlc/config.yml` |
 
-One function computes both: `resolve(root) => path.join(root, 'gdlc', 'config.yml')`,
-called once with each root. Neither file is required to exist; a missing file
-is an empty config at that layer, not an error.
+The project root is *not* passed to `resolveConfigPath` directly — the
+caller joins on `.config` first, since `$XDG_CONFIG_HOME` (the global
+root) already points at what `.config` conceptually is for that layer;
+passing the bare project root would resolve to
+`<projectRoot>/gdlc/config.yml`, missing the `.config/` segment entirely.
+Neither file is required to exist; a missing file is an empty config at
+that layer, not an error.
 
 ## Schema
 
@@ -107,3 +115,57 @@ constraint for its own plugin) and cannot import an npm-backed module. It
 keeps its own minimal, dependency-free reader for the `board` section of
 the new plain-YAML files, mirroring its existing hand-rolled `board:`
 frontmatter parser rather than sharing code with the MCP-server loader.
+Both readers are kept behaviorally identical on purpose (issue #83's
+review caught and fixed a real divergence between them) — see *Verified
+end-to-end* below.
+
+## Verified end-to-end (issue #84)
+
+A project value overriding a global default, confirmed against the built
+`dist/config.js` and the hooks-layer reader independently, given:
+
+```yaml
+# $XDG_CONFIG_HOME/gdlc/config.yml (global)
+board:
+  projectOwnerLogin: acme-global
+  projectNumber: 1
+destination:
+  repo: "acme/global-default-repo"
+```
+
+```yaml
+# <projectRoot>/.config/gdlc/config.yml (project)
+board:
+  projectOwnerLogin: acme-project
+  projectNumber: 42
+```
+
+```console
+$ cd <projectRoot> && XDG_CONFIG_HOME=<global root> node -e \
+  "import('.../mcp-server/dist/config.js').then(m => \
+     console.log(JSON.stringify(m.loadGdlcConfig(process.cwd()), null, 2)))"
+{
+  "destination": {
+    "repo": "acme/global-default-repo"
+  },
+  "board": {
+    "projectOwnerLogin": "acme-project",
+    "projectNumber": 42
+  }
+}
+```
+
+The project's `board` section replaces the global one wholly
+(`acme-project`/`42`, not `acme-global`/`1`); the global's `destination`
+shows through untouched, since the project file doesn't define that
+section at all — exactly the section-wise cascade above. The
+hooks-layer `readBoardConfig()` resolves the identical pair of files to
+the same `projectOwnerLogin`/`projectNumber` --
+`{ projectOwnerLogin: "acme-project", projectNumber: 42, projectOwnerType: "organization" }`.
+The extra `projectOwnerType` key is expected, not a divergence:
+`readBoardConfig` (like `resolveBoardCoordinates`) always fills it with
+the `"organization"` default when the YAML omits it, while
+`loadGdlcConfig`'s raw merged config only carries a key that was actually
+present in a source file — the two readers agree on every field the
+*schema* defines, they just return that field at different stages
+(raw merged config vs. a fully-defaulted board-coordinates result).

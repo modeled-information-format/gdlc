@@ -19,9 +19,20 @@ File **$ARGUMENTS** as a bug issue.
    the user (point at `docs/pack-toggles.md`) and stop — do not file anything.
 
 2. **Identify the target.** Confirm `owner/repo` from `$ARGUMENTS` or the
-   current repo context, and draft a concise `title` and a `body` describing
-   the diagnostic (if this was triggered by the hooks-pack, the captured
-   excerpt goes verbatim into the body).
+   current repo context — a concrete value is needed before the duplicate
+   check in step 3 can run (that tool has no config-driven default). Ask
+   the user if neither source gives one. Draft a concise `title` and a
+   `body` describing the diagnostic (if this was triggered by the
+   hooks-pack, the captured excerpt goes verbatim into the body).
+
+   Separately: `create_issue` (step 5)'s own `owner`/`repo` are optional
+   and default from the project's or global's `destination.repo`
+   (`.config/gdlc/config.yml` -- see
+   [the config schema](../../../../docs/reference/config-schema.md)). That
+   default isn't reachable through this skill's flow, since step 3's
+   duplicate check needs a concrete target first — it matters for a direct,
+   non-interactive MCP call to `create_issue` that skips this skill
+   entirely.
 
 3. **Check for duplicates first** (the same underlying search the dedup-check
    skill uses, not re-implemented here): call `search_similar_issues` with
@@ -45,9 +56,12 @@ File **$ARGUMENTS** as a bug issue.
    - `mif: { id: <a short slug>, type: "Bug", namespace: <a project namespace> }`.
    - `body`: the diagnostic text (plus any duplicate candidates worth noting).
 
-6. **If this repo has a configured triage board** (ask the user for its
-   `projectOwnerLogin`/`projectNumber`, or skip this step if there isn't
-   one), reflect the same severity on the board:
+6. **Reflect the same severity on the triage board**, omitting
+   `projectOwnerLogin`/`projectNumber` on each call below so they default
+   from the configured `board:` mapping (same `.config/gdlc/config.yml`).
+   If a call reports `missing_board_config` (no mapping anywhere and none
+   given), ask the user for the board's `projectOwnerLogin`/`projectNumber`,
+   or skip this step if there isn't one:
    - `add_item_to_project` (planning's tool) to place the new issue on the
      board.
    - `ensure_severity_field` (idempotent; safe to call every time) so the

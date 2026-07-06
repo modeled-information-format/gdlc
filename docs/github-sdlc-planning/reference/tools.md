@@ -3,7 +3,7 @@ id: b4fa4d5c-5bee-4bd9-9e11-2290a8e820c9
 type: semantic
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-05T00:00:00Z
+modified: 2026-07-06T00:00:00Z
 title: github-sdlc-planning MCP tool reference
 diataxis_type: reference
 ---
@@ -22,8 +22,11 @@ where the JSON error body is either a structured `PlanningError`
 (`{ error: <code>, message, ...details }` — codes: `limit_exceeded`,
 `missing_scope`, `resolve_issue_id`, `resolve_project_id`,
 `unknown_issue_type`, `rate_limited`, `github_api_error`,
-`confirmation_required`) or, for unclassified errors, `{ error:
-"github_api_error", message }`.
+`confirmation_required`, `missing_board_config`, `missing_destination`,
+`repo_not_allowed`) or, for unclassified errors, `{ error:
+"github_api_error", message }`. The last three codes come from the
+config-driven defaulting described below (issues #82/#83) — see
+[the layered config schema](../../reference/config-schema.md).
 
 ## create_issue
 
@@ -32,8 +35,8 @@ MIF frontmatter comment block to the body before returning.
 
 | Parameter | Type | Required |
 | --- | --- | --- |
-| `owner` | `string` | yes |
-| `repo` | `string` | yes |
+| `owner` | `string` | no (both or neither of `owner`/`repo` — see below) |
+| `repo` | `string` | no (both or neither of `owner`/`repo` — see below) |
 | `title` | `string` | yes |
 | `body` | `string` | yes |
 | `labels` | `string[]` | no |
@@ -41,6 +44,14 @@ MIF frontmatter comment block to the body before returning.
 | `milestoneNumber` | `number` (int) | no |
 | `issueType` | `string` | no |
 | `mif` | `{ id: string, type: Initiative\|Epic\|Story\|Task\|Bug\|Feature, namespace: string }` | yes |
+
+`owner`/`repo` default to the configured `destination.repo` when **both**
+are omitted; supplying exactly one throws `missing_destination` (they're
+resolved as a pair, never mixed with config field-by-field) — same for
+"neither given, and no `destination.repo` configured anywhere." Whichever
+`owner`/`repo` is now in play, explicit or defaulted, is checked against a
+configured `targeting` allowlist, if any, throwing `repo_not_allowed` if
+it's excluded. See [the layered config schema](../../reference/config-schema.md).
 
 Returns `{ number, nodeId, url, body }` — `body` includes the prepended MIF
 comment block.
@@ -111,9 +122,14 @@ PATs skip this pre-check).
 | `owner` | `string` | yes |
 | `repo` | `string` | yes |
 | `issueNumber` | `number` (int) | yes |
-| `projectOwnerLogin` | `string` | yes |
-| `projectNumber` | `number` (int) | yes |
+| `projectOwnerLogin` | `string` | no (both or neither of `projectOwnerLogin`/`projectNumber` — see below) |
+| `projectNumber` | `number` (int) | no (both or neither — see below) |
 | `projectOwnerType` | `"organization" \| "user"` | no (defaults to `organization`) |
+
+`projectOwnerLogin`/`projectNumber` default to the configured `board:`
+mapping when **both** are omitted; supplying exactly one, or omitting both
+with no mapping configured anywhere, throws `missing_board_config` (issues
+#82/#83 — see [the layered config schema](../../reference/config-schema.md)).
 
 Returns `{ itemId, existed }`.
 
@@ -124,8 +140,8 @@ Requires the `project` scope (same check as `add_item_to_project`).
 
 | Parameter | Type | Required |
 | --- | --- | --- |
-| `projectOwnerLogin` | `string` | yes |
-| `projectNumber` | `number` (int) | yes |
+| `projectOwnerLogin` | `string` | no (both or neither of `projectOwnerLogin`/`projectNumber` — see `add_item_to_project`) |
+| `projectNumber` | `number` (int) | no (both or neither — see `add_item_to_project`) |
 | `projectOwnerType` | `"organization" \| "user"` | no (defaults to `organization`) |
 | `itemId` | `string` | yes (project item node ID, from `add_item_to_project` or `get_project_items`) |
 | `fieldId` | `string` | yes (project field node ID) |
@@ -149,8 +165,8 @@ List a Projects v2 board's items and their field values.
 
 | Parameter | Type | Required |
 | --- | --- | --- |
-| `projectOwnerLogin` | `string` | yes |
-| `projectNumber` | `number` (int) | yes |
+| `projectOwnerLogin` | `string` | no (both or neither of `projectOwnerLogin`/`projectNumber` — see `add_item_to_project`) |
+| `projectNumber` | `number` (int) | no (both or neither — see `add_item_to_project`) |
 | `projectOwnerType` | `"organization" \| "user"` | no (defaults to `organization`) |
 
 Returns `{ items: [{ id, title, number, repo, fieldValues: [{ fieldName,
@@ -268,9 +284,15 @@ non-Claude-Code equivalent of the `SessionStart` hook (`hooks/session-start.mjs`
 | `projectNumber` | `number` (int) | no |
 | `projectOwnerType` | `"organization" \| "user"` | no |
 
+`projectOwnerLogin`/`projectNumber` default to the configured `board:`
+mapping when both are omitted (same rule as `add_item_to_project`), but
+unlike that tool this one never throws when nothing resolves — an
+unconfigured board is a valid state here, not an error.
+
 Returns `{ openMilestones: [{ number, title, url, dueOn }], projectBoard:
-<get_project_items result> | null }`. `projectBoard` is `null` unless both
-`projectOwnerLogin` and `projectNumber` are supplied.
+<get_project_items result> | null }`. `projectBoard` is `null` unless a
+complete `projectOwnerLogin`/`projectNumber` pair resolves, explicit or
+configured.
 
 ## get_agent_capabilities
 
