@@ -10,13 +10,9 @@ diataxis_type: reference
 
 Epic [#78](https://github.com/modeled-information-format/gdlc/issues/78)'s
 layered global/project configuration system. The carrier and path were
-decided by ADR-0004 (staged in
-[PR #97](https://github.com/modeled-information-format/gdlc/pull/97), not
-yet merged as of this page's writing — linking to the PR rather than
-`docs/decisions/adr-0004-project-config-surface.md` directly so this page
-isn't a broken relative link if merged independently; issue
-[#79](https://github.com/modeled-information-format/gdlc/issues/79)); this
-page is the schema those two layers share (issues
+decided by [ADR-0004](../decisions/adr-0004-project-config-surface.md)
+(issue [#79](https://github.com/modeled-information-format/gdlc/issues/79));
+this page is the schema those two layers share (issues
 [#80](https://github.com/modeled-information-format/gdlc/issues/80) and
 [#81](https://github.com/modeled-information-format/gdlc/issues/81)).
 Machine-readable copy: [`schema/gdlc-config.schema.json`](../../schema/gdlc-config.schema.json).
