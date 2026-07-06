@@ -1,6 +1,6 @@
 ---
-title: "One XDG-Mirrored Path for Global and Project Config; .claude/<plugin>.local.md Stays Local-Only"
-description: "Project-level targeting/board-mapping config lives in .config/gdlc/config.yml (pure YAML), mirroring the global layer's $XDG_CONFIG_HOME/gdlc/config.yml path; .claude/<plugin>.local.md keeps only personal, uncommitted runtime toggles, and its shipped board key migrates into the new file."
+title: "One XDG-Mirrored Path for Global and Project Config; `.claude/<plugin>.local.md` Stays Local-Only"
+description: "Project-level targeting/board-mapping config lives in .config/gdlc/config.yml (pure YAML), mirroring the global layer's $XDG_CONFIG_HOME/gdlc/config.yml path; `.claude/<plugin>.local.md` keeps only personal, uncommitted runtime toggles, and its shipped board key migrates into the new file."
 type: adr
 conceptType: semantic
 x-ontology:
@@ -31,7 +31,7 @@ related:
   - adr-0003-board-status-hygiene.md
 ---
 
-# ADR-0004: One XDG-Mirrored Path for Global and Project Config; .claude/<plugin>.local.md Stays Local-Only
+# ADR-0004: One XDG-Mirrored Path for Global and Project Config; `.claude/<plugin>.local.md` Stays Local-Only
 
 ## Status
 
