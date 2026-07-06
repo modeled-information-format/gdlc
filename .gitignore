@@ -1,4 +1,8 @@
 node_modules/
+# Astro site build output at the repo root only — plugins/*/mcp-server/dist/
+# is deliberately committed (see CLAUDE.local.md), so this must stay anchored.
+/dist/
+/.astro/
 *.tsbuildinfo
 .env
 .env.local
