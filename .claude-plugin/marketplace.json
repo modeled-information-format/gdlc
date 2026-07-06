@@ -17,8 +17,8 @@
         "source": "git-subdir",
         "url": "https://github.com/modeled-information-format/gdlc.git",
         "path": "plugins/github-sdlc-planning",
-        "ref": "v0.3.0",
-        "sha": "b70496af585d23d7d2d3aa2e6fc8df83bfaf6309"
+        "ref": "v0.4.0",
+        "sha": "bd349832122c38da63238f704ce46a33ccdb3102"
       },
       "description": "Issues, native sub-issues, Projects v2, Milestones, and Discussions behind a portable MCP core plus a Claude Code progressive-enhancement layer. Every issue/discussion body carries MIF-conformant frontmatter authored via mif-docs.",
       "version": "0.4.0",
@@ -44,8 +44,8 @@
         "source": "git-subdir",
         "url": "https://github.com/modeled-information-format/gdlc.git",
         "path": "plugins/github-pull-requests",
-        "ref": "v0.3.0",
-        "sha": "b70496af585d23d7d2d3aa2e6fc8df83bfaf6309"
+        "ref": "v0.4.0",
+        "sha": "bd349832122c38da63238f704ce46a33ccdb3102"
       },
       "description": "Full pull-request lifecycle control: create, classify (type/size/risk labels), review-route, link to issues, and couple to Projects v2. Depends on github-sdlc-planning for its shared MIF comment-block reader and Projects v2 tools.",
       "version": "0.4.0",
@@ -69,8 +69,8 @@
         "source": "git-subdir",
         "url": "https://github.com/modeled-information-format/gdlc.git",
         "path": "plugins/github-repo-config",
-        "ref": "v0.3.0",
-        "sha": "b70496af585d23d7d2d3aa2e6fc8df83bfaf6309"
+        "ref": "v0.4.0",
+        "sha": "bd349832122c38da63238f704ce46a33ccdb3102"
       },
       "description": "Repo/org governance: branch protection and rulesets, org-wide .github community health files, GitHub Pages status, and custom repository properties.",
       "version": "0.4.0",
@@ -94,8 +94,8 @@
         "source": "git-subdir",
         "url": "https://github.com/modeled-information-format/gdlc.git",
         "path": "plugins/github-insights",
-        "ref": "v0.3.0",
-        "sha": "b70496af585d23d7d2d3aa2e6fc8df83bfaf6309"
+        "ref": "v0.4.0",
+        "sha": "bd349832122c38da63238f704ce46a33ccdb3102"
       },
       "description": "Read-only repo/org reporting: traffic (views/clones), contributor stats, community-health profile, and dependency-graph/SBOM summary.",
       "version": "0.4.0",
@@ -120,8 +120,8 @@
         "source": "git-subdir",
         "url": "https://github.com/modeled-information-format/gdlc.git",
         "path": "plugins/github-packages",
-        "ref": "v0.3.0",
-        "sha": "b70496af585d23d7d2d3aa2e6fc8df83bfaf6309"
+        "ref": "v0.4.0",
+        "sha": "bd349832122c38da63238f704ce46a33ccdb3102"
       },
       "description": "List org packages and versions across npm, Maven, RubyGems, Docker (legacy registry), Container (ghcr.io), NuGet, and generic registries; delete/restore a package or version.",
       "version": "0.4.0",
@@ -146,8 +146,8 @@
         "source": "git-subdir",
         "url": "https://github.com/modeled-information-format/gdlc.git",
         "path": "plugins/github-org-identity",
-        "ref": "v0.3.0",
-        "sha": "b70496af585d23d7d2d3aa2e6fc8df83bfaf6309"
+        "ref": "v0.4.0",
+        "sha": "bd349832122c38da63238f704ce46a33ccdb3102"
       },
       "description": "Organization roles and teams: list org roles, list role assignments, assign/remove a role for a team or user. SAML/SSO is out of scope.",
       "version": "0.4.0",
@@ -170,8 +170,8 @@
         "source": "git-subdir",
         "url": "https://github.com/modeled-information-format/gdlc.git",
         "path": "plugins/github-bug-capture",
-        "ref": "v0.3.0",
-        "sha": "b70496af585d23d7d2d3aa2e6fc8df83bfaf6309"
+        "ref": "v0.4.0",
+        "sha": "bd349832122c38da63238f704ce46a33ccdb3102"
       },
       "description": "Development-time bug capture: diagnostics discovered while code is being written become structured, MIF-conformant, lifecycle-managed GitHub issues. Portable MCP core plus opt-in Claude Code enhancement packs; composes with github-pull-requests and github-sdlc-planning.",
       "version": "0.4.0",
