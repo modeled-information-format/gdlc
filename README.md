@@ -8,8 +8,13 @@ title: gdlc
 diataxis_type: reference
 ---
 <p align="center">
-  <strong>gdlc</strong> — an attested Claude Code plugin marketplace for the
-  GitHub SDLC planning domain.
+  <img src=".github/social-preview.png" width="860" alt="">
+</p>
+
+<p align="center">
+  <strong>gdlc</strong> — seven Claude Code plugins for the GitHub SDLC:
+  planning, pull requests, bug capture, repo config, insights, packages,
+  and org identity.
 </p>
 
 # gdlc
