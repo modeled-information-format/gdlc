@@ -17,6 +17,7 @@
     "verify:live:composition": "tsx scripts/verify-live-composition.ts"
   },
   "dependencies": {
+    "@github-sdlc-plugins/github-sdlc-planning-mcp-server": "file:../../github-sdlc-planning/mcp-server",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.4.3"
   },

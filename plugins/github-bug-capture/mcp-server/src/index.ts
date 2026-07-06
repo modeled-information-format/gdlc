@@ -7,6 +7,7 @@ import { getAgentCapabilities } from './capabilities.js';
 import { isBugCaptureError } from './errors.js';
 import { ensureSeverityField, setSeverity, SEVERITY_LEVELS } from './tools/triage-board.js';
 import { getLifecycleState, setLifecycleState, searchSimilarIssues, closeAsDuplicate } from './tools/lifecycle.js';
+import { withRequiredBoardCoordinates } from './tool-defaults.js';
 
 const server = new McpServer({ name: 'github-bug-capture', version: '0.3.0' });
 
@@ -50,14 +51,14 @@ server.registerTool(
   {
     title: 'Ensure Severity field',
     description:
-      'Ensure the triage board (a Projects v2 board) has a "Severity" single-select field with options Critical/High/Medium/Low, creating it if absent. Idempotent: an existing field is returned with its option IDs without mutating.',
+      'Ensure the triage board (a Projects v2 board) has a "Severity" single-select field with options Critical/High/Medium/Low, creating it if absent. Idempotent: an existing field is returned with its option IDs without mutating. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted.',
     inputSchema: {
-      projectOwnerLogin: z.string(),
-      projectNumber: z.number().int(),
+      projectOwnerLogin: z.string().optional(),
+      projectNumber: z.number().int().optional(),
       projectOwnerType: projectOwnerTypeSchema.optional(),
     },
   },
-  wrap(ensureSeverityField),
+  wrap(withRequiredBoardCoordinates(ensureSeverityField)),
 );
 
 server.registerTool(
@@ -65,18 +66,18 @@ server.registerTool(
   {
     title: 'Set severity',
     description:
-      "Set an issue's Severity single-select value on the triage board. Fails with a typed error if the issue is not on the board or the Severity field/option is missing.",
+      "Set an issue's Severity single-select value on the triage board. Fails with a typed error if the issue is not on the board or the Severity field/option is missing. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted.",
     inputSchema: {
       owner: z.string(),
       repo: z.string(),
       issueNumber: z.number().int(),
-      projectOwnerLogin: z.string(),
-      projectNumber: z.number().int(),
+      projectOwnerLogin: z.string().optional(),
+      projectNumber: z.number().int().optional(),
       projectOwnerType: projectOwnerTypeSchema.optional(),
       severity: z.enum(SEVERITY_LEVELS),
     },
   },
-  wrap(setSeverity),
+  wrap(withRequiredBoardCoordinates(setSeverity)),
 );
 
 server.registerTool(
@@ -84,17 +85,17 @@ server.registerTool(
   {
     title: 'Get lifecycle state',
     description:
-      "Read an issue's lifecycle state: native GitHub state (open/closed) plus the triage board's Status single-select value, if the issue is on that board. Never errors when the issue is off the board or the Status field/value is absent -- both report as a null status.",
+      "Read an issue's lifecycle state: native GitHub state (open/closed) plus the triage board's Status single-select value, if the issue is on that board. Never errors when the issue is off the board or the Status field/value is absent -- both report as a null status. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted.",
     inputSchema: {
       owner: z.string(),
       repo: z.string(),
       issueNumber: z.number().int(),
-      projectOwnerLogin: z.string(),
-      projectNumber: z.number().int(),
+      projectOwnerLogin: z.string().optional(),
+      projectNumber: z.number().int().optional(),
       projectOwnerType: projectOwnerTypeSchema.optional(),
     },
   },
-  wrap(getLifecycleState),
+  wrap(withRequiredBoardCoordinates(getLifecycleState)),
 );
 
 server.registerTool(
@@ -102,19 +103,19 @@ server.registerTool(
   {
     title: 'Set lifecycle state',
     description:
-      'Set an issue\'s Status single-select value on the triage board via the project\'s existing "Status" field (looked up by name, never created), optionally closing the underlying issue afterward when closeIfDone is true. Fails with a typed error if the issue is not on the board or the Status field/option is missing.',
+      'Set an issue\'s Status single-select value on the triage board via the project\'s existing "Status" field (looked up by name, never created), optionally closing the underlying issue afterward when closeIfDone is true. Fails with a typed error if the issue is not on the board or the Status field/option is missing. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted.',
     inputSchema: {
       owner: z.string(),
       repo: z.string(),
       issueNumber: z.number().int(),
-      projectOwnerLogin: z.string(),
-      projectNumber: z.number().int(),
+      projectOwnerLogin: z.string().optional(),
+      projectNumber: z.number().int().optional(),
       projectOwnerType: projectOwnerTypeSchema.optional(),
       status: z.string(),
       closeIfDone: z.boolean().optional(),
     },
   },
-  wrap(setLifecycleState),
+  wrap(withRequiredBoardCoordinates(setLifecycleState)),
 );
 
 server.registerTool(

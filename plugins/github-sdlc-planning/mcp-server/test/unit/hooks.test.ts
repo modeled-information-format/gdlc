@@ -64,6 +64,23 @@ describe('confirm-mutation.mjs', () => {
     const result = runHook('confirm-mutation.mjs', { tool_name: 'Bash', tool_input: { command: 'ls' } });
     expect(result.hookSpecificOutput).toBeUndefined();
   });
+
+  it('labels an omitted owner/repo as a config default, not a bare "?", when the caller relies on destination.repo (issue #83)', () => {
+    const result = runHook('confirm-mutation.mjs', {
+      tool_name: 'mcp__github-sdlc-planning__create_issue',
+      tool_input: { title: 'Ship it' },
+    });
+    expect(result.hookSpecificOutput?.permissionDecisionReason).toContain('config default');
+    expect(result.hookSpecificOutput?.permissionDecisionReason).not.toContain('?');
+  });
+
+  it('labels an omitted projectOwnerLogin/projectNumber as a config default when the caller relies on the board mapping', () => {
+    const result = runHook('confirm-mutation.mjs', {
+      tool_name: 'mcp__github-sdlc-planning__add_item_to_project',
+      tool_input: { owner: 'acme', repo: 'widgets', issueNumber: 5 },
+    });
+    expect(result.hookSpecificOutput?.permissionDecisionReason).toContain('config default');
+  });
 });
 
 describe('session-start.mjs', () => {

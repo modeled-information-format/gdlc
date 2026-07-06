@@ -25,17 +25,40 @@ function readStdin() {
   }
 }
 
+// Issues #82/#83: owner/repo and projectOwnerLogin/projectNumber are now
+// optional on these tools -- an omitted value gets resolved from
+// .config/gdlc/config.yml (or the global gdlc config) inside the tool call
+// itself. This hook is dependency-free (no node_modules at hook-execution
+// time, same constraint as in-progress.mjs) and can't resolve that config
+// itself without a third re-implementation of the loader, so an omitted
+// field is described honestly as "config default", never a bare "?" that
+// would misrepresent an intentionally-omitted, config-resolved value as
+// missing/broken input.
+const CONFIG_DEFAULT = '(config default)';
+
+function describeRepo(input) {
+  if (input?.owner && input?.repo) return `${input.owner}/${input.repo}`;
+  return `${CONFIG_DEFAULT} repo`;
+}
+
+function describeProject(input) {
+  const login = input?.projectOwnerLogin ?? CONFIG_DEFAULT;
+  const number = input?.projectNumber !== undefined ? `#${input.projectNumber}` : CONFIG_DEFAULT;
+  return `project ${number} owned by ${login}`;
+}
+
 function describe(toolName, input) {
-  const target = input?.owner && input?.repo ? `${input.owner}/${input.repo}` : (input?.projectOwnerLogin ?? 'the target repo/project');
   switch (toolName) {
     case 'mcp__github-sdlc-planning__create_issue':
-      return `Create issue "${input?.title ?? '(untitled)'}" in ${target}.`;
+      return `Create issue "${input?.title ?? '(untitled)'}" in ${describeRepo(input)}.`;
     case 'mcp__github-sdlc-planning__add_item_to_project':
-      return `Add issue #${input?.issueNumber ?? '?'} to project #${input?.projectNumber ?? '?'} owned by ${target}.`;
+      return `Add issue #${input?.issueNumber ?? '?'} to ${describeProject(input)}.`;
     case 'mcp__github-sdlc-planning__set_field_value':
-      return `Set field ${input?.fieldId ?? '?'} on item ${input?.itemId ?? '?'} in project owned by ${target}.`;
-    default:
+      return `Set field ${input?.fieldId ?? '?'} on item ${input?.itemId ?? '?'} in ${describeProject(input)}.`;
+    default: {
+      const target = input?.owner && input?.repo ? describeRepo(input) : (input?.projectOwnerLogin ?? describeRepo(input));
       return `${toolName} will mutate GitHub state for ${target}.`;
+    }
   }
 }
 

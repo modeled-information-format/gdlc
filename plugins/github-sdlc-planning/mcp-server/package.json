@@ -8,6 +8,7 @@
   },
   "exports": {
     ".": "./dist/index.js",
+    "./config": "./dist/config.js",
     "./mif": "./dist/mif.js",
     "./resolvers": "./dist/resolvers.js",
     "./tools/projects": "./dist/tools/projects.js"
@@ -24,6 +25,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
