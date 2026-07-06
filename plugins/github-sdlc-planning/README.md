@@ -3,7 +3,7 @@ id: c867194d-1baa-48c1-869e-5c8d43362ff7
 type: semantic
 created: 2026-07-03T00:00:00Z
 namespace: github-sdlc-plugins/github-sdlc-planning
-modified: 2026-07-05T00:00:00Z
+modified: 2026-07-06T00:00:00Z
 title: github-sdlc-planning
 diataxis_type: reference
 ---
@@ -65,31 +65,46 @@ fields → seed draft issues → wire automations → report.
 
 ## Hooks
 
-Board-status hygiene (see
-[ADR-0003](../../docs/decisions/adr-0003-board-status-hygiene.md)) relies on
-GitHub's own Projects v2 built-in workflows for Todo-on-add and
-Done-on-close/merge. The one gap those workflows leave, marking an issue In
-Progress before a PR exists, is closed by the `set-in-progress` `PostToolUse`
-hook (matcher `mcp__github-sdlc-planning__(add_sub_issue|update_issue)`).
+Four hooks make up the Claude-Code-specific enhancement layer. Each is
+additive over the portable MCP core (a hook-less host gets the same
+behavior via an explicit tool call, never a degraded one):
 
-The hook is gated on a per-project settings file,
-`.claude/github-sdlc-planning.local.md` (same convention as
-`github-bug-capture`'s pack toggles; keep it out of version control via
-the consuming project's .gitignore or .git/info/exclude):
+| Hook | Event / matcher | What it does |
+| --- | --- | --- |
+| `session-start.mjs` | `SessionStart` (`startup`) | Fetches the repo's open milestones via `gh api` and injects them as session context — the Claude Code equivalent of calling `get_session_context`. |
+| `confirm-mutation.mjs` | `PreToolUse`, `mcp__github-sdlc-planning__.*` | Asks for confirmation before any mutating tool call, naming exactly what will change (issue/repo/project) so the prompt is legible instead of a bare tool name. |
+| `validate-mif.mjs` | `PostToolUse`, `mcp__github-sdlc-planning__.*` (only acts on `create_issue`/`update_issue`) | Checks the created/updated issue body for a conformant MIF comment block; on failure, returns a correction instruction via `additionalContext`. Discussions are not checked — MIF frontmatter is an issue-body convention only. |
+| `set-in-progress.mjs` | `PostToolUse`, `^mcp__github-sdlc-planning__(add_sub_issue|update_issue)$` | Closes the one gap GitHub's native Projects v2 workflows leave (see [ADR-0003](../../docs/decisions/adr-0003-board-status-hygiene.md)): marking an issue In Progress before a PR exists. |
 
-```markdown
----
+`set-in-progress.mjs` is gated on a board mapping, resolved by
+`hooks/lib/in-progress.mjs`'s `readBoardConfig` from three layers, in
+order (see [ADR-0004](../../docs/decisions/adr-0004-project-config-surface.md)
+and [the layered config schema](../../docs/reference/config-schema.md)):
+
+1. The project layer, `.config/gdlc/config.yml`'s `board:` section
+   (committed, team-shared).
+2. The global layer, `$XDG_CONFIG_HOME/gdlc/config.yml`'s `board:` section
+   (default `~/.config/gdlc/config.yml`), if the project layer has none.
+3. The legacy carrier, a `board:` key in
+   `.claude/github-sdlc-planning.local.md` frontmatter (same convention as
+   `github-bug-capture`'s pack toggles; keep it out of version control via
+   the consuming project's `.gitignore` or `.git/info/exclude`) — deprecated,
+   kept working for one release, and only consulted if neither config layer
+   defines a `board:` section at all:
+
+```yaml
+# .config/gdlc/config.yml (project layer; preferred)
 board:
   projectOwnerLogin: acme
   projectNumber: 4
   projectOwnerType: organization
----
 ```
 
 `projectOwnerType` defaults to `organization` when omitted (`user` is also
-accepted). A missing file, a missing `board:` map, or a missing/invalid key
-means the hook is disabled: it always emits an empty response rather than
-erroring.
+accepted). No layer configuring a `board:` section, a configured section
+missing/invalid `projectOwnerLogin`/`projectNumber`, or a `projectOwnerType`
+that isn't `organization`/`user`/omitted, means the hook is disabled: it
+always emits an empty response rather than erroring.
 
 When enabled, the hook fires after `add_sub_issue` (the child issue is the
 work item being started) or `update_issue` (skipped when the update closes
