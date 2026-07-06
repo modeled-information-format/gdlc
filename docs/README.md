@@ -20,7 +20,7 @@ Docs for the `github-sdlc-plugins` attested marketplace, organized by
 | Reference | [Gates](reference/gates.md) |
 | Explanation | [Why an attested marketplace](explanation/attested-marketplace.md) |
 | Security | [Verify a release](security/verify.md) |
-| Decisions | [ADR-0001](decisions/adr-0001-bug-capture-layer1-core.md), [ADR-0002](decisions/adr-0002-pr-issue-linkage-ownership.md), [ADR-0003](decisions/adr-0003-board-status-hygiene.md) |
+| Decisions | [ADR-0001](decisions/adr-0001-bug-capture-layer1-core.md), [ADR-0002](decisions/adr-0002-pr-issue-linkage-ownership.md), [ADR-0003](decisions/adr-0003-board-status-hygiene.md), [ADR-0004](decisions/adr-0004-project-config-surface.md) |
 
 ## Per-plugin docs
 
