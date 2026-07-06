@@ -23,4 +23,20 @@ Docs for the `github-sdlc-plugins` attested marketplace, organized by
 | Security | [Verify a release](security/verify.md) |
 | Decisions | [ADR-0001](decisions/adr-0001-bug-capture-layer1-core.md), [ADR-0002](decisions/adr-0002-pr-issue-linkage-ownership.md), [ADR-0003](decisions/adr-0003-board-status-hygiene.md) |
 
+## Per-plugin docs
+
+Each plugin has its own Diátaxis tree: a tutorial (first run), `how-to/`
+(task recipes), `reference/tools.md` (exhaustive MCP tool listing), and
+`explanation/` (architecture and rationale).
+
+| Plugin | Tutorial | Reference |
+| --- | --- | --- |
+| `github-bug-capture` | [Capture your first bug](github-bug-capture/tutorials/capture-your-first-bug.md) | [Tool reference](github-bug-capture/reference/tools.md) |
+| `github-insights` | [Repo health snapshot](github-insights/tutorials/repo-health-snapshot.md) | [Tool reference](github-insights/reference/tools.md) |
+| `github-org-identity` | [Audit and assign a role](github-org-identity/tutorials/audit-and-assign-a-role.md) | [Tool reference](github-org-identity/reference/tools.md) |
+| `github-packages` | [Audit and clean up a package](github-packages/tutorials/audit-and-clean-up-a-package.md) | [Tool reference](github-packages/reference/tools.md) |
+| `github-pull-requests` | [First PR linked to an issue](github-pull-requests/tutorials/first-pr-linked-to-an-issue.md) | [Tool reference](github-pull-requests/reference/tools.md) |
+| `github-repo-config` | [Audit and protect a branch](github-repo-config/tutorials/audit-and-protect-a-branch.md) | [Tool reference](github-repo-config/reference/tools.md) |
+| `github-sdlc-planning` | [Create your first epic](github-sdlc-planning/tutorials/create-your-first-epic.md) | [Tool reference](github-sdlc-planning/reference/tools.md) |
+
 See also the root [README.md](../README.md) and [SECURITY.md](../SECURITY.md).
