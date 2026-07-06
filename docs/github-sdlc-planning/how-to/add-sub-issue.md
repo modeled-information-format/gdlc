@@ -8,7 +8,6 @@ title: Attach a sub-issue with the add_sub_issue tool
 diataxis_type: how-to
 ---
 
-# Attach a sub-issue with `add_sub_issue`
 
 Goal: attach an existing child issue to an existing parent issue using
 GitHub's native sub-issue relationship.

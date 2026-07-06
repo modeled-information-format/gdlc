@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Get a single ruleset's detail
 diataxis_type: how-to
 ---
-# Get a single ruleset's detail
 
 Read one ruleset by id, including who or what can bypass it.
 

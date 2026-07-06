@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Delete a package
 diataxis_type: how-to
 ---
-# Delete a package
 
 Delete an entire package — every version it has, in one call.
 

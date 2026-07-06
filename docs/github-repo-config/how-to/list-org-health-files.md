@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: List an org's default community health files
 diataxis_type: how-to
 ---
-# List an org's default community health files
 
 See what default community health templates (issue/PR templates,
 CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, and similar) an org provides

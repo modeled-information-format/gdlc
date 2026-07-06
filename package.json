@@ -1,0 +1,17 @@
+{
+  "name": "gdlc-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "astro": "7.0.6",
+    "@astrojs/starlight": "0.41.3"
+  },
+  "overrides": {
+    "esbuild": "0.28.1"
+  }
+}

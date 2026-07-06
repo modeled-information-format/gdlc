@@ -8,7 +8,6 @@ title: Set a project field value with set_field_value
 diataxis_type: how-to
 ---
 
-# Set a project field value with `set_field_value`
 
 Goal: set a Projects v2 item's field (Status, an iteration, a custom text or
 number field) to a specific value.

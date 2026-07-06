@@ -8,7 +8,6 @@ title: Why github-sdlc-planning exists and how it's built
 diataxis_type: explanation
 ---
 
-# Why github-sdlc-planning exists and how it's built
 
 ## Its role as the Tier-1 foundation
 

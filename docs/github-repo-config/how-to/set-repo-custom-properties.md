@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Bulk-set custom property values across repos
 diataxis_type: how-to
 ---
-# Bulk-set custom property values across repos
 
 Write custom property values to one or more repos in a single org-level
 call. This is a broad-blast-radius write — it can retarget ruleset

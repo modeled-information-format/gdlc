@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: List the teams holding an organization role
 diataxis_type: how-to
 ---
-# List the teams holding an organization role
 
 Use `list_role_teams` to see which teams currently hold a given
 organization role — the team-level counterpart to `list_role_users`.

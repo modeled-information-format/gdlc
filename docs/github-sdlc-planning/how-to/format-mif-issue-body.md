@@ -8,7 +8,6 @@ title: Format a MIF issue body with format_mif_issue_body
 diataxis_type: how-to
 ---
 
-# Format a MIF issue body with `format_mif_issue_body`
 
 Goal: prepend the MIF L1 frontmatter comment block to a Markdown body
 yourself, without creating an issue — useful when composing a body ahead of

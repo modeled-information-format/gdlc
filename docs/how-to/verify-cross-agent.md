@@ -7,7 +7,6 @@ modified: 2026-07-03T20:50:00Z
 title: Verify cross-agent portability
 diataxis_type: how-to
 ---
-# Verify cross-agent portability
 
 Both plugins' MCP cores are designed to be agent-neutral — every write goes
 through an MCP tool call with no Claude-Code-only side effect. This is

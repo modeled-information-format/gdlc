@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Why github-repo-config is standalone
 diataxis_type: explanation
 ---
-# Why github-repo-config is standalone
 
 `github-repo-config` covers repo/org governance: branch protection and
 rulesets, org-wide `.github` community health files, GitHub Pages status,

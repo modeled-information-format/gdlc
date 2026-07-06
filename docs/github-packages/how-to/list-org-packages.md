@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: List an org's packages
 diataxis_type: how-to
 ---
-# List an org's packages
 
 List all of an org's packages of one registry type.
 

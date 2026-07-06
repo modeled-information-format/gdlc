@@ -8,7 +8,6 @@ title: List a parent's sub-issues with the list_sub_issues tool
 diataxis_type: how-to
 ---
 
-# List a parent's sub-issues with `list_sub_issues`
 
 Goal: see a parent issue's sub-issues and how much of its work is complete.
 

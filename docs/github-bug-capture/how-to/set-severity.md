@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Set an issue's severity
 diataxis_type: how-to
 ---
-# Set an issue's severity
 
 Use this to record how severe a bug issue is on its triage board's
 `Severity` field.

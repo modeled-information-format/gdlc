@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Detect what github-bug-capture supports
 diataxis_type: how-to
 ---
-# Detect what github-bug-capture supports
 
 Use this when an MCP host, orchestrating agent, or sibling plugin needs to
 confirm this server is reachable and discover its tool surface and sibling

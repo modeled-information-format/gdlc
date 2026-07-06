@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Put a PR on a Projects v2 board with add_pull_request_to_project
 diataxis_type: how-to
 ---
-# Put a PR on a Projects v2 board with `add_pull_request_to_project`
 
 Add a pull request itself (not the issue it closes) as an item on a
 Projects v2 board.

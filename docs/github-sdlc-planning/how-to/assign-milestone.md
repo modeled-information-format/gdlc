@@ -8,7 +8,6 @@ title: Assign or unassign a milestone with assign_milestone
 diataxis_type: how-to
 ---
 
-# Assign or unassign a milestone with `assign_milestone`
 
 Goal: attach an issue to a milestone, or remove its milestone.
 

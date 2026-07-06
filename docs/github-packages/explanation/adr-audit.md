@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: ADR relevance audit for github-packages
 diataxis_type: explanation
 ---
-# ADR relevance audit for github-packages
 
 This repo's three Architectural Decision Records —
 `docs/decisions/adr-0001-bug-capture-layer1-core.md`,

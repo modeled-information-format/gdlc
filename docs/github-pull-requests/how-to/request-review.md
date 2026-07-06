@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Request reviewers on a PR with request_review
 diataxis_type: how-to
 ---
-# Request reviewers on a PR with `request_review`
 
 Request one or more reviewers, and/or teams, on an open pull request.
 

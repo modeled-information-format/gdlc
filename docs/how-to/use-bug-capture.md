@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Capture and triage bugs with github-bug-capture
 diataxis_type: how-to
 ---
-# Capture and triage bugs with github-bug-capture
 
 Turn a diagnostic you just hit (a failing test, a lint error, a build break)
 into a structured, severity-labeled, board-tracked GitHub issue, and manage

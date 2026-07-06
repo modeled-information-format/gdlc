@@ -8,7 +8,6 @@ title: Parse a MIF issue body with parse_mif_issue_body
 diataxis_type: how-to
 ---
 
-# Parse a MIF issue body with `parse_mif_issue_body`
 
 Goal: read an issue or discussion body's raw text and extract its MIF
 metadata (`id`, `type`, `namespace`) plus the body with the frontmatter

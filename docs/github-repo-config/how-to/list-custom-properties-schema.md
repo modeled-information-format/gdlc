@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: List an org's custom repository-property definitions
 diataxis_type: how-to
 ---
-# List an org's custom repository-property definitions
 
 See what custom repository properties an org has defined — the schema,
 not any repo's actual values.

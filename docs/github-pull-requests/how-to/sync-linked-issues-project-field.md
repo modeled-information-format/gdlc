@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Stamp a board field on closed issues with sync_linked_issues_project_field
 diataxis_type: how-to
 ---
-# Stamp a board field on closed issues with `sync_linked_issues_project_field`
 
 After a pull request merges, propagate a Projects v2 field value (e.g. a
 "Shipped in" iteration or release column) onto every same-repo issue it

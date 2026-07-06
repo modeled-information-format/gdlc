@@ -1,0 +1,71 @@
+<svg width="1280" height="640" viewBox="0 0 1280 640" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="gdlc — github-sdlc-plugins: a Claude Code plugin suite for the GitHub software development lifecycle, covering planning, pull requests, bug capture, repo config, insights, packages, and org identity">
+  <title>github-sdlc-plugins — the GitHub SDLC plugin marketplace</title>
+  <desc>Dark field. The chevron-M MIF mark and wordmark, top-left. Title "github-sdlc-plugins". Seven plugin domains listed as a toolkit: planning, pull requests, bug capture, repo config, insights, packages, org identity — each its own MCP server.</desc>
+  <defs>
+    <linearGradient id="field" x1="0" y1="0" x2="1280" y2="640" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0A0D13"/>
+      <stop offset="1" stop-color="#0E121B"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Field -->
+  <rect width="1280" height="640" fill="url(#field)"/>
+  <!-- Faint inset frame -->
+  <rect x="36" y="36" width="1208" height="568" rx="20" fill="none" stroke="#222C3C" stroke-width="2"/>
+
+  <!-- ===== Identity lockup (top-left): chevron-M mark + MIF wordmark ===== -->
+  <g transform="translate(84 66) scale(1.15)" fill="none" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M6 42 L6 6 L24 29" stroke="#34D3E8"/>
+    <path d="M24 29 L42 6 L42 42" stroke="#F5B642"/>
+    <path d="M24 25.6 L27.4 29 L24 32.4 L20.6 29 Z" fill="#E8EEF6" stroke="none"/>
+  </g>
+  <text x="150" y="112" font-family="Menlo, 'SF Mono', 'JetBrains Mono', monospace"
+        font-size="30" font-weight="700" letter-spacing="0.04em" fill="#E8EEF6">MIF</text>
+  <text x="222" y="112" font-family="Menlo, 'SF Mono', 'JetBrains Mono', monospace"
+        font-size="15" fill="#7C8AA0" letter-spacing="0.05em">Modeled Information Format</text>
+
+  <!-- ===== Title block (left column) ===== -->
+  <text x="84" y="214" font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+        font-size="52" font-weight="700" letter-spacing="-0.02em" fill="#E8EEF6">github-sdlc-plugins</text>
+  <text x="86" y="254" font-family="Menlo, 'SF Mono', 'JetBrains Mono', monospace"
+        font-size="18" fill="#AEBCCF" letter-spacing="0.01em">The GitHub SDLC plugin marketplace — one MCP server per plugin.</text>
+
+  <!-- ===== Seven plugin domains, two columns ===== -->
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="19">
+    <!-- Left column -->
+    <circle cx="94" cy="316" r="5" fill="#34D3E8"/>
+    <text x="112" y="322" fill="#E8EEF6">Planning</text>
+    <text x="112" y="322" dx="90" fill="#7C8AA0" font-size="15">issues · sub-issues · Projects v2</text>
+
+    <circle cx="94" cy="356" r="5" fill="#34D3E8"/>
+    <text x="112" y="362" fill="#E8EEF6">Pull requests</text>
+    <text x="112" y="362" dx="118" fill="#7C8AA0" font-size="15">classify · review-route · link</text>
+
+    <circle cx="94" cy="396" r="5" fill="#34D3E8"/>
+    <text x="112" y="402" fill="#E8EEF6">Bug capture</text>
+    <text x="112" y="402" dx="112" fill="#7C8AA0" font-size="15">severity · triage · lifecycle</text>
+
+    <circle cx="94" cy="436" r="5" fill="#F5B642"/>
+    <text x="112" y="442" fill="#E8EEF6">Repo config</text>
+    <text x="112" y="442" dx="112" fill="#7C8AA0" font-size="15">branch protection · rulesets</text>
+
+    <!-- Right column -->
+    <circle cx="694" cy="316" r="5" fill="#F5B642"/>
+    <text x="712" y="322" fill="#E8EEF6">Insights</text>
+    <text x="712" y="322" dx="84" fill="#7C8AA0" font-size="15">traffic · contributors · SBOM</text>
+
+    <circle cx="694" cy="356" r="5" fill="#F5B642"/>
+    <text x="712" y="362" fill="#E8EEF6">Packages</text>
+    <text x="712" y="362" dx="90" fill="#7C8AA0" font-size="15">list · inspect · delete · restore</text>
+
+    <circle cx="694" cy="396" r="5" fill="#F5B642"/>
+    <text x="712" y="402" fill="#E8EEF6">Org identity</text>
+    <text x="712" y="402" dx="112" fill="#7C8AA0" font-size="15">roles · team &amp; user assignment</text>
+  </g>
+
+  <!-- ===== Footer locators ===== -->
+  <text x="84" y="572" font-family="Menlo, 'SF Mono', 'JetBrains Mono', monospace"
+        font-size="15" fill="#7C8AA0" letter-spacing="0.01em">modeled-information-format/gdlc</text>
+  <text x="1192" y="572" text-anchor="end" font-family="Menlo, 'SF Mono', 'JetBrains Mono', monospace"
+        font-size="15" fill="#7C8AA0" letter-spacing="0.02em">mif-spec.dev</text>
+</svg>

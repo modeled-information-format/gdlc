@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Audit an org's roles, then assign and remove one
 diataxis_type: tutorial
 ---
-# Audit an org's roles, then assign and remove one
 
 This walkthrough takes you from "what roles does this org even have" through
 to assigning a role to a team and then removing it again — the full

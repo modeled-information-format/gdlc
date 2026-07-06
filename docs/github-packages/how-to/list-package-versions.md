@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: List a package's versions
 diataxis_type: how-to
 ---
-# List a package's versions
 
 See every published version of one package.
 

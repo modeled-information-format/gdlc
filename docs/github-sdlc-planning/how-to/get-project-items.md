@@ -8,7 +8,6 @@ title: Read a project board with get_project_items
 diataxis_type: how-to
 ---
 
-# Read a project board with `get_project_items`
 
 Goal: list every item on a Projects v2 board along with its field values,
 to find an item's node ID or inspect board state.

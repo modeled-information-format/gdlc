@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Open your first PR and link it to an issue
 diataxis_type: tutorial
 ---
-# Open your first PR and link it to an issue
 
 This tutorial walks through opening a pull request, classifying it, routing a
 reviewer, and confirming it closes an issue on merge — using only

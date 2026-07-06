@@ -8,7 +8,6 @@ title: Put an issue on a project board with add_item_to_project
 diataxis_type: how-to
 ---
 
-# Put an issue on a project board with `add_item_to_project`
 
 Goal: add an issue to a Projects v2 board, without creating a duplicate item
 if it's already there.

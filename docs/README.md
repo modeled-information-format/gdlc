@@ -7,7 +7,6 @@ modified: 2026-07-03T00:00:00Z
 title: gdlc documentation
 diataxis_type: index
 ---
-# gdlc documentation
 
 Docs for the `github-sdlc-plugins` attested marketplace, organized by
 [Diátaxis](https://diataxis.fr/) mode.

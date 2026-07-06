@@ -8,7 +8,6 @@ title: Bootstrap session context with get_session_context
 diataxis_type: how-to
 ---
 
-# Bootstrap session context with `get_session_context`
 
 Goal: fetch a repository's open milestones and, optionally, a Projects v2
 board's state in one call — the equivalent of what Claude Code's

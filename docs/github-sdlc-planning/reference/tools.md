@@ -8,7 +8,6 @@ title: github-sdlc-planning MCP tool reference
 diataxis_type: reference
 ---
 
-# github-sdlc-planning MCP tool reference
 
 Exhaustive listing of the 16 tools registered by
 `plugins/github-sdlc-planning/mcp-server/src/index.ts`. Parameter names,

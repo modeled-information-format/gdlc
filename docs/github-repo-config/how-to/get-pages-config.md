@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Read a repo's GitHub Pages status
 diataxis_type: how-to
 ---
-# Read a repo's GitHub Pages status
 
 Check a repository's current Pages configuration and build status.
 

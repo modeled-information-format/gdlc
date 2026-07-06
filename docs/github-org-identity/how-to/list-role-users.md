@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: List the users holding an organization role
 diataxis_type: how-to
 ---
-# List the users holding an organization role
 
 Use `list_role_users` to see which individual users currently hold a given
 organization role, whether granted directly or inherited through team

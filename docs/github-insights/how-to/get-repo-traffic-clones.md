@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Get a repo's traffic clones
 diataxis_type: how-to
 ---
-# Get a repo's traffic clones
 
 Read how many times a repository has been git-cloned over GitHub's 14-day
 rolling window, broken down by day.

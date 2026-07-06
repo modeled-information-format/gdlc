@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Assign an organization role to a team
 diataxis_type: how-to
 ---
-# Assign an organization role to a team
 
 Use `assign_team_role` to grant an existing organization role to an
 existing team. This is a write that mutates permissions across every repo

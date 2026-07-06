@@ -7,7 +7,6 @@ modified: 2026-07-03T00:00:00Z
 title: Gates
 diataxis_type: reference
 ---
-# Gates
 
 Each gate is a thin, SHA-pinned caller of a `modeled-information-format/.github`
 central reusable. The scanning gates normalize on SARIF and surface in the

@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Check a bug issue's lifecycle state
 diataxis_type: how-to
 ---
-# Check a bug issue's lifecycle state
 
 Use this to read where a bug issue stands — combining GitHub's native
 open/closed state with the triage board's `Status` value — without mutating

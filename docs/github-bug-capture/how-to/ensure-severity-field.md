@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Provision the Severity field on a triage board
 diataxis_type: how-to
 ---
-# Provision the Severity field on a triage board
 
 Use this once per Projects v2 board, before calling `set_severity` against
 any issue on it, to make sure the board has a `Severity` single-select
