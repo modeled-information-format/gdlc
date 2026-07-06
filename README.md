@@ -112,6 +112,12 @@ sub-issues, boards, milestones, PRs, linkage) and
 [capture and triage bugs](docs/how-to/use-bug-capture.md) (severity,
 dedup, lifecycle, hooks and skills).
 
+The four standalone plugins each have their own getting-started tutorial:
+[audit and protect a branch](docs/github-repo-config/tutorials/audit-and-protect-a-branch.md),
+[repo health snapshot](docs/github-insights/tutorials/repo-health-snapshot.md),
+[audit and clean up a package](docs/github-packages/tutorials/audit-and-clean-up-a-package.md),
+and [audit and assign a role](docs/github-org-identity/tutorials/audit-and-assign-a-role.md).
+
 Before trusting a release, verify it yourself: see [SECURITY.md](SECURITY.md)
 and [docs/security/verify.md](docs/security/verify.md).
 
