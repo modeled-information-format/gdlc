@@ -74,7 +74,7 @@ same release App token as `publish`. It is idempotent: a re-run skips any
 Verify after a release:
 
 ```bash
-git ls-remote --tags --repo modeled-information-format/gdlc | grep -- '--v<X.Y.Z>'
+git ls-remote --tags https://github.com/modeled-information-format/gdlc.git | grep -- '--v<X.Y.Z>'
 ```
 
 ## Verify it worked
