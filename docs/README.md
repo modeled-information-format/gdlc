@@ -18,6 +18,7 @@ Docs for the `github-sdlc-plugins` attested marketplace, organized by
 | How-to | [Add a plugin](how-to/add-a-plugin.md) |
 | How-to | [Verify cross-agent portability](how-to/verify-cross-agent.md) |
 | Reference | [Gates](reference/gates.md) |
+| Reference | [Layered config schema](reference/config-schema.md) |
 | Explanation | [Why an attested marketplace](explanation/attested-marketplace.md) |
 | Security | [Verify a release](security/verify.md) |
 | Decisions | [ADR-0001](decisions/adr-0001-bug-capture-layer1-core.md), [ADR-0002](decisions/adr-0002-pr-issue-linkage-ownership.md), [ADR-0003](decisions/adr-0003-board-status-hygiene.md), [ADR-0004](decisions/adr-0004-project-config-surface.md) |

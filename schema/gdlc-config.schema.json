@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/modeled-information-format/gdlc/schema/gdlc-config.schema.json",
+  "title": "gdlc layered config (global + project)",
+  "description": "Shape shared by both the global layer ($XDG_CONFIG_HOME/gdlc/config.yml) and the project layer (.config/gdlc/config.yml, per ADR-0004). Every top-level section is optional at both layers (the board sub-fields are required once a board section is present); issue #81 designs the project value overriding the global one per top-level section, and issue #82 builds the config-loader that implements it.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "targeting": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Which repos/orgs gdlc's plugins capture issues for. Omitted or empty allowlists mean no restriction.",
+      "properties": {
+        "allowRepos": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$" },
+          "description": "Allowlist of \"org/repo\" pairs."
+        },
+        "allowOrgs": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[^/\\s]+$" },
+          "description": "Allowlist of org (or user) logins."
+        }
+      }
+    },
+    "destination": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Where captured issues get posted when the capturing repo isn't itself the destination.",
+      "properties": {
+        "repo": {
+          "type": "string",
+          "pattern": "^[^/\\s]+/[^/\\s]+$",
+          "description": "Default \"org/repo\" destination for posted issues."
+        }
+      }
+    },
+    "board": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Project-to-org-project-board mapping. Supersedes the legacy board: key in .claude/github-sdlc-planning.local.md (ADR-0004).",
+      "properties": {
+        "projectOwnerLogin": { "type": "string", "minLength": 1 },
+        "projectNumber": { "type": "integer", "minimum": 1 },
+        "projectOwnerType": { "type": "string", "enum": ["organization", "user"], "default": "organization" }
+      },
+      "required": ["projectOwnerLogin", "projectNumber"]
+    }
+  }
+}
