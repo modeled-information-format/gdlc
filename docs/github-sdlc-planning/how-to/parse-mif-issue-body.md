@@ -23,7 +23,10 @@ comments stripped out.
 ## Steps
 
 1. Call `parse_mif_issue_body` with the raw body text (for example, fetched
-   separately via `update_issue`'s response or a direct GitHub API read):
+   separately via `gh issue view <number> --json body -q .body`, a direct
+   GitHub API read, or a body you already have in hand from a prior
+   `create_issue` call, which returns the body it created — `update_issue`
+   returns only `{ number, url }`, not the body):
 
    ```json
    {

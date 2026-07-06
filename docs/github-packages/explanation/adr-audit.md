@@ -9,10 +9,11 @@ diataxis_type: explanation
 ---
 # ADR relevance audit for github-packages
 
-This repo's three Architectural Decision Records — `docs/decisions/adr-0001
--bug-capture-layer1-core.md`, `adr-0002-pr-issue-linkage-ownership.md`, and
-`adr-0003-board-status-hygiene.md` — were each read in full for relevance to
-`github-packages`.
+This repo's three Architectural Decision Records —
+`docs/decisions/adr-0001-bug-capture-layer1-core.md`,
+`docs/decisions/adr-0002-pr-issue-linkage-ownership.md`, and
+`docs/decisions/adr-0003-board-status-hygiene.md` — were each read in full for
+relevance to `github-packages`.
 
 **Finding: none apply.** All three ADRs govern `github-bug-capture`
 specifically:
