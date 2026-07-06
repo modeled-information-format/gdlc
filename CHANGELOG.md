@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-06
+
+### Added
+
+- Layered global/project configuration system (epic #78, ADR-0004): a
+  project-level `.config/gdlc/config.yml` and a global
+  `$XDG_CONFIG_HOME/gdlc/config.yml`, merged per top-level section
+  (project wins). Covers `targeting` (repo/org allowlist for issue
+  capture), `destination` (default posted-issue target), and `board`
+  (project-board mapping). The shared loader lives in
+  `github-sdlc-planning`'s MCP server (`src/config.ts`, exported via a
+  `./config` subpath) and is consumed directly by `github-bug-capture`
+  (a new dependency edge on `github-sdlc-planning`, alongside its
+  existing one on `github-pull-requests`).
+- `create_issue`'s `owner`/`repo`, and `add_item_to_project`/
+  `set_field_value`/`get_project_items`/`get_session_context`'s
+  `projectOwnerLogin`/`projectNumber`, now default from the layered
+  config when omitted (atomically — a partial pair is treated as
+  unresolved, never mixed with a config-sourced value). `create_issue`
+  additionally enforces a configured `targeting` allowlist, if any. Same
+  defaulting applies to `github-bug-capture`'s `ensure_severity_field`/
+  `set_severity`/`get_lifecycle_state`/`set_lifecycle_state`.
+- `github-sdlc-planning`'s `set-in-progress` hook now reads the new
+  `.config/gdlc/config.yml` board mapping first, falling back to the
+  global layer, then — for one release, with a deprecation notice — the
+  legacy `board:` key in `.claude/github-sdlc-planning.local.md`.
+- Documentation: `docs/reference/config-schema.md` (the schema and
+  cascade, with a verified end-to-end transcript), updated tool-reference
+  and how-to docs across both plugins, and an Astro/Starlight
+  documentation site scaffold (epic #67).
+
 ## [0.3.0] - 2026-07-05
 
 Covers everything since v0.1.0; v0.2.0 was tagged without a changelog cut,
