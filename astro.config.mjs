@@ -18,6 +18,34 @@ export default defineConfig({
         dark: "./src/assets/logo-dark.svg",
         replacesTitle: true,
       },
+      head: [
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image",
+            content: "https://modeled-information-format.github.io/gdlc/og-image.png",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: { property: "og:image:width", content: "1280" },
+        },
+        {
+          tag: "meta",
+          attrs: { property: "og:image:height", content: "640" },
+        },
+        {
+          tag: "meta",
+          attrs: { name: "twitter:card", content: "summary_large_image" },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            name: "twitter:image",
+            content: "https://modeled-information-format.github.io/gdlc/og-image.png",
+          },
+        },
+      ],
       social: [
         {
           icon: "github",
