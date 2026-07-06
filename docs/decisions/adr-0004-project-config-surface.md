@@ -14,9 +14,9 @@ tags:
   - configuration
   - xdg
   - plugin-composition
-status: proposed
+status: accepted
 created: 2026-07-05
-updated: 2026-07-05
+updated: 2026-07-06
 author: MIF Maintainers
 project: gdlc
 technologies:
@@ -35,7 +35,7 @@ related:
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -409,5 +409,23 @@ moves to accepted.
 
 **Action Required:** Maintainer review. On acceptance, issues #80–#84
 implement against this chosen carrier and path convention.
+
+### 2026-07-06
+
+**Status:** Compliant
+
+**Findings:**
+
+| Finding                                                          | Files | Lines | Assessment |
+| ----------------------------------------------------------------- | ----- | ----- | ---------- |
+| Maintainer accepted Option 2 (`.config/gdlc/config.yml`); no open objections to the carrier, path-unification, or `board:` migration plan | - | - | compliant |
+
+**Summary:** Maintainer review is complete; the decision is now binding.
+Option 2 stands as drafted, with no changes to the chosen carrier, the
+shared `gdlc/config.yml` path suffix, or the `board:` deprecation-fallback
+plan.
+
+**Action Required:** None for this ADR. Issues #80–#84 now implement
+against this chosen carrier and path convention.
 
 [adr-0003]: adr-0003-board-status-hygiene.md
