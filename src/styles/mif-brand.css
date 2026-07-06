@@ -14,10 +14,10 @@
 :root,
 :root[data-theme="dark"] {
   --sl-color-accent-low: #0a2630;
-  --sl-color-accent: #34d3e8;
+  --sl-color-accent: var(--mif-machine);
   --sl-color-accent-high: #afedf6;
-  --sl-color-white: #e8eef6;
-  --sl-color-gray-1: #e8eef6;
+  --sl-color-white: var(--mif-text);
+  --sl-color-gray-1: var(--mif-text);
   --sl-color-gray-2: #aebccf;
   --sl-color-gray-3: #7c8aa0;
   --sl-color-gray-4: #3c4b63;
@@ -30,7 +30,7 @@
   --sl-color-bg-sidebar: #0a0d13;
   --sl-color-bg-inline-code: #1c2433;
   --sl-color-hairline: #222c3c;
-  --sl-color-text-accent: #34d3e8;
+  --sl-color-text-accent: var(--mif-machine);
 }
 
 /* Light theme — accents darkened for AA on white */
