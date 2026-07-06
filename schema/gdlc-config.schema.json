@@ -42,7 +42,7 @@
       "properties": {
         "projectOwnerLogin": { "type": "string", "minLength": 1 },
         "projectNumber": { "type": "integer", "minimum": 1 },
-        "projectOwnerType": { "type": "string", "enum": ["organization", "user"] }
+        "projectOwnerType": { "type": "string", "enum": ["organization", "user"], "default": "organization" }
       },
       "required": ["projectOwnerLogin", "projectNumber"]
     }

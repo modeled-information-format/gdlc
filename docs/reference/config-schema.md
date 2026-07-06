@@ -10,16 +10,16 @@ diataxis_type: reference
 
 Epic [#78](https://github.com/modeled-information-format/gdlc/issues/78)'s
 layered global/project configuration system. The carrier and path were
-decided by [ADR-0004](../decisions/adr-0004-project-config-surface.md)
-(issue [#79](https://github.com/modeled-information-format/gdlc/issues/79));
-this page is the schema those two layers share (issues
+decided by ADR-0004 (staged in
+[PR #97](https://github.com/modeled-information-format/gdlc/pull/97), not
+yet merged as of this page's writing — linking to the PR rather than
+`docs/decisions/adr-0004-project-config-surface.md` directly so this page
+isn't a broken relative link if merged independently; issue
+[#79](https://github.com/modeled-information-format/gdlc/issues/79)); this
+page is the schema those two layers share (issues
 [#80](https://github.com/modeled-information-format/gdlc/issues/80) and
 [#81](https://github.com/modeled-information-format/gdlc/issues/81)).
 Machine-readable copy: [`schema/gdlc-config.schema.json`](../../schema/gdlc-config.schema.json).
-
-> ADR-0004's acceptance is staged in [PR #97](https://github.com/modeled-information-format/gdlc/pull/97),
-> not yet merged as of this page's writing. The link above 404s until #97
-> merges to `main`; merge #97 before (or together with) this page.
 
 ## Files and resolution
 
@@ -77,7 +77,7 @@ The config-loader (issue #82) tries `.config/gdlc/config.yml`'s `board`
 section first. If that section is absent, it falls back for one release to
 the legacy `board:` map in `.claude/github-sdlc-planning.local.md`
 (`docs/how-to/plan-work-with-the-plugins.md` step 3), emitting one
-deprecation notice on first use. `.claude/<plugin>.local.md` files
+deprecation notice on first use. `` `.claude/<plugin>.local.md` `` files
 otherwise keep their original, narrower purpose: personal, uncommitted,
 per-developer runtime toggles (e.g. github-bug-capture's `packs:` map),
 never team-shared targeting/board policy.
@@ -88,9 +88,11 @@ The config-loader is Layer-1 (portable-core) scope, not a Claude-Code-only
 enhancement: `targeting`/`destination`/`board` values must resolve
 identically for any MCP host, matching
 [ADR-0001](../decisions/adr-0001-bug-capture-layer1-core.md)'s core/enhancement
-split. It ships as `plugins/github-sdlc-planning/mcp-server/src/config.ts`,
-exported via the package's `./config` subpath — the same subpath-export
-mechanism `github-pull-requests` already uses to reuse `mif.ts` (see
+split. It ships as `plugins/github-sdlc-planning/mcp-server/src/config.ts`
+(issue #82), exported via a `./config` subpath on that package — the same
+subpath-export mechanism already used for `mif.ts`:
+`github-sdlc-planning/mcp-server/package.json` defines the `exports` map,
+and `github-pull-requests` consumes it via a `file:` dependency (see
 `plugins/github-pull-requests/mcp-server/package.json`).
 
 **New dependency edge, decided here.** `github-bug-capture` has no existing
@@ -142,7 +144,7 @@ board:
 
 ```console
 $ cd <projectRoot> && XDG_CONFIG_HOME=<global root> node -e \
-  "import('.../mcp-server/dist/config.js').then(m => \
+  "import('<gdlcRepoRoot>/plugins/github-sdlc-planning/mcp-server/dist/config.js').then(m => \
      console.log(JSON.stringify(m.loadGdlcConfig(process.cwd()), null, 2)))"
 {
   "destination": {

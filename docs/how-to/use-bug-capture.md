@@ -114,7 +114,9 @@ become the issue body's MIF identity (`urn:mif:concept:<ns>:<id>`).
 ## 7. Automate In Progress (planning plugin)
 
 Create `.config/gdlc/config.yml` in the consuming project (committed,
-team-shared -- same file and `board:` section as step 3):
+team-shared). Step 3's `projectOwnerLogin`/`projectNumber` optionality
+reads from this same file's `board:` section -- this is where you create
+it:
 
 ```yaml
 board:
