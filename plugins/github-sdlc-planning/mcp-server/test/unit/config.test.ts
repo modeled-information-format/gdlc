@@ -129,10 +129,24 @@ describe('loadConfigFile', () => {
     expect(loadConfigFile(resolveConfigPath(root))).toEqual({ targeting: { allowOrgs: ['false'] } });
   });
 
-  it('drops non-scalar entries (objects/arrays/null) from allowlist arrays', () => {
+  it('coerces non-scalar entries (objects/arrays/null) rather than dropping them', () => {
     const root = tmpDir();
     writeConfig(root, ['targeting:', '  allowRepos: ["acme/widgets", null, {a: 1}]', ''].join('\n'));
-    expect(loadConfigFile(resolveConfigPath(root))).toEqual({ targeting: { allowRepos: ['acme/widgets'] } });
+    expect(loadConfigFile(resolveConfigPath(root))).toEqual({
+      targeting: { allowRepos: ['acme/widgets', 'null', '[object Object]'] },
+    });
+  });
+
+  it('never normalizes a non-empty allowlist down to [] even when every entry is non-scalar', () => {
+    // If every entry had been dropped instead of coerced, this would
+    // normalize to allowRepos: [], which isRepoAllowed treats as "no
+    // restriction" -- the opposite of what a fully-non-scalar allowlist
+    // (almost certainly a config-authoring mistake) should do.
+    const root = tmpDir();
+    writeConfig(root, ['targeting:', '  allowRepos: [null, {a: 1}]', ''].join('\n'));
+    const config = loadConfigFile(resolveConfigPath(root));
+    expect(config.targeting?.allowRepos).toHaveLength(2);
+    expect(isRepoAllowed(config, 'acme', 'widgets')).toBe(false);
   });
 
   it('accepts a quoted numeric string for board.projectNumber, matching the hooks-layer reader', () => {

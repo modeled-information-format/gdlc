@@ -14,19 +14,21 @@ export function resolveGlobalConfigRoot(env = process.env) {
 function isPlainObject(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
-/** Non-string scalars (e.g. YAML's unquoted `true`/`false`/`123` parsing as
- * a boolean/number rather than a string) are coerced to their string form
- * rather than silently dropped: dropping would shrink a
- * malformed allowlist entry toward an empty array, which `isRepoAllowed`
- * treats as "no restriction configured" -- exactly backwards for a scope-
- * limiting allowlist. A coerced entry ("false", "123") won't match a real
- * org/repo name, which fails closed (over-restrictive) instead of open. */
+/** Every entry is coerced to a string -- never dropped, even a non-scalar
+ * one (`null`, an object, a nested array) -- so a non-empty input array can
+ * never normalize down to `[]`. Dropping entries (the initial version of
+ * this function only coerced scalars and dropped the rest) can still empty
+ * the array when *every* entry is non-scalar (e.g. `[null]`, `[{a: 1}]`),
+ * and `isRepoAllowed` treats an empty allowlist as "no restriction" --
+ * exactly backwards for a scope-limiting allowlist. A coerced entry
+ * ("false", "123", "null", "[object Object]") won't match a real org/repo
+ * name, which fails closed (over-restrictive) instead of open, and
+ * preserving the entry count means "empty" only ever means "genuinely
+ * configured empty," never "everything in it was malformed." */
 function normalizeStringArray(value) {
     if (!Array.isArray(value))
         return undefined;
-    return value
-        .filter((v) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')
-        .map((v) => String(v));
+    return value.map((v) => (typeof v === 'string' ? v : String(v)));
 }
 /** Normalize a parsed YAML document into a `GdlcConfig`, dropping anything
  * that doesn't match the schema (schema/gdlc-config.schema.json) rather than

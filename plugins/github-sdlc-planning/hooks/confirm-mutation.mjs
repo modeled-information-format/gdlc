@@ -35,16 +35,29 @@ function readStdin() {
 // would misrepresent an intentionally-omitted, config-resolved value as
 // missing/broken input.
 const CONFIG_DEFAULT = '(config default)';
+// The tool wrappers (tool-defaults.ts) treat owner/repo and
+// projectOwnerLogin/projectNumber as atomic pairs: both given, or both
+// omitted so a config default can fill them. Exactly one given is neither
+// -- it's guaranteed to throw missing_destination/missing_board_config, so
+// it must not be described the same way as "will resolve from config."
+const INVALID_PARTIAL_REPO = '(invalid: owner and repo must both be given or both omitted -- this call will fail)';
+const INVALID_PARTIAL_PROJECT =
+  '(invalid: projectOwnerLogin and projectNumber must both be given or both omitted -- this call will fail)';
 
 function describeRepo(input) {
-  if (input?.owner && input?.repo) return `${input.owner}/${input.repo}`;
-  return `${CONFIG_DEFAULT} repo`;
+  const hasOwner = input?.owner !== undefined;
+  const hasRepo = input?.repo !== undefined;
+  if (hasOwner && hasRepo) return `${input.owner}/${input.repo}`;
+  if (!hasOwner && !hasRepo) return `${CONFIG_DEFAULT} repo`;
+  return INVALID_PARTIAL_REPO;
 }
 
 function describeProject(input) {
-  const login = input?.projectOwnerLogin ?? CONFIG_DEFAULT;
-  const number = input?.projectNumber !== undefined ? `#${input.projectNumber}` : CONFIG_DEFAULT;
-  return `project ${number} owned by ${login}`;
+  const hasLogin = input?.projectOwnerLogin !== undefined;
+  const hasNumber = input?.projectNumber !== undefined;
+  if (hasLogin && hasNumber) return `project #${input.projectNumber} owned by ${input.projectOwnerLogin}`;
+  if (!hasLogin && !hasNumber) return `project ${CONFIG_DEFAULT} owned by ${CONFIG_DEFAULT}`;
+  return INVALID_PARTIAL_PROJECT;
 }
 
 function describe(toolName, input) {
@@ -55,10 +68,8 @@ function describe(toolName, input) {
       return `Add issue #${input?.issueNumber ?? '?'} to ${describeProject(input)}.`;
     case 'mcp__github-sdlc-planning__set_field_value':
       return `Set field ${input?.fieldId ?? '?'} on item ${input?.itemId ?? '?'} in ${describeProject(input)}.`;
-    default: {
-      const target = input?.owner && input?.repo ? describeRepo(input) : (input?.projectOwnerLogin ?? describeRepo(input));
-      return `${toolName} will mutate GitHub state for ${target}.`;
-    }
+    default:
+      return `${toolName} will mutate GitHub state for ${describeRepo(input)}.`;
   }
 }
 
