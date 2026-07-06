@@ -25,17 +25,51 @@ function readStdin() {
   }
 }
 
+// Issues #82/#83: owner/repo and projectOwnerLogin/projectNumber are now
+// optional on these tools -- an omitted value gets resolved from
+// .config/gdlc/config.yml (or the global gdlc config) inside the tool call
+// itself. This hook is dependency-free (no node_modules at hook-execution
+// time, same constraint as in-progress.mjs) and can't resolve that config
+// itself without a third re-implementation of the loader, so an omitted
+// field is described honestly as "config default", never a bare "?" that
+// would misrepresent an intentionally-omitted, config-resolved value as
+// missing/broken input.
+const CONFIG_DEFAULT = '(config default)';
+// The tool wrappers (tool-defaults.ts) treat owner/repo and
+// projectOwnerLogin/projectNumber as atomic pairs: both given, or both
+// omitted so a config default can fill them. Exactly one given is neither
+// -- it's guaranteed to throw missing_destination/missing_board_config, so
+// it must not be described the same way as "will resolve from config."
+const INVALID_PARTIAL_REPO = '(invalid: owner and repo must both be given or both omitted -- this call will fail)';
+const INVALID_PARTIAL_PROJECT =
+  '(invalid: projectOwnerLogin and projectNumber must both be given or both omitted -- this call will fail)';
+
+function describeRepo(input) {
+  const hasOwner = input?.owner !== undefined;
+  const hasRepo = input?.repo !== undefined;
+  if (hasOwner && hasRepo) return `${input.owner}/${input.repo}`;
+  if (!hasOwner && !hasRepo) return `${CONFIG_DEFAULT} repo`;
+  return INVALID_PARTIAL_REPO;
+}
+
+function describeProject(input) {
+  const hasLogin = input?.projectOwnerLogin !== undefined;
+  const hasNumber = input?.projectNumber !== undefined;
+  if (hasLogin && hasNumber) return `project #${input.projectNumber} owned by ${input.projectOwnerLogin}`;
+  if (!hasLogin && !hasNumber) return `project ${CONFIG_DEFAULT} owned by ${CONFIG_DEFAULT}`;
+  return INVALID_PARTIAL_PROJECT;
+}
+
 function describe(toolName, input) {
-  const target = input?.owner && input?.repo ? `${input.owner}/${input.repo}` : (input?.projectOwnerLogin ?? 'the target repo/project');
   switch (toolName) {
     case 'mcp__github-sdlc-planning__create_issue':
-      return `Create issue "${input?.title ?? '(untitled)'}" in ${target}.`;
+      return `Create issue "${input?.title ?? '(untitled)'}" in ${describeRepo(input)}.`;
     case 'mcp__github-sdlc-planning__add_item_to_project':
-      return `Add issue #${input?.issueNumber ?? '?'} to project #${input?.projectNumber ?? '?'} owned by ${target}.`;
+      return `Add issue #${input?.issueNumber ?? '?'} to ${describeProject(input)}.`;
     case 'mcp__github-sdlc-planning__set_field_value':
-      return `Set field ${input?.fieldId ?? '?'} on item ${input?.itemId ?? '?'} in project owned by ${target}.`;
+      return `Set field ${input?.fieldId ?? '?'} on item ${input?.itemId ?? '?'} in ${describeProject(input)}.`;
     default:
-      return `${toolName} will mutate GitHub state for ${target}.`;
+      return `${toolName} will mutate GitHub state for ${describeRepo(input)}.`;
   }
 }
 

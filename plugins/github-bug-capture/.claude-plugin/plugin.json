@@ -19,6 +19,7 @@
     "mif"
   ],
   "dependencies": [
-    { "name": "github-pull-requests" }
+    { "name": "github-pull-requests" },
+    { "name": "github-sdlc-planning" }
   ]
 }

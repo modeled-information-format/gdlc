@@ -9,6 +9,10 @@ import { describe, expect, it, vi } from 'vitest';
 // node, not through the bundled server.
 import {
   parseBoardConfig,
+  parseGdlcBoardSection,
+  validateBoardConfig,
+  readGdlcConfigBoardSection,
+  readLegacyBoardConfig,
   readBoardConfig,
   extractAffectedIssue,
   isEligibleStatus,
@@ -28,6 +32,41 @@ function tmpProjectWith(content: string | null): string {
   }
   return dir;
 }
+
+function tmpGdlcConfigWith(content: string | null): string {
+  const dir = mkdtempSync(join(tmpdir(), 'sdlc-planning-gdlc-config-'));
+  if (content !== null) {
+    const gdlcDir = join(dir, 'gdlc');
+    mkdirSync(gdlcDir, { recursive: true });
+    writeFileSync(join(gdlcDir, 'config.yml'), content);
+  }
+  return dir;
+}
+
+/** A `readBoardConfig`/`loadGdlcConfig` **project root** carries its config
+ * at `<root>/.config/gdlc/config.yml`, one level down from what
+ * `tmpGdlcConfigWith` writes -- that helper is for the global root (or for
+ * calling `readGdlcConfigBoardSection`/`resolveGdlcConfigPath` directly
+ * with an already-resolved path), where $XDG_CONFIG_HOME already points at
+ * a `.config`-equivalent directory. */
+function tmpGdlcProjectWith(content: string | null): string {
+  const dir = mkdtempSync(join(tmpdir(), 'sdlc-planning-gdlc-project-'));
+  if (content !== null) {
+    const gdlcDir = join(dir, '.config', 'gdlc');
+    mkdirSync(gdlcDir, { recursive: true });
+    writeFileSync(join(gdlcDir, 'config.yml'), content);
+  }
+  return dir;
+}
+
+/** An empty, isolated global root -- ensures readBoardConfig's tests never
+ * fall through to whatever the real machine's $XDG_CONFIG_HOME happens to
+ * hold. */
+function emptyGlobalRoot(): { XDG_CONFIG_HOME: string } {
+  return { XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), 'sdlc-planning-empty-global-')) };
+}
+
+const noWarn = () => {};
 
 describe('parseBoardConfig', () => {
   it('parses a board map from frontmatter', () => {
@@ -53,51 +92,182 @@ describe('parseBoardConfig', () => {
   });
 });
 
-describe('readBoardConfig', () => {
-  it('is a silent no-op (null) when the settings file is absent', () => {
-    const dir = tmpProjectWith(null);
-    expect(readBoardConfig(dir)).toBeNull();
+describe('parseGdlcBoardSection', () => {
+  it('parses a top-level board: map with no frontmatter delimiters', () => {
+    expect(parseGdlcBoardSection('board:\n  projectOwnerLogin: acme\n  projectNumber: 4\n')).toEqual({
+      projectOwnerLogin: 'acme',
+      projectNumber: '4',
+    });
   });
 
-  it('is a silent no-op when the file has no board: map', () => {
-    const dir = tmpProjectWith('---\ntitle: x\n---\n');
-    expect(readBoardConfig(dir)).toBeNull();
+  it('returns null when there is no board: key at all', () => {
+    expect(parseGdlcBoardSection('targeting:\n  allowOrgs: [acme]\n')).toBeNull();
   });
 
-  it('is a silent no-op when projectOwnerLogin is missing', () => {
-    const dir = tmpProjectWith('---\nboard:\n  projectNumber: 4\n---\n');
-    expect(readBoardConfig(dir)).toBeNull();
+  it('ignores other top-level sections around board:', () => {
+    const text = 'targeting:\n  allowOrgs: [acme]\nboard:\n  projectOwnerLogin: acme\n  projectNumber: 2\ndestination:\n  repo: acme/central\n';
+    expect(parseGdlcBoardSection(text)).toEqual({ projectOwnerLogin: 'acme', projectNumber: '2' });
   });
 
-  it('is a silent no-op when projectNumber is not a positive integer', () => {
-    const dir = tmpProjectWith('---\nboard:\n  projectOwnerLogin: acme\n  projectNumber: not-a-number\n---\n');
-    expect(readBoardConfig(dir)).toBeNull();
+  it('strips an inline comment from an unquoted value', () => {
+    const text = 'board:\n  projectOwnerLogin: acme  # our org\n  projectNumber: 4\n';
+    expect(parseGdlcBoardSection(text)).toEqual({ projectOwnerLogin: 'acme', projectNumber: '4' });
   });
 
-  it('is a silent no-op when projectOwnerType is an unrecognized value', () => {
-    const dir = tmpProjectWith(
-      '---\nboard:\n  projectOwnerLogin: acme\n  projectNumber: 4\n  projectOwnerType: team\n---\n',
-    );
-    expect(readBoardConfig(dir)).toBeNull();
+  it('does not treat a # inside a quoted value as a comment', () => {
+    const text = 'board:\n  projectOwnerLogin: "ac#me"\n  projectNumber: 4\n';
+    expect(parseGdlcBoardSection(text)).toEqual({ projectOwnerLogin: 'ac#me', projectNumber: '4' });
+  });
+
+  it('strips a comment after a quoted value too', () => {
+    const text = 'board:\n  projectOwnerLogin: "acme"  # our org\n  projectNumber: 4\n';
+    expect(parseGdlcBoardSection(text)).toEqual({ projectOwnerLogin: 'acme', projectNumber: '4' });
+  });
+});
+
+describe('validateBoardConfig', () => {
+  it('passes null through', () => {
+    expect(validateBoardConfig(null)).toBeNull();
+  });
+
+  it('rejects a missing projectOwnerLogin', () => {
+    expect(validateBoardConfig({ projectNumber: '4' })).toBeNull();
+  });
+
+  it('rejects a non-positive-integer projectNumber', () => {
+    expect(validateBoardConfig({ projectOwnerLogin: 'acme', projectNumber: 'nope' })).toBeNull();
+  });
+
+  it('rejects an unrecognized projectOwnerType', () => {
+    expect(validateBoardConfig({ projectOwnerLogin: 'acme', projectNumber: '4', projectOwnerType: 'team' })).toBeNull();
   });
 
   it('defaults projectOwnerType to organization when absent', () => {
-    const dir = tmpProjectWith('---\nboard:\n  projectOwnerLogin: acme\n  projectNumber: 4\n---\n');
-    expect(readBoardConfig(dir)).toEqual({
+    expect(validateBoardConfig({ projectOwnerLogin: 'acme', projectNumber: '4' })).toEqual({
       projectOwnerLogin: 'acme',
       projectNumber: 4,
       projectOwnerType: 'organization',
     });
   });
+});
 
-  it('reads a fully specified board config', () => {
-    const dir = tmpProjectWith(
-      '---\nboard:\n  projectOwnerLogin: acme\n  projectNumber: 7\n  projectOwnerType: user\n---\n',
-    );
-    expect(readBoardConfig(dir)).toEqual({
+describe('readGdlcConfigBoardSection', () => {
+  it('is null when the file is absent', () => {
+    const dir = tmpGdlcConfigWith(null);
+    expect(readGdlcConfigBoardSection(join(dir, 'gdlc', 'config.yml'))).toBeNull();
+  });
+
+  it('reads and validates a board section', () => {
+    const dir = tmpGdlcConfigWith('board:\n  projectOwnerLogin: acme\n  projectNumber: 7\n  projectOwnerType: user\n');
+    expect(readGdlcConfigBoardSection(join(dir, 'gdlc', 'config.yml'))).toEqual({
       projectOwnerLogin: 'acme',
       projectNumber: 7,
       projectOwnerType: 'user',
+    });
+  });
+});
+
+describe('readLegacyBoardConfig', () => {
+  it('is a silent no-op (null) when the settings file is absent', () => {
+    expect(readLegacyBoardConfig(tmpProjectWith(null))).toBeNull();
+  });
+
+  it('is a silent no-op when the file has no board: map', () => {
+    expect(readLegacyBoardConfig(tmpProjectWith('---\ntitle: x\n---\n'))).toBeNull();
+  });
+
+  it('reads a fully specified legacy board config', () => {
+    const dir = tmpProjectWith('---\nboard:\n  projectOwnerLogin: acme\n  projectNumber: 7\n  projectOwnerType: user\n---\n');
+    expect(readLegacyBoardConfig(dir)).toEqual({ projectOwnerLogin: 'acme', projectNumber: 7, projectOwnerType: 'user' });
+  });
+});
+
+describe('readBoardConfig', () => {
+  it('is a silent no-op (null) when no layer has a board config', () => {
+    expect(readBoardConfig(tmpProjectWith(null), emptyGlobalRoot(), noWarn)).toBeNull();
+  });
+
+  it('reads the project-level .config/gdlc/config.yml board section without warning', () => {
+    const warn = vi.fn();
+    const dir = tmpGdlcProjectWith('board:\n  projectOwnerLogin: acme\n  projectNumber: 4\n');
+    expect(readBoardConfig(dir, emptyGlobalRoot(), warn)).toEqual({
+      projectOwnerLogin: 'acme',
+      projectNumber: 4,
+      projectOwnerType: 'organization',
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the global .config/gdlc/config.yml when the project layer has none', () => {
+    const warn = vi.fn();
+    const projectDir = tmpGdlcProjectWith(null);
+    const globalDir = mkdtempSync(join(tmpdir(), 'sdlc-planning-global-'));
+    mkdirSync(join(globalDir, 'gdlc'), { recursive: true });
+    writeFileSync(join(globalDir, 'gdlc', 'config.yml'), 'board:\n  projectOwnerLogin: from-global\n  projectNumber: 9\n');
+
+    expect(readBoardConfig(projectDir, { XDG_CONFIG_HOME: globalDir }, warn)).toEqual({
+      projectOwnerLogin: 'from-global',
+      projectNumber: 9,
+      projectOwnerType: 'organization',
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('prefers the project layer over the global layer when both are configured', () => {
+    const projectDir = tmpGdlcProjectWith('board:\n  projectOwnerLogin: from-project\n  projectNumber: 1\n');
+    const globalDir = mkdtempSync(join(tmpdir(), 'sdlc-planning-global-'));
+    mkdirSync(join(globalDir, 'gdlc'), { recursive: true });
+    writeFileSync(join(globalDir, 'gdlc', 'config.yml'), 'board:\n  projectOwnerLogin: from-global\n  projectNumber: 9\n');
+
+    expect(readBoardConfig(projectDir, { XDG_CONFIG_HOME: globalDir }, noWarn)).toEqual({
+      projectOwnerLogin: 'from-project',
+      projectNumber: 1,
+      projectOwnerType: 'organization',
+    });
+  });
+
+  it('falls back to the legacy .claude/github-sdlc-planning.local.md board: key and warns once', () => {
+    const warn = vi.fn();
+    const dir = tmpProjectWith('---\nboard:\n  projectOwnerLogin: acme\n  projectNumber: 7\n  projectOwnerType: user\n---\n');
+    expect(readBoardConfig(dir, emptyGlobalRoot(), warn)).toEqual({
+      projectOwnerLogin: 'acme',
+      projectNumber: 7,
+      projectOwnerType: 'user',
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain('Deprecation');
+  });
+
+  it('does not warn when nothing resolves at any layer', () => {
+    const warn = vi.fn();
+    expect(readBoardConfig(tmpProjectWith(null), emptyGlobalRoot(), warn)).toBeNull();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('stops at an incomplete project board: section rather than falling through to a valid global one', () => {
+    // The project layer's board: key is present (projectNumber only, no
+    // login) -- matching config.ts's mergeConfigs semantics, a *present*
+    // section wins wholly over the other layer, valid or not. Falling
+    // through here would let this same pair of files resolve differently
+    // depending on whether the hook or an mcp-server tool call read them.
+    const projectDir = tmpGdlcProjectWith('board:\n  projectNumber: 4\n');
+    const globalDir = mkdtempSync(join(tmpdir(), 'sdlc-planning-global-'));
+    mkdirSync(join(globalDir, 'gdlc'), { recursive: true });
+    writeFileSync(join(globalDir, 'gdlc', 'config.yml'), 'board:\n  projectOwnerLogin: from-global\n  projectNumber: 9\n');
+
+    expect(readBoardConfig(projectDir, { XDG_CONFIG_HOME: globalDir }, noWarn)).toBeNull();
+  });
+
+  it('falls through to the global layer when the project file has no board: key at all (not merely invalid)', () => {
+    const projectDir = tmpGdlcProjectWith('targeting:\n  allowOrgs: [acme]\n');
+    const globalDir = mkdtempSync(join(tmpdir(), 'sdlc-planning-global-'));
+    mkdirSync(join(globalDir, 'gdlc'), { recursive: true });
+    writeFileSync(join(globalDir, 'gdlc', 'config.yml'), 'board:\n  projectOwnerLogin: from-global\n  projectNumber: 9\n');
+
+    expect(readBoardConfig(projectDir, { XDG_CONFIG_HOME: globalDir }, noWarn)).toEqual({
+      projectOwnerLogin: 'from-global',
+      projectNumber: 9,
+      projectOwnerType: 'organization',
     });
   });
 });

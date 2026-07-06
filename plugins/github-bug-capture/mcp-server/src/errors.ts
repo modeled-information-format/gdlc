@@ -6,7 +6,8 @@ export type BugCaptureErrorCode =
   | 'issue_not_on_board'
   | 'field_type_conflict'
   | 'missing_field'
-  | 'missing_option';
+  | 'missing_option'
+  | 'missing_board_config';
 
 export interface BugCaptureErrorDetails {
   [key: string]: unknown;

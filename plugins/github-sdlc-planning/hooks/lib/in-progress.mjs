@@ -13,9 +13,125 @@
  * this module never touches child_process and tests never shell out.
  */
 import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 const SETTINGS_RELPATH = join('.claude', 'github-sdlc-planning.local.md');
+const GDLC_CONFIG_RELPATH = join('gdlc', 'config.yml');
+
+/** Same relative suffix as the mcp-server's config.ts (issue #82) -- this
+ * hook can't import that module (dependency-free by design, no
+ * node_modules at hook-execution time), so it re-implements just enough
+ * of the resolution rule and the `board:` section shape to migrate off
+ * the legacy carrier below. */
+function resolveGdlcConfigPath(root) {
+  return join(root, GDLC_CONFIG_RELPATH);
+}
+
+function resolveGlobalGdlcConfigRoot(env = process.env) {
+  return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== '' ? env.XDG_CONFIG_HOME : join(homedir(), '.config');
+}
+
+/** Extract a scalar value from the text captured after `key:`, matching
+ * how a real YAML parser would treat it: a quoted value stops at its
+ * closing quote (anything after, including a `#...` comment, is not part
+ * of the value); an unquoted value stops at an inline ` #...` comment.
+ * Without this, an inline comment on a `board:` line (e.g.
+ * `projectOwnerLogin: acme  # our org`) would be captured as part of the
+ * value and passed to GitHub verbatim, silently failing to resolve. */
+function extractScalarValue(raw) {
+  const trimmed = raw.trim();
+  const quote = trimmed[0];
+  if (quote === '"' || quote === "'") {
+    const closingIndex = trimmed.indexOf(quote, 1);
+    return closingIndex === -1 ? trimmed.slice(1) : trimmed.slice(1, closingIndex);
+  }
+  const commentIndex = trimmed.search(/\s#/);
+  return (commentIndex === -1 ? trimmed : trimmed.slice(0, commentIndex)).trim();
+}
+
+/** Parse a top-level `board:` map out of a plain-YAML gdlc/config.yml
+ * document (no frontmatter delimiters, unlike the legacy carrier below).
+ * Same constrained 2-space-indent scalar-map parsing as `parseBoardConfig`,
+ * minus the `---` requirement. Returns a plain string-keyed map, or `null`
+ * if the file has no `board:` key at all -- callers use that `null` to
+ * decide whether to fall through to the next config layer, distinct from
+ * a `board:` key that is present but incomplete/invalid (see
+ * `readBoardConfig`). Exported for tests. */
+export function parseGdlcBoardSection(text) {
+  const lines = String(text).split(/\r?\n/);
+  let inBoard = false;
+  let found = false;
+  const board = {};
+  for (const line of lines) {
+    if (/^board:\s*$/.test(line)) {
+      inBoard = true;
+      found = true;
+      continue;
+    }
+    if (inBoard) {
+      const m = /^ {2}([a-zA-Z][a-zA-Z0-9]*):\s*(.+?)\s*$/.exec(line);
+      if (m) {
+        board[m[1]] = extractScalarValue(m[2]);
+        continue;
+      }
+      if (/^ {2}\S/.test(line)) continue;
+      inBoard = false;
+    }
+  }
+  return found ? board : null;
+}
+
+/** Validate a raw string-keyed board map the same way `readBoardConfig`
+ * validates the legacy carrier: missing/empty `projectOwnerLogin`, a
+ * non-positive-integer `projectNumber`, or an unrecognized
+ * `projectOwnerType` all mean "not configured" (`null`). Exported for
+ * tests. */
+export function validateBoardConfig(board) {
+  if (board === null) return null;
+  const { projectOwnerLogin, projectNumber, projectOwnerType } = board;
+  if (typeof projectOwnerLogin !== 'string' || projectOwnerLogin === '') return null;
+
+  const parsedNumber = Number(projectNumber);
+  if (!Number.isInteger(parsedNumber) || parsedNumber <= 0) return null;
+
+  if (projectOwnerType !== undefined && projectOwnerType !== 'organization' && projectOwnerType !== 'user') {
+    return null;
+  }
+
+  return {
+    projectOwnerLogin,
+    projectNumber: parsedNumber,
+    projectOwnerType: projectOwnerType ?? 'organization',
+  };
+}
+
+/** Read one layer's gdlc/config.yml, distinguishing "no `board:` key at
+ * all" (`present: false` -- `readBoardConfig` should try the next layer)
+ * from "a `board:` key exists but is incomplete/invalid" (`present: true`,
+ * `board: null` -- `readBoardConfig` must stop here, matching the
+ * mcp-server's `config.ts`: a defined-but-incomplete section replaces the
+ * other layer wholly, it does not fall through to it). */
+function resolveGdlcLayerBoard(path) {
+  let text;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch {
+    return { present: false, board: null };
+  }
+  const raw = parseGdlcBoardSection(text);
+  if (raw === null) return { present: false, board: null };
+  return { present: true, board: validateBoardConfig(raw) };
+}
+
+/** Read one layer's gdlc/config.yml and return its validated `board:`
+ * section, or `null` if the file is missing, has no board section, or the
+ * section fails validation. Exported for tests; `readBoardConfig` uses
+ * `resolveGdlcLayerBoard` directly instead, since it also needs to know
+ * whether the `board:` key was present at all (see that function). */
+export function readGdlcConfigBoardSection(path) {
+  return resolveGdlcLayerBoard(path).board;
+}
 
 /** Parse the `board:` map out of the settings-file frontmatter. Returns a
  * plain string-keyed map (values as raw strings) or `null` if the file isn't
@@ -47,35 +163,53 @@ export function parseBoardConfig(text) {
   return board;
 }
 
-/** Fail-closed by design: missing file, missing `board:` map, missing
- * required keys, or a malformed `projectNumber`/`projectOwnerType` all mean
- * "not configured" (`null`) rather than a thrown error. A hook must never
- * break the tool call it observes. */
-export function readBoardConfig(cwd = process.cwd()) {
+/** Read the legacy `.claude/github-sdlc-planning.local.md` `board:`
+ * frontmatter key. Exported for tests; superseded by
+ * `.config/gdlc/config.yml` (ADR-0004) -- see `readBoardConfig`. */
+export function readLegacyBoardConfig(cwd = process.cwd()) {
   let text;
   try {
     text = readFileSync(join(cwd, SETTINGS_RELPATH), 'utf8');
   } catch {
     return null;
   }
-  const board = parseBoardConfig(text);
-  if (board === null) return null;
+  return validateBoardConfig(parseBoardConfig(text));
+}
 
-  const { projectOwnerLogin, projectNumber, projectOwnerType } = board;
-  if (typeof projectOwnerLogin !== 'string' || projectOwnerLogin === '') return null;
+/** Fail-closed by design: no configured layer, a missing `board:` map, or
+ * a malformed `projectNumber`/`projectOwnerType` at every layer all mean
+ * "not configured" (`null`) rather than a thrown error. A hook must never
+ * break the tool call it observes.
+ *
+ * Resolution order (ADR-0004's migration plan, issue #83): the project
+ * layer's `<cwd>/.config/gdlc/config.yml` `board:` section, then the
+ * global layer's `$XDG_CONFIG_HOME/gdlc/config.yml` `board:` section, then
+ * -- for one release -- the legacy `.claude/github-sdlc-planning.local.md`
+ * `board:` key, emitting one deprecation notice via `warn` when that
+ * legacy fallback is what resolved it.
+ *
+ * A layer whose `board:` key is present but incomplete/invalid stops the
+ * cascade there (returning `null`) rather than falling through to the
+ * next layer -- matching the mcp-server's `config.ts`, where a project
+ * section replaces the global one wholly once it's defined at all, valid
+ * or not. Falling through on partial-but-present data would let the same
+ * config file resolve to different board coordinates depending on whether
+ * this hook or an mcp-server tool call read it. */
+export function readBoardConfig(cwd = process.cwd(), env = process.env, warn = (msg) => process.stderr.write(`${msg}\n`)) {
+  const project = resolveGdlcLayerBoard(resolveGdlcConfigPath(join(cwd, '.config')));
+  if (project.present) return project.board;
 
-  const parsedNumber = Number(projectNumber);
-  if (!Number.isInteger(parsedNumber) || parsedNumber <= 0) return null;
+  const global = resolveGdlcLayerBoard(resolveGdlcConfigPath(resolveGlobalGdlcConfigRoot(env)));
+  if (global.present) return global.board;
 
-  if (projectOwnerType !== undefined && projectOwnerType !== 'organization' && projectOwnerType !== 'user') {
-    return null;
+  const fromLegacy = readLegacyBoardConfig(cwd);
+  if (fromLegacy !== null) {
+    warn(
+      'Deprecation: board: in .claude/github-sdlc-planning.local.md is superseded by ' +
+        'the board: section of .config/gdlc/config.yml (ADR-0004). Migrate when convenient.',
+    );
   }
-
-  return {
-    projectOwnerLogin,
-    projectNumber: parsedNumber,
-    projectOwnerType: projectOwnerType ?? 'organization',
-  };
+  return fromLegacy;
 }
 
 const RELEVANT_TOOLS = new Set([

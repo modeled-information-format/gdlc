@@ -6,7 +6,10 @@ export type PlanningErrorCode =
   | 'unknown_issue_type'
   | 'rate_limited'
   | 'github_api_error'
-  | 'confirmation_required';
+  | 'confirmation_required'
+  | 'missing_board_config'
+  | 'missing_destination'
+  | 'repo_not_allowed';
 
 export interface PlanningErrorDetails {
   [key: string]: unknown;

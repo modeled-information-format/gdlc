@@ -11,6 +11,7 @@ import { createDiscussion, listDiscussions } from './tools/discussions.js';
 import { getSessionContext, getAgentCapabilities } from './tools/session.js';
 import { formatMifIssueBody, parseMifIssueBody, MIF_ISSUE_TYPES, type MifIssueType } from './mif.js';
 import { isPlanningError } from './errors.js';
+import { withRequiredBoardCoordinates, withOptionalBoardCoordinates, withIssueDestination } from './tool-defaults.js';
 
 const server = new McpServer({ name: 'github-sdlc-planning', version: '0.3.0' });
 
@@ -44,10 +45,10 @@ server.registerTool(
   {
     title: 'Create issue',
     description:
-      'Create a GitHub issue via the GraphQL createIssue mutation, prepending a MIF frontmatter comment block to the body before returning.',
+      'Create a GitHub issue via the GraphQL createIssue mutation, prepending a MIF frontmatter comment block to the body before returning. owner/repo default to the configured destination.repo (issue #82) when omitted, and are always checked against the configured targeting allowlist, if any (issue #83).',
     inputSchema: {
-      owner: z.string(),
-      repo: z.string(),
+      owner: z.string().optional(),
+      repo: z.string().optional(),
       title: z.string(),
       body: z.string(),
       labels: z.array(z.string()).optional(),
@@ -57,7 +58,7 @@ server.registerTool(
       mif: z.object({ id: z.string(), type: mifTypeSchema, namespace: z.string() }),
     },
   },
-  wrap(createIssue),
+  wrap(withIssueDestination(createIssue)),
 );
 
 server.registerTool(
@@ -114,27 +115,30 @@ server.registerTool(
     description:
       'Add an issue to a Projects v2 board via addProjectV2ItemById, resolving node IDs first. Idempotent: if the ' +
       'issue already has an item on the target project (e.g. added by a native auto-add workflow), returns that ' +
-      'item with existed: true instead of creating a duplicate.',
+      'item with existed: true instead of creating a duplicate. projectOwnerLogin/projectNumber default to the ' +
+      'configured board mapping (issue #82) when omitted.',
     inputSchema: {
       owner: z.string(),
       repo: z.string(),
       issueNumber: z.number().int(),
-      projectOwnerLogin: z.string(),
-      projectNumber: z.number().int(),
+      projectOwnerLogin: z.string().optional(),
+      projectNumber: z.number().int().optional(),
       projectOwnerType: projectOwnerTypeSchema.optional(),
     },
   },
-  wrap(addItemToProject),
+  wrap(withRequiredBoardCoordinates(addItemToProject)),
 );
 
 server.registerTool(
   'set_field_value',
   {
     title: 'Set project field value',
-    description: 'Set a Projects v2 item field value via updateProjectV2ItemFieldValue.',
+    description:
+      'Set a Projects v2 item field value via updateProjectV2ItemFieldValue. projectOwnerLogin/projectNumber ' +
+      'default to the configured board mapping (issue #82) when omitted.',
     inputSchema: {
-      projectOwnerLogin: z.string(),
-      projectNumber: z.number().int(),
+      projectOwnerLogin: z.string().optional(),
+      projectNumber: z.number().int().optional(),
       projectOwnerType: projectOwnerTypeSchema.optional(),
       itemId: z.string(),
       fieldId: z.string(),
@@ -147,21 +151,23 @@ server.registerTool(
       ]),
     },
   },
-  wrap(setFieldValue),
+  wrap(withRequiredBoardCoordinates(setFieldValue)),
 );
 
 server.registerTool(
   'get_project_items',
   {
     title: 'Get project items',
-    description: 'List a Projects v2 board\'s items and their field values.',
+    description:
+      'List a Projects v2 board\'s items and their field values. projectOwnerLogin/projectNumber default to the ' +
+      'configured board mapping (issue #82) when omitted.',
     inputSchema: {
-      projectOwnerLogin: z.string(),
-      projectNumber: z.number().int(),
+      projectOwnerLogin: z.string().optional(),
+      projectNumber: z.number().int().optional(),
       projectOwnerType: projectOwnerTypeSchema.optional(),
     },
   },
-  wrap(getProjectItems),
+  wrap(withRequiredBoardCoordinates(getProjectItems)),
 );
 
 server.registerTool(
@@ -250,7 +256,10 @@ server.registerTool(
   'get_session_context',
   {
     title: 'Get session context',
-    description: 'Fetch open milestones and (optionally) Projects v2 board state — the non-Claude-Code SessionStart equivalent.',
+    description:
+      'Fetch open milestones and (optionally) Projects v2 board state — the non-Claude-Code SessionStart equivalent. ' +
+      'projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted; still ' +
+      'optional overall, since a repo with no board configured anywhere is a valid state (projectBoard: null).',
     inputSchema: {
       owner: z.string(),
       repo: z.string(),
@@ -259,7 +268,7 @@ server.registerTool(
       projectOwnerType: projectOwnerTypeSchema.optional(),
     },
   },
-  wrap(getSessionContext),
+  wrap(withOptionalBoardCoordinates(getSessionContext)),
 );
 
 server.registerTool(

@@ -1,4 +1,4 @@
-export type PlanningErrorCode = 'limit_exceeded' | 'missing_scope' | 'resolve_issue_id' | 'resolve_project_id' | 'unknown_issue_type' | 'rate_limited' | 'github_api_error' | 'confirmation_required';
+export type PlanningErrorCode = 'limit_exceeded' | 'missing_scope' | 'resolve_issue_id' | 'resolve_project_id' | 'unknown_issue_type' | 'rate_limited' | 'github_api_error' | 'confirmation_required' | 'missing_board_config' | 'missing_destination' | 'repo_not_allowed';
 export interface PlanningErrorDetails {
     [key: string]: unknown;
 }
