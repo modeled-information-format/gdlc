@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Get a single package version
 diataxis_type: how-to
 ---
-# Get a single package version
 
 Look up one version of a package by its numeric id.
 

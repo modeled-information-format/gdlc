@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Get a repo's contributor stats
 diataxis_type: how-to
 ---
-# Get a repo's contributor stats
 
 Read per-contributor commit totals for a repository, and handle GitHub's
 asynchronous-computation case correctly.

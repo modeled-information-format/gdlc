@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Why github-packages exists
 diataxis_type: explanation
 ---
-# Why github-packages exists
 
 `github-packages` is one of this marketplace's standalone Tier-3 plugins —
 it has no dependency on `github-sdlc-planning` or any sibling plugin, and no

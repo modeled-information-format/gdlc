@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: List a repo's rulesets
 diataxis_type: how-to
 ---
-# List a repo's rulesets
 
 See every ruleset configured on a repository — the forward-compatible
 successor to classic branch protection, supporting multiple named rules

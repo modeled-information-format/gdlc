@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Remove an organization role from a team
 diataxis_type: how-to
 ---
-# Remove an organization role from a team
 
 Use `remove_team_role` to revoke an organization role a team currently
 holds. Like the other write tools in this plugin, this mutates permissions

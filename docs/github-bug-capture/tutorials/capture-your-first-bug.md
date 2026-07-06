@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: "Tutorial: capture your first bug end to end"
 diataxis_type: tutorial
 ---
-# Tutorial: capture your first bug end to end
 
 This tutorial walks through the full arc of `github-bug-capture`'s Layer 1
 tools on one made-up issue, from checking for duplicates to setting its

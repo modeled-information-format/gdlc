@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Why github-insights
 diataxis_type: explanation
 ---
-# Why github-insights
 
 ## What problem it solves
 

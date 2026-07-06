@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: github-repo-config tool reference
 diataxis_type: reference
 ---
-# github-repo-config tool reference
 
 All 11 MCP tools registered by `plugins/github-repo-config/mcp-server/src/index.ts`,
 in registration order. Every tool returns `{ content: [{ type: 'text', text: <JSON> }] }`

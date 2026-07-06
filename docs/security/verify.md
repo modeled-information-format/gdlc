@@ -7,7 +7,6 @@ modified: 2026-07-03T00:00:00Z
 title: Verify a release
 diataxis_type: how-to
 ---
-# Verify a release
 
 This is a narrative walkthrough of the same commands in
 [SECURITY.md](../../SECURITY.md#verify-a-plugin-release). Run it whenever you

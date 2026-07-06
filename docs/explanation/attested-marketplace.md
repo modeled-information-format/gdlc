@@ -7,7 +7,6 @@ modified: 2026-07-03T00:00:00Z
 title: Why an attested marketplace
 diataxis_type: explanation
 ---
-# Why an attested marketplace
 
 A Claude Code plugin is executable trust. When you install one, its commands,
 hooks, skills, and any bundled MCP servers run inside your environment —

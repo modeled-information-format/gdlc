@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Get a repo's dependency-graph SBOM summary
 diataxis_type: how-to
 ---
-# Get a repo's dependency-graph SBOM summary
 
 Read a quick summary of a repository's SPDX SBOM — its spec version and
 package count — without pulling the full document.

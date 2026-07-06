@@ -8,7 +8,6 @@ title: Feature-detect the server with get_agent_capabilities
 diataxis_type: how-to
 ---
 
-# Feature-detect the server with `get_agent_capabilities`
 
 Goal: discover this MCP server's full tool surface and MIF conformance
 level at runtime, without hard-coding assumptions about which tools it

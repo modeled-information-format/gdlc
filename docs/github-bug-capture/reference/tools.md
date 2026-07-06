@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: github-bug-capture MCP tool reference
 diataxis_type: reference
 ---
-# github-bug-capture MCP tool reference
 
 The `github-bug-capture` MCP server (`plugins/github-bug-capture/mcp-server`)
 registers seven tools. This page lists each exactly as declared in

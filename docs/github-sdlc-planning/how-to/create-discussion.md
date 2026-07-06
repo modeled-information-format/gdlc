@@ -8,7 +8,6 @@ title: Create a discussion with create_discussion
 diataxis_type: how-to
 ---
 
-# Create a discussion with `create_discussion`
 
 Goal: create a new GitHub Discussion in a repository under a named category.
 

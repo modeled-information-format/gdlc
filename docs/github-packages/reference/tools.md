@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: github-packages tool reference
 diataxis_type: reference
 ---
-# github-packages tool reference
 
 Exhaustive listing of the 8 MCP tools `github-packages` registers, pulled
 directly from `plugins/github-packages/mcp-server/src/index.ts` and

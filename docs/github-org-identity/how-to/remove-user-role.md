@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Remove an organization role from a user
 diataxis_type: how-to
 ---
-# Remove an organization role from a user
 
 Use `remove_user_role` to revoke an organization role a user currently
 holds directly. Like the other write tools in this plugin, this mutates

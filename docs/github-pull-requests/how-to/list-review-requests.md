@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Read current review requests with list_review_requests
 diataxis_type: how-to
 ---
-# Read current review requests with `list_review_requests`
 
 Check which reviewers and teams currently have an outstanding review request
 on a pull request.

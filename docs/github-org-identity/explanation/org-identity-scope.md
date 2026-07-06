@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Why github-org-identity exists, and what it deliberately doesn't do
 diataxis_type: explanation
 ---
-# Why github-org-identity exists, and what it deliberately doesn't do
 
 ## The domain: org-level roles, not repo-level access
 

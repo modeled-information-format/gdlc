@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Delete a single package version
 diataxis_type: how-to
 ---
-# Delete a single package version
 
 Delete one version of a package, leaving the rest of the package and its
 other versions intact.

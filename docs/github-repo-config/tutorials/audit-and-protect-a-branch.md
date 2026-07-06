@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: "Tutorial: audit and set up branch protection on a repo"
 diataxis_type: tutorial
 ---
-# Tutorial: audit and set up branch protection on a repo
 
 This walks through using `github-repo-config`'s tools end to end against
 a real repo: check what's currently governing the default branch,

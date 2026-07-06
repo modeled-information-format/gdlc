@@ -8,7 +8,6 @@ title: Create a milestone with create_milestone
 diataxis_type: how-to
 ---
 
-# Create a milestone with `create_milestone`
 
 Goal: create a new milestone on a repository.
 

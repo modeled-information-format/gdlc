@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Get a repo's traffic views
 diataxis_type: how-to
 ---
-# Get a repo's traffic views
 
 Read how many page views a repository has had over GitHub's 14-day rolling
 window, broken down by day.

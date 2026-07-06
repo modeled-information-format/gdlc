@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: "Tutorial: audit an org's packages, then delete and restore a version"
 diataxis_type: tutorial
 ---
-# Tutorial: audit an org's packages, then delete and restore a version
 
 This tutorial walks through the full read/write surface of
 `github-packages` end to end: listing an org's packages, inspecting one,

@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Assign an organization role to a user
 diataxis_type: how-to
 ---
-# Assign an organization role to a user
 
 Use `assign_user_role` to grant an existing organization role directly to
 an existing org member. This is a write that mutates permissions across

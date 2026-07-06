@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Get a repo's custom property values
 diataxis_type: how-to
 ---
-# Get a repo's custom property values
 
 Read the current custom property values set on a specific repository.
 

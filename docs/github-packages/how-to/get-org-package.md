@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Get a single org package
 diataxis_type: how-to
 ---
-# Get a single org package
 
 Look up one package by name and type, without listing the whole registry.
 

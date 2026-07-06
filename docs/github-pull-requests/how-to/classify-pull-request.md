@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Label a PR's type, size, and risk with classify_pull_request
 diataxis_type: how-to
 ---
-# Label a PR's type, size, and risk with `classify_pull_request`
 
 Apply `type:*`, `size:*`, and optionally `risk:*` labels to a pull request,
 with size computed automatically from its diff.

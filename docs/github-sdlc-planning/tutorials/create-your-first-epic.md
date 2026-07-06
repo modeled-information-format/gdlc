@@ -8,7 +8,6 @@ title: Create your first Epic with sub-issues
 diataxis_type: tutorial
 ---
 
-# Create your first Epic with sub-issues
 
 In this tutorial you will use `github-sdlc-planning`'s MCP tools directly —
 no skill, no agent — to create one Epic issue, attach two Story sub-issues

@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: github-pull-requests tool reference
 diataxis_type: reference
 ---
-# github-pull-requests tool reference
 
 Exhaustive listing of the 8 MCP tools registered by
 `plugins/github-pull-requests/mcp-server/src/index.ts`. Types are the Zod

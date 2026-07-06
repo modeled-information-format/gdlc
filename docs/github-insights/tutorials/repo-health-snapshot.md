@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: "Tutorial: pull a repo health snapshot"
 diataxis_type: tutorial
 ---
-# Tutorial: pull a repo health snapshot
 
 This tutorial walks through pulling a complete, four-domain health snapshot
 of a single repository — traffic, contributors, community profile, and

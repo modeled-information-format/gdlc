@@ -8,7 +8,6 @@ title: List milestones with list_milestones
 diataxis_type: how-to
 ---
 
-# List milestones with `list_milestones`
 
 Goal: retrieve a repository's milestones, filtered by state.
 

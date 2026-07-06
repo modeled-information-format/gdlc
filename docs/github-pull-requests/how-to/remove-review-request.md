@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Withdraw a review request with remove_review_request
 diataxis_type: how-to
 ---
-# Withdraw a review request with `remove_review_request`
 
 Remove one or more requested reviewers, and/or teams, from a pull request.
 

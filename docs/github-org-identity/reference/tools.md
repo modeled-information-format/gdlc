@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: github-org-identity MCP tools
 diataxis_type: reference
 ---
-# github-org-identity MCP tools
 
 Seven tools, registered in
 [`mcp-server/src/index.ts`](../../../plugins/github-org-identity/mcp-server/src/index.ts),

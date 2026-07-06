@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Set the full branch-protection config for a branch
 diataxis_type: how-to
 ---
-# Set the full branch-protection config for a branch
 
 Set (or replace) a branch's protection in one call.
 

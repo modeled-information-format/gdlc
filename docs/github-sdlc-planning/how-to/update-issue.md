@@ -8,7 +8,6 @@ title: Update an issue with the update_issue tool
 diataxis_type: how-to
 ---
 
-# Update an issue with `update_issue`
 
 Goal: change an existing issue's title, body, open/closed state, or
 organization issue type.

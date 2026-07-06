@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Read a branch's protection config
 diataxis_type: how-to
 ---
-# Read a branch's protection config
 
 Check what protection, if any, currently governs a branch.
 

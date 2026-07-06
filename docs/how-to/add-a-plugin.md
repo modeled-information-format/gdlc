@@ -7,7 +7,6 @@ modified: 2026-07-03T00:00:00Z
 title: Add a plugin to the catalog
 diataxis_type: how-to
 ---
-# Add a plugin to the catalog
 
 A plugin joins this marketplace by being **cataloged**: referenced by a
 SHA-pinned `git-subdir` source that CI re-verifies fail-closed before the

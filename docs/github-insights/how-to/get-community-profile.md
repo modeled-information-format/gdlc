@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Get a repo's community profile
 diataxis_type: how-to
 ---
-# Get a repo's community profile
 
 Read a repository's community-health percentage and which of GitHub's
 standard community files it has.

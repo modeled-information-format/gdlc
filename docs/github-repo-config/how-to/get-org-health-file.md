@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Read a community health file's content
 diataxis_type: how-to
 ---
-# Read a community health file's content
 
 Fetch the actual content of one org-wide default community health file.
 

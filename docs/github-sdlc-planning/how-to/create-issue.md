@@ -8,7 +8,6 @@ title: Create an issue with the create_issue tool
 diataxis_type: how-to
 ---
 
-# Create an issue with `create_issue`
 
 Goal: file a new GitHub issue whose body carries MIF frontmatter
 automatically, optionally with labels, assignees, a milestone, and an

@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Move a bug issue's board status (and optionally close it)
 diataxis_type: how-to
 ---
-# Move a bug issue's board status (and optionally close it)
 
 Use this to move an issue's `Status` value on the triage board, and
 optionally close the underlying issue in the same call.

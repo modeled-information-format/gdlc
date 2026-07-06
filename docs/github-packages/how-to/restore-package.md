@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Restore a deleted package
 diataxis_type: how-to
 ---
-# Restore a deleted package
 
 Undo a `delete_package` call, within GitHub's ~30-day retention window.
 

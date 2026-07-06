@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Why github-bug-capture is shaped the way it is
 diataxis_type: explanation
 ---
-# Why github-bug-capture is shaped the way it is
 
 `github-bug-capture` exists to turn a diagnostic discovered while code is
 being written — a failing test, a lint error, a build break, any observed

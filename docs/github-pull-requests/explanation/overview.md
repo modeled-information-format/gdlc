@@ -9,7 +9,6 @@ diataxis_type: explanation
 related:
   - adr-0002-pr-issue-linkage-ownership.md
 ---
-# Why github-pull-requests exists
 
 ## Role in the PR lifecycle
 

@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: github-insights tools
 diataxis_type: reference
 ---
-# github-insights tools
 
 Five tools, registered in `plugins/github-insights/mcp-server/src/index.ts`.
 Every tool takes the same input shape and issues exactly one `GET` request.

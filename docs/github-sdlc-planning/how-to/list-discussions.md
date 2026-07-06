@@ -8,7 +8,6 @@ title: List discussions with list_discussions
 diataxis_type: how-to
 ---
 
-# List discussions with `list_discussions`
 
 Goal: retrieve a repository's Discussions (up to the first 50).
 

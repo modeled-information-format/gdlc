@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Close an issue as a duplicate
 diataxis_type: how-to
 ---
-# Close an issue as a duplicate
 
 Use this once you've confirmed an issue is a duplicate of another, already
 open (or previously filed) issue.

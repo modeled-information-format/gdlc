@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Check for duplicate issues before filing
 diataxis_type: how-to
 ---
-# Check for duplicate issues before filing
 
 Use this before filing a new bug issue, to surface candidate duplicates via
 keyword search.

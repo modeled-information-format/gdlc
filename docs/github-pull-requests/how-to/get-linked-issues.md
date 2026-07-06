@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Find which issues a PR closes with get_linked_issues
 diataxis_type: how-to
 ---
-# Find which issues a PR closes with `get_linked_issues`
 
 Discover which issues a pull request will close (or references), using
 GitHub's native closing-reference tracking with a text/timeline fallback.

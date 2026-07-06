@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Open a pull request with create_pull_request
 diataxis_type: how-to
 ---
-# Open a pull request with `create_pull_request`
 
 Open a pull request programmatically via GitHub's GraphQL
 `createPullRequest` mutation, without leaving your agent session.

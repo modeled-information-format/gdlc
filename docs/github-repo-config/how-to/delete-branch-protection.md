@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Remove all protection from a branch
 diataxis_type: how-to
 ---
-# Remove all protection from a branch
 
 Delete a branch's protection entirely — this opens its merge gate
 completely. Confirm this is what you want before calling it.

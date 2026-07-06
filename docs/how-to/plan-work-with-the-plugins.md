@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: Plan and track work with the planning and PR plugins
 diataxis_type: how-to
 ---
-# Plan and track work with the planning and PR plugins
 
 Run a plan-to-merge cycle: decompose a goal into issues, board them, open
 and classify the PR, and let linkage close the loop. Assumes Claude Code

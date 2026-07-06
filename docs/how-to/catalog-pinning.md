@@ -7,7 +7,6 @@ modified: 2026-07-04T00:00:00Z
 title: How the marketplace catalog gets pinned to a release
 diataxis_type: how-to
 ---
-# How the marketplace catalog gets pinned to a release
 
 The vendored plugins listed in `.claude-plugin/marketplace.json` reside
 *inside* this same repository, and their entries point back at it: a

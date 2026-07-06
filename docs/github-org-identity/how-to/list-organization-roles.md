@@ -7,7 +7,6 @@ modified: 2026-07-05T00:00:00Z
 title: List an org's organization roles
 diataxis_type: how-to
 ---
-# List an org's organization roles
 
 Use `list_organization_roles` to see every predefined and custom
 organization role an org has defined, before looking up who holds any of
