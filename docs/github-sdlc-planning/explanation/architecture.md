@@ -3,7 +3,7 @@ id: 3c476b9f-2d8c-460f-86ed-e94ca6fd225b
 type: semantic
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-05T00:00:00Z
+modified: 2026-07-06T00:00:00Z
 title: Why github-sdlc-planning exists and how it's built
 diataxis_type: explanation
 ---
@@ -87,14 +87,86 @@ A host with no hooks support is not degraded to "broken" — it is degraded to
 (`getAgentCapabilities()` returns `hooksSupported: false` precisely to make
 this explicit and discoverable at runtime).
 
+## The hook workflow tree
+
+The four hooks are not independent — they attach to different points of the
+same tool-call lifecycle, and one of them (`set-in-progress.mjs`) delegates
+its own configuration resolution to a layered cascade shared with
+`github-bug-capture`. For a single `create_issue`/`add_sub_issue`/
+`update_issue` call in Claude Code, the tree looks like this:
+
+```text
+SessionStart (startup)
+└─ session-start.mjs
+     └─ gh api repos/{owner}/{repo}/milestones → additionalContext
+
+Tool call: mcp__github-sdlc-planning__{create_issue,update_issue,add_sub_issue,
+           add_item_to_project,set_field_value,create_milestone,
+           assign_milestone,create_discussion}
+├─ PreToolUse
+│    └─ confirm-mutation.mjs
+│         └─ describes the target from tool_input alone (never resolves
+│            config itself); labels an omitted, config-defaulted field
+│            "(config default)", or "(invalid ...)" if the caller gave
+│            exactly one of an atomic pair (owner/repo, or
+│            projectOwnerLogin/projectNumber) and omitted the other
+├─ [the MCP server itself may resolve config here — see below]
+└─ PostToolUse
+     ├─ validate-mif.mjs (matcher: any mcp__github-sdlc-planning__.* call,
+     │    but only acts on create_issue/update_issue — MIF frontmatter is
+     │    an issue-body convention, not a discussion one)
+     │    └─ isMifConformant(body) → correction instruction if non-conformant
+     └─ set-in-progress.mjs (matcher: add_sub_issue|update_issue only)
+          ├─ extractAffectedIssue(tool_input) → the issue that started work
+          └─ readBoardConfig(cwd) — hooks/lib/in-progress.mjs's own
+             dependency-free cascade (ADR-0004):
+             1. .config/gdlc/config.yml's board: section (project layer)
+             2. $XDG_CONFIG_HOME/gdlc/config.yml's board: section (global)
+             3. .claude/github-sdlc-planning.local.md's board: key
+                (legacy, deprecated, one release, with a warning)
+             → setIssueInProgress(...) via gh api graphql, or a silent
+               no-op if no layer resolves
+```
+
+The MCP-server-side resolution referenced above is a **separate** cascade
+implementation, in a **separate** language runtime, from the hook's: the
+tool call itself (`create_issue`'s `owner`/`repo`, or
+`add_item_to_project`/`set_field_value`/`get_project_items`/
+`get_session_context`'s `projectOwnerLogin`/`projectNumber`) resolves
+omitted fields via `mcp-server/src/config.ts`'s `loadGdlcConfig` +
+`resolveBoardCoordinates`/`resolveDestinationRepo` — a TypeScript module
+with an npm dependency (`yaml`), bundled into the server's own `dist/`.
+`hooks/lib/in-progress.mjs`'s `readBoardConfig` cannot import that module
+(hooks have no `node_modules` at execution time — see
+`hooks/lib/settings.mjs`'s doc comment in `github-bug-capture`) and
+re-implements the same three-layer resolution and the same `board:` schema
+as a dependency-free regex parser instead. The two are deliberately kept
+behaviorally identical (a real divergence between them was caught and fixed
+during issue #83's review — see
+[the layered config schema](../../reference/config-schema.md)'s "Verified
+end-to-end" section) — but they are two independent implementations of one
+resolution rule, not one shared function, and any future change to the
+cascade must be made in both places.
+
+`github-bug-capture`'s four board-coordinate tools
+(`ensure_severity_field`/`set_severity`/`get_lifecycle_state`/
+`set_lifecycle_state`) go through the *first* of these two paths directly:
+that plugin's `mcp-server` has its own `file:` dependency on this one
+specifically to import `config.ts`'s `./config` subpath (see "New
+dependency edge, decided here" in the config schema doc) — it has no hooks
+of its own that read board config, so there is no second, hooks-layer
+implementation to keep in sync for that plugin.
+
 ## ADR audit: which decisions govern this plugin
 
-Three ADRs exist under `docs/decisions/` as of this writing. Only one makes
-a decision specifically about `github-sdlc-planning`'s own tool behavior:
+Four ADRs exist under `docs/decisions/` as of this writing. Two make a
+decision specifically about `github-sdlc-planning`'s own tool/hook
+behavior:
 
 | ADR | Title | Relevance to this plugin |
 | --- | --- | --- |
 | [ADR-0003](../../decisions/adr-0003-board-status-hygiene.md) | Rely on Native Projects v2 Workflows for Status Hygiene; Add a Hook Only for the In-Progress Gap | **Directly governs this plugin.** It decided (a) `add_item_to_project` must query for an existing board item before mutating, returning `existed: true` instead of creating a duplicate — implemented in `mcp-server/src/tools/projects.ts`; and (b) the `set-in-progress` `PostToolUse` hook in this plugin's own `hooks/` directory, which fires on `add_sub_issue`/`update_issue` and calls the equivalent of `set_field_value` to move a board item to In Progress. Status: accepted, implemented, and audited compliant. |
+| [ADR-0004](../../decisions/adr-0004-project-config-surface.md) | One XDG-Mirrored Path for Global and Project Config; `.claude/<plugin>.local.md` Stays Local-Only | **Directly governs this plugin.** It decided the carrier `set-in-progress.mjs`'s board-mapping resolution now reads first — `.config/gdlc/config.yml`, mirroring `$XDG_CONFIG_HOME/gdlc/config.yml` — superseding the `board:` key this plugin previously shipped in `.claude/github-sdlc-planning.local.md` (kept working for one release as a deprecated fallback). Also governs `mcp-server/src/config.ts`, the shared loader `github-bug-capture` depends on this plugin for. Status: accepted, implemented (issues #80-84), and audited compliant. |
 | [ADR-0001](../../decisions/adr-0001-bug-capture-layer1-core.md) | MCP-Server Core for the github-bug-capture Plugin's Agent-Neutral Layer 1 | **Not specific to this plugin.** It decides `github-bug-capture`'s own architecture. It references `github-sdlc-planning` only as prior art for the house pattern this plugin already established — no requirement in the ADR's Decision changes anything in `github-sdlc-planning`'s code. |
 | [ADR-0002](../../decisions/adr-0002-pr-issue-linkage-ownership.md) | PR-to-Issue Linkage Stays in github-pull-requests; github-bug-capture Consumes It | **Not specific to this plugin.** It settles a boundary between `github-pull-requests` and `github-bug-capture`. `github-sdlc-planning` is mentioned only as the root of the transitive dependency chain (`bug-capture → pull-requests → sdlc-planning`) whose fragility the ADR flags as a risk — it imposes no decision on this plugin's own tools. |
 
