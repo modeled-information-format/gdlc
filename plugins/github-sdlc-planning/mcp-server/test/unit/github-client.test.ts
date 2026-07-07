@@ -35,6 +35,27 @@ describe('resolveToken', () => {
       expect((err as PlanningError).code).toBe('missing_scope');
     }
   });
+
+  it('issue #105: picks up a changed credential mid-process without resetAuthCacheForTests, e.g. `gh auth switch`', () => {
+    process.env.GITHUB_TOKEN = 'token-a';
+    expect(resolveToken()).toBe('token-a');
+
+    // No resetAuthCacheForTests() call here -- this is the exact scenario the
+    // bug report reproduced: an account switch mid-session, still resolved
+    // from the same live process, no restart. A stale module-level cache
+    // would still return 'token-a' here; resolveToken must not.
+    process.env.GITHUB_TOKEN = 'token-b';
+    expect(resolveToken()).toBe('token-b');
+  });
+
+  it('issue #105: also re-resolves the `gh auth token` fallback path on every call, not just the GITHUB_TOKEN env path', () => {
+    delete process.env.GITHUB_TOKEN;
+    resetAuthCacheForTests();
+    const execImpl = vi.fn().mockReturnValueOnce('gh-token-account-a\n').mockReturnValueOnce('gh-token-account-b\n');
+    expect(resolveToken(execImpl)).toBe('gh-token-account-a');
+    expect(resolveToken(execImpl)).toBe('gh-token-account-b');
+    expect(execImpl).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('assertProjectScope', () => {

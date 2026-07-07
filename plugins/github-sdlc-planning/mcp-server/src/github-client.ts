@@ -6,7 +6,6 @@ const GITHUB_GRAPHQL = 'https://api.github.com/graphql';
 const API_VERSION = '2022-11-28';
 const MAX_RATE_LIMIT_RETRIES = 3;
 
-let cachedToken: string | undefined;
 let projectScopeChecked = false;
 
 export type ExecFileSyncFn = (command: string, args: string[], options: { encoding: 'utf8' }) => string;
@@ -16,20 +15,22 @@ const defaultExecFileSync: ExecFileSyncFn = (command, args, options) => execFile
 /** Auth: env var first, `gh auth token` fallback (assumption #2 in the build
  * plan). Fails fast with a remediation message rather than a raw 401.
  * `execImpl` is injectable so tests can exercise the fallback path without
- * mocking the `node:child_process` builtin. */
+ * mocking the `node:child_process` builtin.
+ *
+ * Issue #105: this used to cache the resolved token in a module-level
+ * variable for the life of the process, so a `gh auth switch` (or any
+ * env/credential change) mid-session kept resolving to the stale account
+ * until the MCP server was restarted -- with no invalidation path outside
+ * tests. Resolves fresh on every call instead: `execFileSync('gh', ['auth',
+ * 'token'])` is one subprocess spawn per tool call, not a hot loop, and
+ * removing the cache removes the whole stale-credential bug class rather
+ * than patching around it. */
 export function resolveToken(execImpl: ExecFileSyncFn = defaultExecFileSync): string {
-  if (cachedToken) return cachedToken;
   const envToken = process.env.GITHUB_TOKEN;
-  if (envToken) {
-    cachedToken = envToken;
-    return envToken;
-  }
+  if (envToken) return envToken;
   try {
     const token = execImpl('gh', ['auth', 'token'], { encoding: 'utf8' }).trim();
-    if (token) {
-      cachedToken = token;
-      return token;
-    }
+    if (token) return token;
   } catch {
     // fall through to the error below
   }
@@ -128,10 +129,11 @@ function isGraphQLMutation(query: string): boolean {
   return withoutComments.trim().startsWith('mutation');
 }
 
-/** Test-only: reset module-level auth cache and mutation-pacing state between
- * test cases. */
+/** Test-only: reset the project-scope-checked flag and mutation-pacing state
+ * between test cases. `resolveToken` itself no longer caches (issue #105),
+ * so there is nothing token-related left to reset here -- kept under its
+ * original name since callers already depend on it running between tests. */
 export function resetAuthCacheForTests(): void {
-  cachedToken = undefined;
   projectScopeChecked = false;
   lastMutationAt = 0;
   mutationGate = Promise.resolve();

@@ -110,8 +110,11 @@ interface IssueTypesResponse {
  * calls resolveIssueTypeId on every create, and bulk callers (epic-decomposition)
  * create many issues against the same org in one run -- memoize per org for the
  * life of the process so that only re-fetches on the first call, matching the
- * cachedToken/projectScopeChecked pattern already used in github-client.ts. A
- * failed fetch evicts itself so a transient error doesn't cache forever. */
+ * projectScopeChecked pattern in github-client.ts. Unlike #105's since-removed
+ * token cache, this is keyed by org login rather than the ambient credential,
+ * so it isn't stale-account-prone the same way -- an org's issue types don't
+ * depend on which account is asking. A failed fetch evicts itself so a
+ * transient error doesn't cache forever. */
 const issueTypesCache = new Map<string, Promise<Array<{ id: string; name: string }>>>();
 
 async function fetchIssueTypes(org: string, deps: GithubClientDeps): Promise<Array<{ id: string; name: string }>> {
