@@ -10,7 +10,7 @@ import { getPagesConfig } from './tools/pages.js';
 import { listCustomPropertiesSchema, getRepoCustomProperties, setRepoCustomProperties } from './tools/custom-properties.js';
 import { isRepoConfigError } from './errors.js';
 
-const server = new McpServer({ name: 'github-repo-config', version: '0.4.0' });
+const server = new McpServer({ name: 'github-repo-config', version: '0.5.0' });
 
 function toolResult(data: unknown): { content: Array<{ type: 'text'; text: string }> } {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
