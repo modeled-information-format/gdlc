@@ -302,12 +302,14 @@ Returns `{ openMilestones: [{ number, title, url, dueOn }], projectBoard:
 pair resolves, explicit or configured. `projectConfigPath` (issue #106 /
 ADR-0005) is the filesystem path of the project-layer `.config/gdlc/config.yml`
 that was actually used, found by searching upward from the MCP server's cwd
-toward the filesystem root — or `null` if none was found by the time the
-filesystem root was reached. A `null` here alongside a `null` `projectBoard`
-means no project config was reachable at all (check this field before
-assuming "unconfigured" — see ADR-0005 for the one case upward search can't
-resolve: a cwd that is an *ancestor* of the project root, e.g. a multi-repo
-workspace directory, rather than nested inside it).
+— stopping at (never checking) the user's home directory, not the filesystem
+root, so a stray file there is never mistaken for a project-specific one —
+or `null` if nothing was found by the time that boundary was reached. A
+`null` here alongside a `null` `projectBoard` means no project config was
+reachable at all (check this field before assuming "unconfigured" — see
+ADR-0005 for the one case upward search can't resolve: a cwd that is an
+*ancestor* of the project root, e.g. a multi-repo workspace directory,
+rather than nested inside it).
 
 ## get_agent_capabilities
 
