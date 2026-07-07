@@ -38572,9 +38572,20 @@ var ISSUE_TYPES_QUERY = `
     organization(login: $login) { issueTypes(first: 25) { nodes { id name } } }
   }
 `;
+var issueTypesCache = /* @__PURE__ */ new Map();
+async function fetchIssueTypes(org, deps) {
+  let cached2 = issueTypesCache.get(org);
+  if (!cached2) {
+    cached2 = githubGraphQL(ISSUE_TYPES_QUERY, { login: org }, {}, deps).then(
+      (data) => data.organization?.issueTypes?.nodes ?? []
+    );
+    cached2.catch(() => issueTypesCache.delete(org));
+    issueTypesCache.set(org, cached2);
+  }
+  return cached2;
+}
 async function resolveIssueTypeId(org, typeName, deps = {}) {
-  const data = await githubGraphQL(ISSUE_TYPES_QUERY, { login: org }, {}, deps);
-  const nodes = data.organization?.issueTypes?.nodes ?? [];
+  const nodes = await fetchIssueTypes(org, deps);
   const match = nodes.find((n) => n.name === typeName);
   if (!match) {
     throw new PlanningError("unknown_issue_type", `Issue type "${typeName}" is not defined in organization "${org}"'s issueTypes`, {

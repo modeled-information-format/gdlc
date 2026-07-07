@@ -5,6 +5,8 @@ export declare function resolveRepositoryId(owner: string, repo: string, deps?: 
 export declare function resolveIssueNodeId(owner: string, repo: string, number: number, deps?: GithubClientDeps): Promise<string>;
 export type ProjectOwnerType = 'organization' | 'user';
 export declare function resolveProjectNodeId(ownerLogin: string, projectNumber: number, ownerType?: ProjectOwnerType, deps?: GithubClientDeps): Promise<string>;
+/** Test-only: clear the per-org issueTypes memoization between test cases. */
+export declare function resetIssueTypesCacheForTests(): void;
 /** AC-7: reject an issueTypeId assignment absent from the org's
  * organization.issueTypes before calling updateIssue/PATCH. */
 export declare function resolveIssueTypeId(org: string, typeName: string, deps?: GithubClientDeps): Promise<string>;
