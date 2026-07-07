@@ -22,7 +22,14 @@ organization issue type.
   users, and milestone must already exist — the tool resolves each to a
   node ID and fails if the lookup 404s.
 - If you pass `issueType`, it must be one of the organization's defined
-  issue types (`owner` is treated as the org login for this lookup).
+  issue types (`owner` is treated as the org login for this lookup) — an
+  unknown name is rejected before the API call.
+- If you omit `issueType`, the tool derives a native issue type from
+  `mif.type` for you (`Task` → `Task`, `Bug` → `Bug`, everything else —
+  `Initiative`/`Epic`/`Story`/`Feature` — → `Feature`, the closest fit
+  since this org only defines those three native types). If the org hasn't
+  defined the derived type, the issue is still created with no native
+  type set rather than failing the call.
 
 ## Steps
 
