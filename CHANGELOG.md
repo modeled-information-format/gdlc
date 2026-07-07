@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-07
+
+### Fixed
+
+- `github-sdlc-planning`'s `update_issue` `issueType` no longer silently
+  no-ops: the REST PATCH now sends `type` as the bare type-name string per
+  GitHub's documented shape, not `{ name: ... }` (issue #108).
+- `create_issue` now derives a native `issueType` from `mif.type` when the
+  caller omits it (`Task`→`Task`, `Bug`→`Bug`, else→`Feature`), so
+  decomposition output is classified by default instead of needing a manual
+  enrichment pass; an org without the derived type defined degrades to no
+  type rather than failing the create (issue #108).
+- `resolveToken()` no longer caches a GitHub token for the life of the MCP
+  server process: a `gh auth switch` (or any credential change) mid-session
+  now resolves correctly on the next call instead of requiring a restart.
+  `assertProjectScope`'s own scope-check cache is now keyed by the resolved
+  token, closing the same staleness class (issue #105).
+- `loadGdlcConfig`/`readBoardConfig` now search upward from cwd toward the
+  project root (git-style, like git/npm/tsconfig) for
+  `.config/gdlc/config.yml`, so a cwd nested inside the project root (e.g. a
+  build subdirectory) resolves the project-layer config where it previously
+  didn't. `get_session_context` gained a `projectConfigPath` diagnostic
+  field so the resolution outcome is now observable. Does not resolve a cwd
+  that is an *ancestor* of the project root (e.g. a multi-repo workspace
+  directory) — see ADR-0005 for the full analysis and the documented
+  workaround (issue #106).
+
 ## [0.4.0] - 2026-07-06
 
 ### Added
