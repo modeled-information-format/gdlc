@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-07
+
+### Added
+
+- Two new use-case-driven how-to guides per plugin (14 total) covering
+  real end-to-end workflows across all seven plugins, on top of the
+  existing one-per-MCP-tool how-to coverage (#121).
+
 ## [0.5.0] - 2026-07-07
 
 ### Fixed
