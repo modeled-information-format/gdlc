@@ -38312,22 +38312,14 @@ var GITHUB_API = "https://api.github.com";
 var GITHUB_GRAPHQL = "https://api.github.com/graphql";
 var API_VERSION = "2022-11-28";
 var MAX_RATE_LIMIT_RETRIES = 3;
-var cachedToken;
-var projectScopeChecked = false;
+var projectScopeCheckedForToken;
 var defaultExecFileSync = (command, args, options) => execFileSync(command, args, options);
 function resolveToken(execImpl = defaultExecFileSync) {
-  if (cachedToken) return cachedToken;
   const envToken = process.env.GITHUB_TOKEN;
-  if (envToken) {
-    cachedToken = envToken;
-    return envToken;
-  }
+  if (envToken) return envToken;
   try {
     const token = execImpl("gh", ["auth", "token"], { encoding: "utf8" }).trim();
-    if (token) {
-      cachedToken = token;
-      return token;
-    }
+    if (token) return token;
   } catch {
   }
   throw new PlanningError(
@@ -38339,10 +38331,10 @@ function tokenHasOAuthScopeModel(token) {
   return token.startsWith("ghp_") || token.startsWith("gho_");
 }
 async function assertProjectScope(fetchImpl = fetch) {
-  if (projectScopeChecked) return;
   const token = resolveToken();
+  if (projectScopeCheckedForToken === token) return;
   if (!tokenHasOAuthScopeModel(token)) {
-    projectScopeChecked = true;
+    projectScopeCheckedForToken = token;
     return;
   }
   const res = await fetchImpl(`${GITHUB_API}/user`, {
@@ -38357,7 +38349,7 @@ async function assertProjectScope(fetchImpl = fetch) {
       { missingScope: "project", presentScopes: scopes }
     );
   }
-  projectScopeChecked = true;
+  projectScopeCheckedForToken = token;
 }
 var MIN_MUTATION_INTERVAL_MS = 1e3;
 var lastMutationAt = 0;
@@ -39038,59 +39030,28 @@ async function listDiscussions(input, deps = {}) {
   }));
 }
 
-// src/tools/session.ts
-async function getSessionContext(input, deps = {}) {
-  const milestonesPromise = githubRest(`/repos/${input.owner}/${input.repo}/milestones?state=open`, {}, deps);
-  const projectBoardPromise = input.projectOwnerLogin !== void 0 && input.projectNumber !== void 0 ? getProjectItems(
-    {
-      projectOwnerLogin: input.projectOwnerLogin,
-      projectNumber: input.projectNumber,
-      projectOwnerType: input.projectOwnerType
-    },
-    deps
-  ) : Promise.resolve(null);
-  const [milestones, projectBoard] = await Promise.all([milestonesPromise, projectBoardPromise]);
-  return {
-    openMilestones: milestones.map((m) => ({ number: m.number, title: m.title, url: m.html_url, dueOn: m.due_on })),
-    projectBoard
-  };
-}
-function getAgentCapabilities() {
-  return {
-    tools: [
-      "create_issue",
-      "update_issue",
-      "add_sub_issue",
-      "list_sub_issues",
-      "add_item_to_project",
-      "set_field_value",
-      "get_project_items",
-      "create_milestone",
-      "list_milestones",
-      "assign_milestone",
-      "create_discussion",
-      "list_discussions",
-      "format_mif_issue_body",
-      "parse_mif_issue_body",
-      "get_session_context",
-      "get_agent_capabilities"
-    ],
-    mifConformance: "L1",
-    hooksSupported: false
-  };
-}
-
 // src/config.ts
 var import_yaml = __toESM(require_dist2(), 1);
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve as resolvePath } from "node:path";
 var CONFIG_RELPATH = ["gdlc", "config.yml"];
 function resolveConfigPath(root) {
   return join(root, ...CONFIG_RELPATH);
 }
 function resolveGlobalConfigRoot(env = process.env) {
   return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== "" ? env.XDG_CONFIG_HOME : join(homedir(), ".config");
+}
+function findProjectConfigRoot(startDir, existsFn = existsSync, ceiling = homedir()) {
+  const ceilingResolved = resolvePath(ceiling);
+  let dir = resolvePath(startDir);
+  for (; ; ) {
+    if (dir === ceilingResolved) return null;
+    if (existsFn(resolveConfigPath(join(dir, ".config")))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
 }
 function isPlainObject3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -39141,9 +39102,16 @@ function loadConfigFile(path) {
 function mergeConfigs(global, project) {
   return { ...global, ...project };
 }
-function loadGdlcConfig(projectRoot = process.cwd(), env = process.env) {
+function resolveProjectConfigPath(startDir = process.cwd(), existsFn = existsSync, env = process.env) {
+  const root = findProjectConfigRoot(startDir, existsFn);
+  if (root === null) return null;
+  const path = resolveConfigPath(join(root, ".config"));
+  return path === resolveConfigPath(resolveGlobalConfigRoot(env)) ? null : path;
+}
+function loadGdlcConfig(projectRoot = process.cwd(), env = process.env, existsFn = existsSync) {
   const global = loadConfigFile(resolveConfigPath(resolveGlobalConfigRoot(env)));
-  const project = loadConfigFile(resolveConfigPath(join(projectRoot, ".config")));
+  const projectPath = resolveProjectConfigPath(projectRoot, existsFn, env);
+  const project = projectPath === null ? {} : loadConfigFile(projectPath);
   return mergeConfigs(global, project);
 }
 function resolveBoardCoordinates(explicit, config2) {
@@ -39180,6 +39148,49 @@ function isRepoAllowed(config2, owner, repo) {
   if (allowRepos?.includes(`${owner}/${repo}`)) return true;
   if (allowOrgs?.includes(owner)) return true;
   return false;
+}
+
+// src/tools/session.ts
+async function getSessionContext(input, deps = {}) {
+  const milestonesPromise = githubRest(`/repos/${input.owner}/${input.repo}/milestones?state=open`, {}, deps);
+  const projectBoardPromise = input.projectOwnerLogin !== void 0 && input.projectNumber !== void 0 ? getProjectItems(
+    {
+      projectOwnerLogin: input.projectOwnerLogin,
+      projectNumber: input.projectNumber,
+      projectOwnerType: input.projectOwnerType
+    },
+    deps
+  ) : Promise.resolve(null);
+  const [milestones, projectBoard] = await Promise.all([milestonesPromise, projectBoardPromise]);
+  return {
+    openMilestones: milestones.map((m) => ({ number: m.number, title: m.title, url: m.html_url, dueOn: m.due_on })),
+    projectBoard,
+    projectConfigPath: resolveProjectConfigPath()
+  };
+}
+function getAgentCapabilities() {
+  return {
+    tools: [
+      "create_issue",
+      "update_issue",
+      "add_sub_issue",
+      "list_sub_issues",
+      "add_item_to_project",
+      "set_field_value",
+      "get_project_items",
+      "create_milestone",
+      "list_milestones",
+      "assign_milestone",
+      "create_discussion",
+      "list_discussions",
+      "format_mif_issue_body",
+      "parse_mif_issue_body",
+      "get_session_context",
+      "get_agent_capabilities"
+    ],
+    mifConformance: "L1",
+    hooksSupported: false
+  };
 }
 
 // src/tool-defaults.ts

@@ -6,8 +6,9 @@ const GITHUB_GRAPHQL = 'https://api.github.com/graphql';
 const API_VERSION = '2022-11-28';
 const MAX_RATE_LIMIT_RETRIES = 3;
 
-let cachedToken: string | undefined;
-let projectScopeChecked = false;
+/** Keyed by the resolved token value, not a bare boolean -- see
+ * `assertProjectScope`'s doc comment for why. */
+let projectScopeCheckedForToken: string | undefined;
 
 export type ExecFileSyncFn = (command: string, args: string[], options: { encoding: 'utf8' }) => string;
 
@@ -16,20 +17,29 @@ const defaultExecFileSync: ExecFileSyncFn = (command, args, options) => execFile
 /** Auth: env var first, `gh auth token` fallback (assumption #2 in the build
  * plan). Fails fast with a remediation message rather than a raw 401.
  * `execImpl` is injectable so tests can exercise the fallback path without
- * mocking the `node:child_process` builtin. */
+ * mocking the `node:child_process` builtin.
+ *
+ * Issue #105: this used to cache the resolved token in a module-level
+ * variable for the life of the process, so a `gh auth switch` (or any
+ * env/credential change) mid-session kept resolving to the stale account
+ * until the MCP server was restarted -- with no invalidation path outside
+ * tests. Resolves fresh on every call instead, removing that whole
+ * stale-credential bug class rather than patching around it. Cost, measured
+ * via impartial review: this is one `execFileSync('gh', ['auth', 'token'])`
+ * subprocess spawn per `githubRest`/`githubGraphQL` call, not per tool
+ * invocation as an earlier version of this comment claimed -- a single tool
+ * call can trigger several REST/GraphQL round trips (`addSubIssue` alone can
+ * call `resolveToken` 5-14 times), multiplied further by bulk callers like
+ * epic-decomposition. Accepted anyway when `GITHUB_TOKEN` is unset: `gh auth
+ * token` reads a local cached credential, not a network round trip, and the
+ * issue that requested this fix explicitly weighed and accepted this exact
+ * tradeoff over reintroducing a cache. */
 export function resolveToken(execImpl: ExecFileSyncFn = defaultExecFileSync): string {
-  if (cachedToken) return cachedToken;
   const envToken = process.env.GITHUB_TOKEN;
-  if (envToken) {
-    cachedToken = envToken;
-    return envToken;
-  }
+  if (envToken) return envToken;
   try {
     const token = execImpl('gh', ['auth', 'token'], { encoding: 'utf8' }).trim();
-    if (token) {
-      cachedToken = token;
-      return token;
-    }
+    if (token) return token;
   } catch {
     // fall through to the error below
   }
@@ -50,16 +60,27 @@ function tokenHasOAuthScopeModel(token: string): boolean {
   return token.startsWith('ghp_') || token.startsWith('gho_');
 }
 
-/** Checked once per process. AC-4: name the missing scope explicitly instead
- * of surfacing GitHub's raw GraphQL permission error. Only meaningful for
- * classic OAuth-scoped tokens; App installation tokens and fine-grained PATs
- * skip this check and rely on the actual GraphQL call to surface a real
- * permission error if the token genuinely lacks access. */
+/** Checked once per resolved token, not once per process. AC-4: name the
+ * missing scope explicitly instead of surfacing GitHub's raw GraphQL
+ * permission error. Only meaningful for classic OAuth-scoped tokens; App
+ * installation tokens and fine-grained PATs skip this check and rely on the
+ * actual GraphQL call to surface a real permission error if the token
+ * genuinely lacks access.
+ *
+ * Impartial-review finding on #105: this used to be a bare per-process
+ * boolean, which -- after #105's fix made `resolveToken` re-resolve fresh on
+ * every call -- became its own stale-credential bug: a `gh auth switch` to
+ * an account lacking `project` scope would still short-circuit past this
+ * check on the stale `true`, and the caller would get a raw GraphQL
+ * permission error instead of this function's friendly `missing_scope`.
+ * Keying the cache by the resolved token value (not a boolean) fixes that
+ * while still avoiding a repeat `/user` call for the common case of the same
+ * token making many calls in a row. */
 export async function assertProjectScope(fetchImpl: typeof fetch = fetch): Promise<void> {
-  if (projectScopeChecked) return;
   const token = resolveToken();
+  if (projectScopeCheckedForToken === token) return;
   if (!tokenHasOAuthScopeModel(token)) {
-    projectScopeChecked = true;
+    projectScopeCheckedForToken = token;
     return;
   }
   const res = await fetchImpl(`${GITHUB_API}/user`, {
@@ -77,7 +98,7 @@ export async function assertProjectScope(fetchImpl: typeof fetch = fetch): Promi
       { missingScope: 'project', presentScopes: scopes },
     );
   }
-  projectScopeChecked = true;
+  projectScopeCheckedForToken = token;
 }
 
 /** Deterministic governor, not incidental pacing from how fast a given agent
@@ -128,11 +149,13 @@ function isGraphQLMutation(query: string): boolean {
   return withoutComments.trim().startsWith('mutation');
 }
 
-/** Test-only: reset module-level auth cache and mutation-pacing state between
- * test cases. */
+/** Test-only: reset the project-scope-checked-for-token cache and
+ * mutation-pacing state between test cases. `resolveToken` itself no longer
+ * caches (issue #105), so there is nothing token-resolution-related left to
+ * reset here -- kept under its original name since callers already depend
+ * on it running between tests. */
 export function resetAuthCacheForTests(): void {
-  cachedToken = undefined;
-  projectScopeChecked = false;
+  projectScopeCheckedForToken = undefined;
   lastMutationAt = 0;
   mutationGate = Promise.resolve();
 }

@@ -38794,15 +38794,29 @@ async function closeAsDuplicate(input, deps = {}) {
 
 // ../../github-sdlc-planning/mcp-server/dist/config.js
 var import_yaml = __toESM(require_dist2(), 1);
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve as resolvePath } from "node:path";
 var CONFIG_RELPATH = ["gdlc", "config.yml"];
 function resolveConfigPath(root) {
   return join(root, ...CONFIG_RELPATH);
 }
 function resolveGlobalConfigRoot(env = process.env) {
   return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== "" ? env.XDG_CONFIG_HOME : join(homedir(), ".config");
+}
+function findProjectConfigRoot(startDir, existsFn = existsSync, ceiling = homedir()) {
+  const ceilingResolved = resolvePath(ceiling);
+  let dir = resolvePath(startDir);
+  for (; ; ) {
+    if (dir === ceilingResolved)
+      return null;
+    if (existsFn(resolveConfigPath(join(dir, ".config"))))
+      return dir;
+    const parent = dirname(dir);
+    if (parent === dir)
+      return null;
+    dir = parent;
+  }
 }
 function isPlainObject3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -38859,9 +38873,17 @@ function loadConfigFile(path) {
 function mergeConfigs(global, project) {
   return { ...global, ...project };
 }
-function loadGdlcConfig(projectRoot = process.cwd(), env = process.env) {
+function resolveProjectConfigPath(startDir = process.cwd(), existsFn = existsSync, env = process.env) {
+  const root = findProjectConfigRoot(startDir, existsFn);
+  if (root === null)
+    return null;
+  const path = resolveConfigPath(join(root, ".config"));
+  return path === resolveConfigPath(resolveGlobalConfigRoot(env)) ? null : path;
+}
+function loadGdlcConfig(projectRoot = process.cwd(), env = process.env, existsFn = existsSync) {
   const global = loadConfigFile(resolveConfigPath(resolveGlobalConfigRoot(env)));
-  const project = loadConfigFile(resolveConfigPath(join(projectRoot, ".config")));
+  const projectPath = resolveProjectConfigPath(projectRoot, existsFn, env);
+  const project = projectPath === null ? {} : loadConfigFile(projectPath);
   return mergeConfigs(global, project);
 }
 function resolveBoardCoordinates(explicit, config2) {

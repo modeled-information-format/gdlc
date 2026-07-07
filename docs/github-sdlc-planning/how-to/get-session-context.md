@@ -42,7 +42,7 @@ such hook.
    user-owned project.
 
 3. Read the response: `{ openMilestones: [...], projectBoard: {...} |
-   null }`.
+   null, projectConfigPath: string | null }`.
 
 ## Verify it worked
 
@@ -53,5 +53,13 @@ such hook.
   returns `null` for `projectBoard`, it does not error.
 - When non-null, `projectBoard` has the same shape as
   [`get_project_items`](get-project-items.md)'s result.
+- If `projectBoard` came back `null` and you expected board config to be
+  picked up automatically, check `projectConfigPath` first: `null` there
+  means the MCP server never found `.config/gdlc/config.yml` searching
+  upward from its own cwd — most often because the server was launched from
+  a directory *above* your repo (a multi-repo workspace root), which upward
+  search cannot resolve (issue #106 / ADR-0005). Configure the global layer
+  (`$XDG_CONFIG_HOME/gdlc/config.yml`) instead, or launch from the repo
+  itself.
 
 See also: [tool reference](../reference/tools.md#get_session_context).

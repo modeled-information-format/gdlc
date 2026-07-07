@@ -35,6 +35,27 @@ describe('resolveToken', () => {
       expect((err as PlanningError).code).toBe('missing_scope');
     }
   });
+
+  it('issue #105: picks up a changed credential mid-process without resetAuthCacheForTests, e.g. `gh auth switch`', () => {
+    process.env.GITHUB_TOKEN = 'token-a';
+    expect(resolveToken()).toBe('token-a');
+
+    // No resetAuthCacheForTests() call here -- this is the exact scenario the
+    // bug report reproduced: an account switch mid-session, still resolved
+    // from the same live process, no restart. A stale module-level cache
+    // would still return 'token-a' here; resolveToken must not.
+    process.env.GITHUB_TOKEN = 'token-b';
+    expect(resolveToken()).toBe('token-b');
+  });
+
+  it('issue #105: also re-resolves the `gh auth token` fallback path on every call, not just the GITHUB_TOKEN env path', () => {
+    delete process.env.GITHUB_TOKEN;
+    resetAuthCacheForTests();
+    const execImpl = vi.fn().mockReturnValueOnce('gh-token-account-a\n').mockReturnValueOnce('gh-token-account-b\n');
+    expect(resolveToken(execImpl)).toBe('gh-token-account-a');
+    expect(resolveToken(execImpl)).toBe('gh-token-account-b');
+    expect(execImpl).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('assertProjectScope', () => {
@@ -63,6 +84,24 @@ describe('assertProjectScope', () => {
     process.env.GITHUB_TOKEN = 'github_pat_11ABCDEFG_1234567890';
     resetAuthCacheForTests();
     await expect(assertProjectScope()).resolves.toBeUndefined();
+  });
+
+  it('impartial-review finding on #105: re-checks scope when the token changes mid-process, not just once per process', async () => {
+    // The exact bug: after #105 made resolveToken() re-resolve fresh on
+    // every call, a bare per-process boolean here would still short-circuit
+    // on a stale `true` from a *previous* (different) account -- silently
+    // skipping the scope check for a `gh auth switch`-ed account that
+    // actually lacks it.
+    process.env.GITHUB_TOKEN = 'ghp_account-a-1234567890';
+    mockUserScopes(['repo', 'project', 'read:org']);
+    await expect(assertProjectScope()).resolves.toBeUndefined();
+
+    process.env.GITHUB_TOKEN = 'ghp_account-b-1234567890';
+    mockUserScopes(['repo', 'read:org']);
+    await expect(assertProjectScope()).rejects.toMatchObject({
+      code: 'missing_scope',
+      details: { missingScope: 'project', presentScopes: ['repo', 'read:org'] },
+    });
   });
 });
 

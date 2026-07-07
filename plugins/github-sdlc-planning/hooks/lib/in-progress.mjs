@@ -12,9 +12,9 @@
  * `runGraphQL` function, the only piece that ever shells out to `gh`, so
  * this module never touches child_process and tests never shell out.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve as resolvePath } from 'node:path';
 
 const SETTINGS_RELPATH = join('.claude', 'github-sdlc-planning.local.md');
 const GDLC_CONFIG_RELPATH = join('gdlc', 'config.yml');
@@ -30,6 +30,50 @@ function resolveGdlcConfigPath(root) {
 
 function resolveGlobalGdlcConfigRoot(env = process.env) {
   return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== '' ? env.XDG_CONFIG_HOME : join(homedir(), '.config');
+}
+
+/** Issue #106 / ADR-0005: same upward search as the mcp-server's
+ * config.ts#findProjectConfigRoot, re-implemented here for the same
+ * dependency-free reason as the rest of this module. Climbs from `startDir`
+ * toward the filesystem root looking for `<dir>/.config/gdlc/config.yml`;
+ * fixes a cwd nested inside the project root, does NOT fix a cwd that is an
+ * ancestor of the project root (a multi-repo workspace directory above
+ * several sibling repos) -- see that function's doc comment and ADR-0005
+ * for the full reasoning. `ceiling` (default `homedir()`) stops the climb
+ * before checking that directory at all -- impartial-review finding: the
+ * home directory is never a legitimate project root, and left unguarded the
+ * climb would eventually check `homedir()/.config/gdlc/config.yml`, the
+ * OS-default global-layer path, letting a stray leftover file there
+ * silently outrank the real configured global config (see
+ * config.ts#findProjectConfigRoot for the full reasoning). Returns `null` if
+ * nothing is found by the time the ceiling or the filesystem root is
+ * reached. */
+function findGdlcProjectRoot(startDir, existsFn = existsSync, ceiling = homedir()) {
+  const ceilingResolved = resolvePath(ceiling);
+  let dir = resolvePath(startDir);
+  for (;;) {
+    if (dir === ceilingResolved) return null;
+    if (existsFn(resolveGdlcConfigPath(join(dir, '.config')))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+/** Same collision guard as the mcp-server's config.ts#resolveProjectConfigPath
+ * (impartial-review finding): `resolveGlobalGdlcConfigRoot`'s default
+ * (`homedir()/.config`) is a directory the upward search legitimately
+ * passes through for any cwd under `$HOME`, so an unguarded search could
+ * "find" the global layer's own file and let it silently outrank the real
+ * global config (e.g. a customized `XDG_CONFIG_HOME` plus a stray leftover
+ * `~/.config/gdlc/config.yml`), since a *present* project section always
+ * wins over the global one below. Excluding an exact path match closes
+ * this for both the default and customized cases. */
+function resolveGdlcProjectConfigPath(startDir, existsFn, env) {
+  const root = findGdlcProjectRoot(startDir, existsFn);
+  if (root === null) return null;
+  const path = resolveGdlcConfigPath(join(root, '.config'));
+  return path === resolveGdlcConfigPath(resolveGlobalGdlcConfigRoot(env)) ? null : path;
 }
 
 /** Extract a scalar value from the text captured after `key:`, matching
@@ -165,7 +209,16 @@ export function parseBoardConfig(text) {
 
 /** Read the legacy `.claude/github-sdlc-planning.local.md` `board:`
  * frontmatter key. Exported for tests; superseded by
- * `.config/gdlc/config.yml` (ADR-0004) -- see `readBoardConfig`. */
+ * `.config/gdlc/config.yml` (ADR-0004) -- see `readBoardConfig`.
+ *
+ * Deliberately NOT covered by #106/ADR-0005's upward search (impartial-review
+ * finding): this carrier is a different file (`.claude/*.local.md`, not
+ * `.config/gdlc/config.yml`) that would need its own independent climb to
+ * benefit the same way, and it is already scheduled for removal "for one
+ * release" per the deprecation notice below -- not worth the added search
+ * machinery for a carrier on its way out. A repo still on this carrier gets
+ * the pre-#106 cwd-exact behavior; migrating to `.config/gdlc/config.yml`
+ * gets the upward-search improvement for free. */
 export function readLegacyBoardConfig(cwd = process.cwd()) {
   let text;
   try {
@@ -182,11 +235,13 @@ export function readLegacyBoardConfig(cwd = process.cwd()) {
  * break the tool call it observes.
  *
  * Resolution order (ADR-0004's migration plan, issue #83): the project
- * layer's `<cwd>/.config/gdlc/config.yml` `board:` section, then the
- * global layer's `$XDG_CONFIG_HOME/gdlc/config.yml` `board:` section, then
- * -- for one release -- the legacy `.claude/github-sdlc-planning.local.md`
- * `board:` key, emitting one deprecation notice via `warn` when that
- * legacy fallback is what resolved it.
+ * layer's `.config/gdlc/config.yml` `board:` section -- searched upward
+ * from `cwd` toward the filesystem root (issue #106 / ADR-0005), not just
+ * at the literal `cwd` -- then the global layer's
+ * `$XDG_CONFIG_HOME/gdlc/config.yml` `board:` section, then -- for one
+ * release -- the legacy `.claude/github-sdlc-planning.local.md` `board:`
+ * key, emitting one deprecation notice via `warn` when that legacy
+ * fallback is what resolved it.
  *
  * A layer whose `board:` key is present but incomplete/invalid stops the
  * cascade there (returning `null`) rather than falling through to the
@@ -195,8 +250,14 @@ export function readLegacyBoardConfig(cwd = process.cwd()) {
  * or not. Falling through on partial-but-present data would let the same
  * config file resolve to different board coordinates depending on whether
  * this hook or an mcp-server tool call read it. */
-export function readBoardConfig(cwd = process.cwd(), env = process.env, warn = (msg) => process.stderr.write(`${msg}\n`)) {
-  const project = resolveGdlcLayerBoard(resolveGdlcConfigPath(join(cwd, '.config')));
+export function readBoardConfig(
+  cwd = process.cwd(),
+  env = process.env,
+  warn = (msg) => process.stderr.write(`${msg}\n`),
+  existsFn = existsSync,
+) {
+  const projectPath = resolveGdlcProjectConfigPath(cwd, existsFn, env);
+  const project = projectPath === null ? { present: false, board: null } : resolveGdlcLayerBoard(projectPath);
   if (project.present) return project.board;
 
   const global = resolveGdlcLayerBoard(resolveGdlcConfigPath(resolveGlobalGdlcConfigRoot(env)));
