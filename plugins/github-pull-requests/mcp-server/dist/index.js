@@ -31482,23 +31482,16 @@ var GITHUB_API2 = "https://api.github.com";
 var GITHUB_GRAPHQL2 = "https://api.github.com/graphql";
 var API_VERSION2 = "2022-11-28";
 var MAX_RATE_LIMIT_RETRIES2 = 3;
-var cachedToken2;
-var projectScopeChecked2 = false;
+var projectScopeCheckedForToken;
 var defaultExecFileSync2 = (command, args, options) => execFileSync2(command, args, options);
 function resolveToken2(execImpl = defaultExecFileSync2) {
-  if (cachedToken2)
-    return cachedToken2;
   const envToken = process.env.GITHUB_TOKEN;
-  if (envToken) {
-    cachedToken2 = envToken;
+  if (envToken)
     return envToken;
-  }
   try {
     const token = execImpl("gh", ["auth", "token"], { encoding: "utf8" }).trim();
-    if (token) {
-      cachedToken2 = token;
+    if (token)
       return token;
-    }
   } catch {
   }
   throw new PlanningError("missing_scope", "No GitHub token available. Set GITHUB_TOKEN, or run `gh auth login --scopes project`.");
@@ -31507,11 +31500,11 @@ function tokenHasOAuthScopeModel2(token) {
   return token.startsWith("ghp_") || token.startsWith("gho_");
 }
 async function assertProjectScope2(fetchImpl = fetch) {
-  if (projectScopeChecked2)
-    return;
   const token = resolveToken2();
+  if (projectScopeCheckedForToken === token)
+    return;
   if (!tokenHasOAuthScopeModel2(token)) {
-    projectScopeChecked2 = true;
+    projectScopeCheckedForToken = token;
     return;
   }
   const res = await fetchImpl(`${GITHUB_API2}/user`, {
@@ -31522,7 +31515,7 @@ async function assertProjectScope2(fetchImpl = fetch) {
   if (!scopes.includes("project")) {
     throw new PlanningError("missing_scope", "GitHub token is missing the `project` scope required for Projects v2 writes. Run `gh auth login --scopes project`.", { missingScope: "project", presentScopes: scopes });
   }
-  projectScopeChecked2 = true;
+  projectScopeCheckedForToken = token;
 }
 var MIN_MUTATION_INTERVAL_MS2 = 1e3;
 var lastMutationAt2 = 0;
