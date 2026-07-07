@@ -304,4 +304,28 @@ reported.
 
 **Action Required:** None.
 
+### 2026-07-07
+
+**Status:** Compliant, implementation hardened (impartial review round)
+
+**Findings:**
+
+| Finding | Files | Lines | Assessment |
+| ------- | ----- | ----- | ---------- |
+| The upward search, unguarded, legitimately passes through the global config layer's own default location (`homedir()/.config`) for any cwd under `$HOME` -- risking a stray leftover file there silently outranking the real configured global layer | `mcp-server/src/config.ts`, `hooks/lib/in-progress.mjs` | `findProjectConfigRoot`, `findGdlcProjectRoot` | fixed -- added a `homedir()` ceiling the climb never checks past, plus a path-equality guard in `resolveProjectConfigPath`/`resolveGdlcProjectConfigPath` for a customized `XDG_CONFIG_HOME` that still happens to collide |
+| `assertProjectScope`'s own per-process-boolean cache (`github-client.ts`) has the identical staleness shape #105 was filed about: after #105's fix, a `gh auth switch` correctly re-resolves the token, but this sibling cache still short-circuits on the stale flag | `mcp-server/src/github-client.ts` | `assertProjectScope` | fixed -- cache now keyed by the resolved token value, not a bare boolean |
+| `resolveToken`'s doc comment overclaimed "one subprocess spawn per tool call"; traced to 5-14 calls per single tool invocation | `mcp-server/src/github-client.ts` | `resolveToken` | doc comment corrected; behavior unchanged -- accepted tradeoff, per issue #105's own text, over reintroducing a cache |
+| `readLegacyBoardConfig`'s cwd-only resolution doesn't share the new upward search | `hooks/lib/in-progress.mjs` | `readBoardConfig`, `readLegacyBoardConfig` | scope boundary documented, not implemented -- the legacy carrier is already scheduled for removal, not worth parallel search machinery for code on its way out |
+| `getSessionContext` and its wrapper both independently walk the same directory tree in one invocation; the diagnostic field exists on only one of 10+ config-consuming tools | `mcp-server/src/tools/session.ts`, `src/tool-defaults.ts` | - | accepted as a known, minor inefficiency / narrower-than-ideal rollout -- named as follow-on work, not blocking |
+
+**Summary:** Independent review caught a real correctness gap (the global-root
+collision) that this ADR's original text didn't anticipate, plus a related
+staleness bug in a sibling cache this PR's own doc comments had overclaimed
+past. Both are fixed, with regression tests. The remaining items are
+proportionate, explicitly-scoped deferrals, not silent gaps.
+
+**Action Required:** None blocking. Follow-on candidates: extend the
+diagnostic field to the other config-driven tool wrappers; give the legacy
+carrier its own upward search if it outlives its planned removal window.
+
 [adr-0004]: adr-0004-project-config-surface.md

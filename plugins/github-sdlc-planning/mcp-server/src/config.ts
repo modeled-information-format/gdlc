@@ -61,10 +61,28 @@ export function resolveGlobalConfigRoot(env: NodeJS.ProcessEnv = process.env): s
  * upward search can resolve that direction; see ADR-0005 for the residual
  * gap and its documented workaround. Returns `null` if no ancestor (inclusive
  * of `startDir` itself) has the file by the time the filesystem root is
- * reached. */
-export function findProjectConfigRoot(startDir: string, existsFn: (path: string) => boolean = existsSync): string | null {
+ * reached.
+ *
+ * `ceiling` (default `homedir()`) stops the climb before checking that
+ * directory at all -- impartial-review finding: the user's home directory is
+ * never a legitimate project root, and for any cwd under it (virtually
+ * always true), an unbounded climb would eventually check
+ * `homedir()/.config/gdlc/config.yml`, the OS-default global-layer path
+ * (`resolveGlobalConfigRoot`'s fallback when `XDG_CONFIG_HOME` is unset).
+ * Left unguarded, a stray leftover file at that default location -- e.g.
+ * from before an `XDG_CONFIG_HOME` customization -- would be silently
+ * treated as a project-specific config and, per `mergeConfigs`'s
+ * project-always-wins semantics, would outrank the real, intentionally
+ * configured global layer. */
+export function findProjectConfigRoot(
+  startDir: string,
+  existsFn: (path: string) => boolean = existsSync,
+  ceiling: string = homedir(),
+): string | null {
+  const ceilingResolved = resolvePath(ceiling);
   let dir = resolvePath(startDir);
   for (;;) {
+    if (dir === ceilingResolved) return null;
     if (existsFn(resolveConfigPath(join(dir, '.config')))) return dir;
     const parent = dirname(dir);
     if (parent === dir) return null;
@@ -163,36 +181,49 @@ export function mergeConfigs(global: GdlcConfig, project: GdlcConfig): GdlcConfi
 /** Where the project layer's config file was found, for callers that want to
  * surface it as a diagnostic (issue #106: the prior silent cwd-mismatch gap
  * had no observable signal at all). `null` means no ancestor of `startDir`
- * had `.config/gdlc/config.yml` -- distinct from a found-but-empty file. */
+ * had `.config/gdlc/config.yml` -- distinct from a found-but-empty file.
+ *
+ * Impartial-review finding: `findProjectConfigRoot`'s `homedir()` ceiling
+ * (see that function's doc comment) already stops the search from wandering
+ * into the OS-default global-layer location. This second guard handles the
+ * narrower remaining case: a `XDG_CONFIG_HOME` customized to some OTHER
+ * directory that the upward search still happens to reach (e.g. it ends in
+ * `/.config` at a shared ancestor of `startDir`). Excluding an exact path
+ * match against whatever the CURRENT session's global root actually
+ * resolves to closes that gap too, so a project-layer "find" can never be
+ * literally the same file the global layer is already reading -- which
+ * would otherwise let it silently outrank the real global config, since
+ * `mergeConfigs` always lets "project" win. */
 export function resolveProjectConfigPath(
   startDir: string = process.cwd(),
   existsFn: (path: string) => boolean = existsSync,
+  env: NodeJS.ProcessEnv = process.env,
 ): string | null {
   const root = findProjectConfigRoot(startDir, existsFn);
-  return root === null ? null : resolveConfigPath(join(root, '.config'));
+  if (root === null) return null;
+  const path = resolveConfigPath(join(root, '.config'));
+  return path === resolveConfigPath(resolveGlobalConfigRoot(env)) ? null : path;
 }
 
 /** Load and merge both layers. `projectRoot` defaults to `process.cwd()`
  * (the running tool's project root); `env` defaults to `process.env` (for
- * `XDG_CONFIG_HOME`, tests inject a fake one). The project layer's file is
- * `<projectRoot>/.config/gdlc/config.yml` -- `resolveConfigPath` is given
- * `<projectRoot>/.config` as its root, not `projectRoot` itself, since
- * `$XDG_CONFIG_HOME` (the global root) already points at what `.config`
- * conceptually is for the global layer. Issue #106: `projectRoot` is only
- * the SEARCH START, not necessarily where the file is found -- `findProjectConfigRoot`
- * climbs upward from it first (see ADR-0005 for what this does and does not fix).
- * `existsFn` is injectable (default `existsSync`) so a test asserting "nothing
- * found anywhere" doesn't have to walk the real filesystem to its root, which
- * would risk a false match against whatever the test-running machine's real
- * ancestor directories happen to contain. */
+ * `XDG_CONFIG_HOME`, tests inject a fake one). Issue #106: `projectRoot` is
+ * only the SEARCH START, not necessarily where the file is found --
+ * `resolveProjectConfigPath` climbs upward from it first, and excludes a
+ * match against the global layer's own path (see that function's doc
+ * comment, and ADR-0005 for what the upward search does and does not fix).
+ * `existsFn` is injectable (default `existsSync`) so a test asserting
+ * "nothing found anywhere" doesn't have to walk the real filesystem to its
+ * root, which would risk a false match against whatever the test-running
+ * machine's real ancestor directories happen to contain. */
 export function loadGdlcConfig(
   projectRoot: string = process.cwd(),
   env: NodeJS.ProcessEnv = process.env,
   existsFn: (path: string) => boolean = existsSync,
 ): GdlcConfig {
   const global = loadConfigFile(resolveConfigPath(resolveGlobalConfigRoot(env)));
-  const resolvedRoot = findProjectConfigRoot(projectRoot, existsFn);
-  const project = resolvedRoot === null ? {} : loadConfigFile(resolveConfigPath(join(resolvedRoot, '.config')));
+  const projectPath = resolveProjectConfigPath(projectRoot, existsFn, env);
+  const project = projectPath === null ? {} : loadConfigFile(projectPath);
   return mergeConfigs(global, project);
 }
 

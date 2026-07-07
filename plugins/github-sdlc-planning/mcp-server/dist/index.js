@@ -38312,7 +38312,7 @@ var GITHUB_API = "https://api.github.com";
 var GITHUB_GRAPHQL = "https://api.github.com/graphql";
 var API_VERSION = "2022-11-28";
 var MAX_RATE_LIMIT_RETRIES = 3;
-var projectScopeChecked = false;
+var projectScopeCheckedForToken;
 var defaultExecFileSync = (command, args, options) => execFileSync(command, args, options);
 function resolveToken(execImpl = defaultExecFileSync) {
   const envToken = process.env.GITHUB_TOKEN;
@@ -38331,10 +38331,10 @@ function tokenHasOAuthScopeModel(token) {
   return token.startsWith("ghp_") || token.startsWith("gho_");
 }
 async function assertProjectScope(fetchImpl = fetch) {
-  if (projectScopeChecked) return;
   const token = resolveToken();
+  if (projectScopeCheckedForToken === token) return;
   if (!tokenHasOAuthScopeModel(token)) {
-    projectScopeChecked = true;
+    projectScopeCheckedForToken = token;
     return;
   }
   const res = await fetchImpl(`${GITHUB_API}/user`, {
@@ -38349,7 +38349,7 @@ async function assertProjectScope(fetchImpl = fetch) {
       { missingScope: "project", presentScopes: scopes }
     );
   }
-  projectScopeChecked = true;
+  projectScopeCheckedForToken = token;
 }
 var MIN_MUTATION_INTERVAL_MS = 1e3;
 var lastMutationAt = 0;
@@ -39042,9 +39042,11 @@ function resolveConfigPath(root) {
 function resolveGlobalConfigRoot(env = process.env) {
   return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== "" ? env.XDG_CONFIG_HOME : join(homedir(), ".config");
 }
-function findProjectConfigRoot(startDir, existsFn = existsSync) {
+function findProjectConfigRoot(startDir, existsFn = existsSync, ceiling = homedir()) {
+  const ceilingResolved = resolvePath(ceiling);
   let dir = resolvePath(startDir);
   for (; ; ) {
+    if (dir === ceilingResolved) return null;
     if (existsFn(resolveConfigPath(join(dir, ".config")))) return dir;
     const parent = dirname(dir);
     if (parent === dir) return null;
@@ -39100,14 +39102,16 @@ function loadConfigFile(path) {
 function mergeConfigs(global, project) {
   return { ...global, ...project };
 }
-function resolveProjectConfigPath(startDir = process.cwd(), existsFn = existsSync) {
+function resolveProjectConfigPath(startDir = process.cwd(), existsFn = existsSync, env = process.env) {
   const root = findProjectConfigRoot(startDir, existsFn);
-  return root === null ? null : resolveConfigPath(join(root, ".config"));
+  if (root === null) return null;
+  const path = resolveConfigPath(join(root, ".config"));
+  return path === resolveConfigPath(resolveGlobalConfigRoot(env)) ? null : path;
 }
 function loadGdlcConfig(projectRoot = process.cwd(), env = process.env, existsFn = existsSync) {
   const global = loadConfigFile(resolveConfigPath(resolveGlobalConfigRoot(env)));
-  const resolvedRoot = findProjectConfigRoot(projectRoot, existsFn);
-  const project = resolvedRoot === null ? {} : loadConfigFile(resolveConfigPath(join(resolvedRoot, ".config")));
+  const projectPath = resolveProjectConfigPath(projectRoot, existsFn, env);
+  const project = projectPath === null ? {} : loadConfigFile(projectPath);
   return mergeConfigs(global, project);
 }
 function resolveBoardCoordinates(explicit, config2) {

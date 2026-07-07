@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -284,6 +284,19 @@ describe('findProjectConfigRoot', () => {
     writeConfig(join(projectDir, '.config'), 'destination:\n  repo: "acme/central"\n');
     expect(findProjectConfigRoot(workspaceRoot)).toBeNull();
   });
+
+  it('impartial-review finding: never checks or returns the ceiling directory itself, even when it genuinely has the file', () => {
+    // The default ceiling is homedir() -- overridden here to a controlled
+    // tmp dir so the test can prove the boundary deterministically without
+    // touching the real home directory. A real config file placed exactly
+    // AT the ceiling (simulating a stray ~/.config/gdlc/config.yml) must
+    // never be found, even though it genuinely exists on disk.
+    const ceilingDir = tmpDir();
+    writeConfig(join(ceilingDir, '.config'), 'destination:\n  repo: "acme/central"\n');
+    const nested = join(ceilingDir, 'a', 'b');
+    mkdirSync(nested, { recursive: true });
+    expect(findProjectConfigRoot(nested, existsSync, ceilingDir)).toBeNull();
+  });
 });
 
 describe('resolveProjectConfigPath', () => {
@@ -296,6 +309,25 @@ describe('resolveProjectConfigPath', () => {
   it('returns null when nothing is found', () => {
     const existsFn = () => false;
     expect(resolveProjectConfigPath('/some/deeply/nested/path', existsFn)).toBeNull();
+  });
+
+  it('impartial-review finding: does not report the global layer\'s own file as a "project" match', () => {
+    // The upward search legitimately passes through the global config
+    // root for any cwd under it (virtually always true when the root is
+    // the real ~/.config default). Simulated here via a collision between
+    // XDG_CONFIG_HOME and a directory the search climbs through, without
+    // touching the real filesystem or real homedir().
+    const collisionRoot = '/collision-root';
+    const globalConfigDir = join(collisionRoot, '.config');
+    const existsFn = (p: string) => p === resolveConfigPath(globalConfigDir);
+    const startDir = join(collisionRoot, 'a', 'b');
+
+    // Sanity check: the naive upward search alone (no collision guard) DOES
+    // find this directory -- proving the guard is what prevents it from
+    // being reported as a project-specific path below.
+    expect(findProjectConfigRoot(startDir, existsFn)).toBe(collisionRoot);
+
+    expect(resolveProjectConfigPath(startDir, existsFn, { XDG_CONFIG_HOME: globalConfigDir })).toBeNull();
   });
 });
 

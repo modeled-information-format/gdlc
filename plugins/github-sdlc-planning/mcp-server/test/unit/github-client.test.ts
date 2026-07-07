@@ -85,6 +85,24 @@ describe('assertProjectScope', () => {
     resetAuthCacheForTests();
     await expect(assertProjectScope()).resolves.toBeUndefined();
   });
+
+  it('impartial-review finding on #105: re-checks scope when the token changes mid-process, not just once per process', async () => {
+    // The exact bug: after #105 made resolveToken() re-resolve fresh on
+    // every call, a bare per-process boolean here would still short-circuit
+    // on a stale `true` from a *previous* (different) account -- silently
+    // skipping the scope check for a `gh auth switch`-ed account that
+    // actually lacks it.
+    process.env.GITHUB_TOKEN = 'ghp_account-a-1234567890';
+    mockUserScopes(['repo', 'project', 'read:org']);
+    await expect(assertProjectScope()).resolves.toBeUndefined();
+
+    process.env.GITHUB_TOKEN = 'ghp_account-b-1234567890';
+    mockUserScopes(['repo', 'read:org']);
+    await expect(assertProjectScope()).rejects.toMatchObject({
+      code: 'missing_scope',
+      details: { missingScope: 'project', presentScopes: ['repo', 'read:org'] },
+    });
+  });
 });
 
 describe('githubRest', () => {
