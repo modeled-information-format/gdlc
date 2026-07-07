@@ -10,10 +10,11 @@ diataxis_type: how-to
 
 A new initiative is starting and needs its own tracking scaffolding: a
 milestone (or a few, for planned phases) and its issues visible on a
-Projects v2 board. None of this plugin's 16 tools are exercised by
-[the main tutorial](../tutorials/create-your-first-epic.md), which stops at
-plain sub-issue hierarchy — this guide covers the milestone and
-project-board layer on top of it.
+Projects v2 board.
+[The main tutorial](../tutorials/create-your-first-epic.md) focuses on
+building the sub-issue hierarchy itself (`create_issue`, `add_sub_issue`,
+`list_sub_issues`) — this guide covers the milestone and project-board
+layer on top of that hierarchy, which the tutorial doesn't touch.
 
 ## Steps
 
@@ -63,8 +64,13 @@ project-board layer on top of it.
    `existed: true` instead of a duplicate item.
 
 4. **Set the board's Status (or any other field) for each item.** You need
-   the field's node ID first — get it from your board's settings or from a
-   prior `get_project_items` call, not from guessing:
+   the field's node ID first. `get_project_items` won't give you this — it
+   returns field *names* and values (`fieldName`, `optionName`), not node
+   IDs. Get the actual `fieldId` (and the target `optionId`, for a
+   single-select field) from the board's own GraphQL schema — an
+   `organization(login:...) { projectV2(number:...) { field(name:...) {
+   ... on ProjectV2SingleSelectField { id options { id name } } } } }`
+   query against the GitHub API, run once per field you need:
 
    ```text
    set_field_value {
