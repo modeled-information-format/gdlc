@@ -38655,8 +38655,8 @@ async function resolveMilestoneId(owner, repo, number4, deps) {
   return data.node_id;
 }
 async function resolveEffectiveIssueTypeId(owner, input, deps) {
-  const explicit = input.issueType !== void 0;
-  const typeName = input.issueType ?? MIF_TYPE_TO_NATIVE_ISSUE_TYPE[input.mif.type];
+  const explicit = Boolean(input.issueType);
+  const typeName = input.issueType || MIF_TYPE_TO_NATIVE_ISSUE_TYPE[input.mif.type];
   try {
     return await resolveIssueTypeId(owner, typeName, deps);
   } catch (err) {

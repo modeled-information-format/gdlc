@@ -47,8 +47,11 @@ async function resolveMilestoneId(owner, repo, number, deps) {
  * if the org hasn't defined that native type, degrade to no type rather
  * than failing the whole create over a classification nicety. */
 async function resolveEffectiveIssueTypeId(owner, input, deps) {
-    const explicit = input.issueType !== undefined;
-    const typeName = input.issueType ?? MIF_TYPE_TO_NATIVE_ISSUE_TYPE[input.mif.type];
+    // Matches the pre-#108 truthy check that gated the original resolveIssueTypeId
+    // call (`input.issueType ? ... : ...`) -- an explicit empty string is treated
+    // as "not given" rather than a new hard-fail case this fix would introduce.
+    const explicit = Boolean(input.issueType);
+    const typeName = input.issueType || MIF_TYPE_TO_NATIVE_ISSUE_TYPE[input.mif.type];
     try {
         return await resolveIssueTypeId(owner, typeName, deps);
     }
