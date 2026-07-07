@@ -184,7 +184,10 @@ describe('readLegacyBoardConfig', () => {
 
 describe('readBoardConfig', () => {
   it('is a silent no-op (null) when no layer has a board config', () => {
-    expect(readBoardConfig(tmpProjectWith(null), emptyGlobalRoot(), noWarn)).toBeNull();
+    // An injected existsFn keeps the upward search hermetic -- a real climb
+    // to the filesystem root risks a false match against whatever the
+    // test-running machine's real ancestor directories happen to contain.
+    expect(readBoardConfig(tmpProjectWith(null), emptyGlobalRoot(), noWarn, () => false)).toBeNull();
   });
 
   it('reads the project-level .config/gdlc/config.yml board section without warning', () => {
@@ -240,7 +243,7 @@ describe('readBoardConfig', () => {
 
   it('does not warn when nothing resolves at any layer', () => {
     const warn = vi.fn();
-    expect(readBoardConfig(tmpProjectWith(null), emptyGlobalRoot(), warn)).toBeNull();
+    expect(readBoardConfig(tmpProjectWith(null), emptyGlobalRoot(), warn, () => false)).toBeNull();
     expect(warn).not.toHaveBeenCalled();
   });
 

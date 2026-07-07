@@ -141,10 +141,14 @@ export function resolveProjectConfigPath(startDir = process.cwd(), existsFn = ex
  * `$XDG_CONFIG_HOME` (the global root) already points at what `.config`
  * conceptually is for the global layer. Issue #106: `projectRoot` is only
  * the SEARCH START, not necessarily where the file is found -- `findProjectConfigRoot`
- * climbs upward from it first (see ADR-0005 for what this does and does not fix). */
-export function loadGdlcConfig(projectRoot = process.cwd(), env = process.env) {
+ * climbs upward from it first (see ADR-0005 for what this does and does not fix).
+ * `existsFn` is injectable (default `existsSync`) so a test asserting "nothing
+ * found anywhere" doesn't have to walk the real filesystem to its root, which
+ * would risk a false match against whatever the test-running machine's real
+ * ancestor directories happen to contain. */
+export function loadGdlcConfig(projectRoot = process.cwd(), env = process.env, existsFn = existsSync) {
     const global = loadConfigFile(resolveConfigPath(resolveGlobalConfigRoot(env)));
-    const resolvedRoot = findProjectConfigRoot(projectRoot);
+    const resolvedRoot = findProjectConfigRoot(projectRoot, existsFn);
     const project = resolvedRoot === null ? {} : loadConfigFile(resolveConfigPath(join(resolvedRoot, '.config')));
     return mergeConfigs(global, project);
 }

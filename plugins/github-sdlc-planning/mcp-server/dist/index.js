@@ -39104,9 +39104,9 @@ function resolveProjectConfigPath(startDir = process.cwd(), existsFn = existsSyn
   const root = findProjectConfigRoot(startDir, existsFn);
   return root === null ? null : resolveConfigPath(join(root, ".config"));
 }
-function loadGdlcConfig(projectRoot = process.cwd(), env = process.env) {
+function loadGdlcConfig(projectRoot = process.cwd(), env = process.env, existsFn = existsSync) {
   const global = loadConfigFile(resolveConfigPath(resolveGlobalConfigRoot(env)));
-  const resolvedRoot = findProjectConfigRoot(projectRoot);
+  const resolvedRoot = findProjectConfigRoot(projectRoot, existsFn);
   const project = resolvedRoot === null ? {} : loadConfigFile(resolveConfigPath(join(resolvedRoot, ".config")));
   return mergeConfigs(global, project);
 }

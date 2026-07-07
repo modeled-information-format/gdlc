@@ -216,8 +216,13 @@ export function readLegacyBoardConfig(cwd = process.cwd()) {
  * or not. Falling through on partial-but-present data would let the same
  * config file resolve to different board coordinates depending on whether
  * this hook or an mcp-server tool call read it. */
-export function readBoardConfig(cwd = process.cwd(), env = process.env, warn = (msg) => process.stderr.write(`${msg}\n`)) {
-  const projectRoot = findGdlcProjectRoot(cwd);
+export function readBoardConfig(
+  cwd = process.cwd(),
+  env = process.env,
+  warn = (msg) => process.stderr.write(`${msg}\n`),
+  existsFn = existsSync,
+) {
+  const projectRoot = findGdlcProjectRoot(cwd, existsFn);
   const project =
     projectRoot === null ? { present: false, board: null } : resolveGdlcLayerBoard(resolveGdlcConfigPath(join(projectRoot, '.config')));
   if (project.present) return project.board;

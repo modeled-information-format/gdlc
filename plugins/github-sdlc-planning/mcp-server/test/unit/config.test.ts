@@ -232,7 +232,11 @@ describe('loadGdlcConfig', () => {
   });
 
   it('returns an empty config when neither layer has a file', () => {
-    expect(loadGdlcConfig(tmpDir(), { XDG_CONFIG_HOME: tmpDir() })).toEqual({});
+    // An injected existsFn keeps the upward search hermetic -- a real climb
+    // to the filesystem root risks a false match against whatever the
+    // test-running machine's real ancestor directories happen to contain.
+    const existsFn = () => false;
+    expect(loadGdlcConfig(tmpDir(), { XDG_CONFIG_HOME: tmpDir() }, existsFn)).toEqual({});
   });
 
   it('issue #106: finds the project layer when cwd is nested two directories below the project root', () => {

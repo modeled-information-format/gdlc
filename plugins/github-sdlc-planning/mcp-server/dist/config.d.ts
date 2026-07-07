@@ -72,8 +72,12 @@ export declare function resolveProjectConfigPath(startDir?: string, existsFn?: (
  * `$XDG_CONFIG_HOME` (the global root) already points at what `.config`
  * conceptually is for the global layer. Issue #106: `projectRoot` is only
  * the SEARCH START, not necessarily where the file is found -- `findProjectConfigRoot`
- * climbs upward from it first (see ADR-0005 for what this does and does not fix). */
-export declare function loadGdlcConfig(projectRoot?: string, env?: NodeJS.ProcessEnv): GdlcConfig;
+ * climbs upward from it first (see ADR-0005 for what this does and does not fix).
+ * `existsFn` is injectable (default `existsSync`) so a test asserting "nothing
+ * found anywhere" doesn't have to walk the real filesystem to its root, which
+ * would risk a false match against whatever the test-running machine's real
+ * ancestor directories happen to contain. */
+export declare function loadGdlcConfig(projectRoot?: string, env?: NodeJS.ProcessEnv, existsFn?: (path: string) => boolean): GdlcConfig;
 /** Resolve board coordinates from explicit tool-call arguments or config,
  * atomically: `projectOwnerLogin`/`projectNumber` together identify ONE
  * board, so they're taken as a pair, never mixed field-by-field across
