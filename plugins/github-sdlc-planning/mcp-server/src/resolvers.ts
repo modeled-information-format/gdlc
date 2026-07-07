@@ -106,11 +106,35 @@ interface IssueTypesResponse {
   organization?: { issueTypes?: { nodes: Array<{ id: string; name: string }> } | null } | null;
 }
 
+/** Copilot review finding on #108: create_issue's auto-derived issueType now
+ * calls resolveIssueTypeId on every create, and bulk callers (epic-decomposition)
+ * create many issues against the same org in one run -- memoize per org for the
+ * life of the process so that only re-fetches on the first call, matching the
+ * cachedToken/projectScopeChecked pattern already used in github-client.ts. A
+ * failed fetch evicts itself so a transient error doesn't cache forever. */
+const issueTypesCache = new Map<string, Promise<Array<{ id: string; name: string }>>>();
+
+async function fetchIssueTypes(org: string, deps: GithubClientDeps): Promise<Array<{ id: string; name: string }>> {
+  let cached = issueTypesCache.get(org);
+  if (!cached) {
+    cached = githubGraphQL<IssueTypesResponse>(ISSUE_TYPES_QUERY, { login: org }, {}, deps).then(
+      (data) => data.organization?.issueTypes?.nodes ?? [],
+    );
+    cached.catch(() => issueTypesCache.delete(org));
+    issueTypesCache.set(org, cached);
+  }
+  return cached;
+}
+
+/** Test-only: clear the per-org issueTypes memoization between test cases. */
+export function resetIssueTypesCacheForTests(): void {
+  issueTypesCache.clear();
+}
+
 /** AC-7: reject an issueTypeId assignment absent from the org's
  * organization.issueTypes before calling updateIssue/PATCH. */
 export async function resolveIssueTypeId(org: string, typeName: string, deps: GithubClientDeps = {}): Promise<string> {
-  const data = await githubGraphQL<IssueTypesResponse>(ISSUE_TYPES_QUERY, { login: org }, {}, deps);
-  const nodes = data.organization?.issueTypes?.nodes ?? [];
+  const nodes = await fetchIssueTypes(org, deps);
   const match = nodes.find((n) => n.name === typeName);
   if (!match) {
     throw new PlanningError('unknown_issue_type', `Issue type "${typeName}" is not defined in organization "${org}"'s issueTypes`, {

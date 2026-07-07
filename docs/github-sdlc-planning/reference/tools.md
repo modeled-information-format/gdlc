@@ -53,6 +53,13 @@ resolved as a pair, never mixed with config field-by-field) — same for
 configured `targeting` allowlist, if any, throwing `repo_not_allowed` if
 it's excluded. See [the layered config schema](../../reference/config-schema.md).
 
+When `issueType` is omitted, it's derived from `mif.type` (`Task`→`Task`,
+`Bug`→`Bug`, `Initiative`/`Epic`/`Story`/`Feature`→`Feature`) so decomposed
+issues carry a native type by default; an org without that native type
+defined degrades to no type instead of failing the create. An explicit
+`issueType` still fails closed with `unknown_issue_type` if the org hasn't
+defined it.
+
 Returns `{ number, nodeId, url, body }` — `body` includes the prepended MIF
 comment block.
 

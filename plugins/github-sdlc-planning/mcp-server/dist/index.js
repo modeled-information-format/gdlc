@@ -38572,9 +38572,20 @@ var ISSUE_TYPES_QUERY = `
     organization(login: $login) { issueTypes(first: 25) { nodes { id name } } }
   }
 `;
+var issueTypesCache = /* @__PURE__ */ new Map();
+async function fetchIssueTypes(org, deps) {
+  let cached2 = issueTypesCache.get(org);
+  if (!cached2) {
+    cached2 = githubGraphQL(ISSUE_TYPES_QUERY, { login: org }, {}, deps).then(
+      (data) => data.organization?.issueTypes?.nodes ?? []
+    );
+    cached2.catch(() => issueTypesCache.delete(org));
+    issueTypesCache.set(org, cached2);
+  }
+  return cached2;
+}
 async function resolveIssueTypeId(org, typeName, deps = {}) {
-  const data = await githubGraphQL(ISSUE_TYPES_QUERY, { login: org }, {}, deps);
-  const nodes = data.organization?.issueTypes?.nodes ?? [];
+  const nodes = await fetchIssueTypes(org, deps);
   const match = nodes.find((n) => n.name === typeName);
   if (!match) {
     throw new PlanningError("unknown_issue_type", `Issue type "${typeName}" is not defined in organization "${org}"'s issueTypes`, {
@@ -38616,6 +38627,14 @@ function parseMifIssueBody(raw) {
 }
 
 // src/tools/issues.ts
+var MIF_TYPE_TO_NATIVE_ISSUE_TYPE = {
+  Initiative: "Feature",
+  Epic: "Feature",
+  Story: "Feature",
+  Task: "Task",
+  Bug: "Bug",
+  Feature: "Feature"
+};
 var CREATE_ISSUE_MUTATION = `
   mutation($repositoryId: ID!, $title: String!, $body: String!, $labelIds: [ID!], $assigneeIds: [ID!], $milestoneId: ID, $issueTypeId: ID) {
     createIssue(input: {
@@ -38646,6 +38665,16 @@ async function resolveMilestoneId(owner, repo, number4, deps) {
   const data = await githubRest(`/repos/${owner}/${repo}/milestones/${number4}`, {}, deps);
   return data.node_id;
 }
+async function resolveEffectiveIssueTypeId(owner, input, deps) {
+  const explicit = Boolean(input.issueType);
+  const typeName = input.issueType || MIF_TYPE_TO_NATIVE_ISSUE_TYPE[input.mif.type];
+  try {
+    return await resolveIssueTypeId(owner, typeName, deps);
+  } catch (err) {
+    if (explicit || !isPlanningError(err) || err.code !== "unknown_issue_type") throw err;
+    return void 0;
+  }
+}
 async function createIssue(input, deps = {}) {
   const repositoryId = await resolveRepositoryId(input.owner, input.repo, deps);
   const [labelIds, assigneeIds, milestoneId, issueTypeId] = await Promise.all([
@@ -38653,7 +38682,7 @@ async function createIssue(input, deps = {}) {
     input.assignees?.length ? resolveAssigneeIds(input.assignees, deps) : Promise.resolve(void 0),
     input.milestoneNumber !== void 0 ? resolveMilestoneId(input.owner, input.repo, input.milestoneNumber, deps) : Promise.resolve(void 0),
     // Issue types are org-level; `owner` is treated as the org login.
-    input.issueType ? resolveIssueTypeId(input.owner, input.issueType, deps) : Promise.resolve(void 0)
+    resolveEffectiveIssueTypeId(input.owner, input, deps)
   ]);
   const bodyWithMif = formatMifIssueBody(input.mif, input.body);
   const data = await githubGraphQL(
@@ -38677,7 +38706,7 @@ async function updateIssue(input, deps = {}) {
   if (input.title !== void 0) patchBody.title = input.title;
   if (input.body !== void 0) patchBody.body = input.body;
   if (input.state !== void 0) patchBody.state = input.state;
-  if (input.issueType !== void 0) patchBody.type = { name: input.issueType };
+  if (input.issueType !== void 0) patchBody.type = input.issueType;
   const data = await githubRest(
     `/repos/${input.owner}/${input.repo}/issues/${input.number}`,
     { method: "PATCH", body: patchBody },
@@ -39235,7 +39264,7 @@ server.registerTool(
   "create_issue",
   {
     title: "Create issue",
-    description: "Create a GitHub issue via the GraphQL createIssue mutation, prepending a MIF frontmatter comment block to the body before returning. owner/repo default to the configured destination.repo (issue #82) when omitted, and are always checked against the configured targeting allowlist, if any (issue #83).",
+    description: "Create a GitHub issue via the GraphQL createIssue mutation, prepending a MIF frontmatter comment block to the body before returning. owner/repo default to the configured destination.repo (issue #82) when omitted, and are always checked against the configured targeting allowlist, if any (issue #83). When issueType is omitted, it is derived from mif.type (Task->Task, Bug->Bug, everything else->Feature); an org without that native type defined degrades to no type instead of failing (issue #108).",
     inputSchema: {
       owner: external_exports.string().optional(),
       repo: external_exports.string().optional(),

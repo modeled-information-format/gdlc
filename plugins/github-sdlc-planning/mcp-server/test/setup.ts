@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, afterEach, afterAll } from 'vitest';
 import { setupServer } from 'msw/node';
 import { resetAuthCacheForTests } from '../src/github-client.js';
+import { resetIssueTypesCacheForTests } from '../src/resolvers.js';
 
 export const server = setupServer();
 
@@ -14,4 +15,5 @@ beforeEach(() => {
   // a ghs_-prefixed token explicitly.
   process.env.GITHUB_TOKEN = 'ghp_test-token-1234567890';
   resetAuthCacheForTests();
+  resetIssueTypesCacheForTests();
 });
