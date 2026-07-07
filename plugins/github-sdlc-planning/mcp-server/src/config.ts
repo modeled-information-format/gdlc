@@ -1,6 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve as resolvePath } from 'node:path';
 import { parse } from 'yaml';
 
 /** gdlc's layered global/project config (epic #78, ADR-0004, issues #80-82).
@@ -44,6 +44,32 @@ export function resolveConfigPath(root: string): string {
 
 export function resolveGlobalConfigRoot(env: NodeJS.ProcessEnv = process.env): string {
   return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== '' ? env.XDG_CONFIG_HOME : join(homedir(), '.config');
+}
+
+/** Issue #106 / ADR-0005: search upward from `startDir` toward the
+ * filesystem root for `<dir>/.config/gdlc/config.yml`, git-style (the same
+ * pattern git/npm/tsconfig use to find a project root from a nested cwd).
+ * Fixes the case where the MCP server's cwd is a SUBdirectory of the
+ * project root (e.g. launched from `<project>/src`) -- climbing toward the
+ * root correctly finds the ancestor project root in that direction.
+ *
+ * It does NOT fix the specific topology issue #106 reported: a multi-repo
+ * workspace cwd (e.g. `modeled-information-format/`) that is an ANCESTOR of
+ * the actual project directory (`modeled-information-format/repos/gdlc/`),
+ * not nested inside it. Climbing further up from an ancestor only moves
+ * away from a descendant project's config, never toward it -- no purely
+ * upward search can resolve that direction; see ADR-0005 for the residual
+ * gap and its documented workaround. Returns `null` if no ancestor (inclusive
+ * of `startDir` itself) has the file by the time the filesystem root is
+ * reached. */
+export function findProjectConfigRoot(startDir: string, existsFn: (path: string) => boolean = existsSync): string | null {
+  let dir = resolvePath(startDir);
+  for (;;) {
+    if (existsFn(resolveConfigPath(join(dir, '.config')))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -134,16 +160,31 @@ export function mergeConfigs(global: GdlcConfig, project: GdlcConfig): GdlcConfi
   return { ...global, ...project };
 }
 
+/** Where the project layer's config file was found, for callers that want to
+ * surface it as a diagnostic (issue #106: the prior silent cwd-mismatch gap
+ * had no observable signal at all). `null` means no ancestor of `startDir`
+ * had `.config/gdlc/config.yml` -- distinct from a found-but-empty file. */
+export function resolveProjectConfigPath(
+  startDir: string = process.cwd(),
+  existsFn: (path: string) => boolean = existsSync,
+): string | null {
+  const root = findProjectConfigRoot(startDir, existsFn);
+  return root === null ? null : resolveConfigPath(join(root, '.config'));
+}
+
 /** Load and merge both layers. `projectRoot` defaults to `process.cwd()`
  * (the running tool's project root); `env` defaults to `process.env` (for
  * `XDG_CONFIG_HOME`, tests inject a fake one). The project layer's file is
  * `<projectRoot>/.config/gdlc/config.yml` -- `resolveConfigPath` is given
  * `<projectRoot>/.config` as its root, not `projectRoot` itself, since
  * `$XDG_CONFIG_HOME` (the global root) already points at what `.config`
- * conceptually is for the global layer. */
+ * conceptually is for the global layer. Issue #106: `projectRoot` is only
+ * the SEARCH START, not necessarily where the file is found -- `findProjectConfigRoot`
+ * climbs upward from it first (see ADR-0005 for what this does and does not fix). */
 export function loadGdlcConfig(projectRoot: string = process.cwd(), env: NodeJS.ProcessEnv = process.env): GdlcConfig {
   const global = loadConfigFile(resolveConfigPath(resolveGlobalConfigRoot(env)));
-  const project = loadConfigFile(resolveConfigPath(join(projectRoot, '.config')));
+  const resolvedRoot = findProjectConfigRoot(projectRoot);
+  const project = resolvedRoot === null ? {} : loadConfigFile(resolveConfigPath(join(resolvedRoot, '.config')));
   return mergeConfigs(global, project);
 }
 

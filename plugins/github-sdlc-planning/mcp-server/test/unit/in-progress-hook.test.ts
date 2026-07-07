@@ -270,6 +270,18 @@ describe('readBoardConfig', () => {
       projectOwnerType: 'organization',
     });
   });
+
+  it('issue #106: finds the project layer when cwd is nested two directories below the project root', () => {
+    const projectDir = tmpGdlcProjectWith('board:\n  projectOwnerLogin: acme\n  projectNumber: 4\n');
+    const nestedCwd = join(projectDir, 'plugins', 'some-plugin');
+    mkdirSync(nestedCwd, { recursive: true });
+
+    expect(readBoardConfig(nestedCwd, emptyGlobalRoot(), noWarn)).toEqual({
+      projectOwnerLogin: 'acme',
+      projectNumber: 4,
+      projectOwnerType: 'organization',
+    });
+  });
 });
 
 describe('extractAffectedIssue', () => {

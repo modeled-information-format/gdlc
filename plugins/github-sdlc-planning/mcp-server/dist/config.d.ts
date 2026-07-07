@@ -29,6 +29,23 @@ export interface GdlcConfig {
  * share (ADR-0004's primary decision driver #2). */
 export declare function resolveConfigPath(root: string): string;
 export declare function resolveGlobalConfigRoot(env?: NodeJS.ProcessEnv): string;
+/** Issue #106 / ADR-0005: search upward from `startDir` toward the
+ * filesystem root for `<dir>/.config/gdlc/config.yml`, git-style (the same
+ * pattern git/npm/tsconfig use to find a project root from a nested cwd).
+ * Fixes the case where the MCP server's cwd is a SUBdirectory of the
+ * project root (e.g. launched from `<project>/src`) -- climbing toward the
+ * root correctly finds the ancestor project root in that direction.
+ *
+ * It does NOT fix the specific topology issue #106 reported: a multi-repo
+ * workspace cwd (e.g. `modeled-information-format/`) that is an ANCESTOR of
+ * the actual project directory (`modeled-information-format/repos/gdlc/`),
+ * not nested inside it. Climbing further up from an ancestor only moves
+ * away from a descendant project's config, never toward it -- no purely
+ * upward search can resolve that direction; see ADR-0005 for the residual
+ * gap and its documented workaround. Returns `null` if no ancestor (inclusive
+ * of `startDir` itself) has the file by the time the filesystem root is
+ * reached. */
+export declare function findProjectConfigRoot(startDir: string, existsFn?: (path: string) => boolean): string | null;
 /** Read and parse one layer's `gdlc/config.yml`. A missing file, an
  * unreadable file, or a YAML syntax error are all an empty config, not a
  * thrown error -- a hooks-style fail-soft reader. Exported for tests. */
@@ -42,13 +59,20 @@ export declare function loadConfigFile(path: string): GdlcConfig;
  * -- so `project`'s own keys always take precedence and `global`'s show
  * through only where `project` has no key at all. */
 export declare function mergeConfigs(global: GdlcConfig, project: GdlcConfig): GdlcConfig;
+/** Where the project layer's config file was found, for callers that want to
+ * surface it as a diagnostic (issue #106: the prior silent cwd-mismatch gap
+ * had no observable signal at all). `null` means no ancestor of `startDir`
+ * had `.config/gdlc/config.yml` -- distinct from a found-but-empty file. */
+export declare function resolveProjectConfigPath(startDir?: string, existsFn?: (path: string) => boolean): string | null;
 /** Load and merge both layers. `projectRoot` defaults to `process.cwd()`
  * (the running tool's project root); `env` defaults to `process.env` (for
  * `XDG_CONFIG_HOME`, tests inject a fake one). The project layer's file is
  * `<projectRoot>/.config/gdlc/config.yml` -- `resolveConfigPath` is given
  * `<projectRoot>/.config` as its root, not `projectRoot` itself, since
  * `$XDG_CONFIG_HOME` (the global root) already points at what `.config`
- * conceptually is for the global layer. */
+ * conceptually is for the global layer. Issue #106: `projectRoot` is only
+ * the SEARCH START, not necessarily where the file is found -- `findProjectConfigRoot`
+ * climbs upward from it first (see ADR-0005 for what this does and does not fix). */
 export declare function loadGdlcConfig(projectRoot?: string, env?: NodeJS.ProcessEnv): GdlcConfig;
 /** Resolve board coordinates from explicit tool-call arguments or config,
  * atomically: `projectOwnerLogin`/`projectNumber` together identify ONE

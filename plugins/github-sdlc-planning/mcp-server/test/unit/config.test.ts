@@ -8,6 +8,8 @@ import {
   loadConfigFile,
   mergeConfigs,
   loadGdlcConfig,
+  findProjectConfigRoot,
+  resolveProjectConfigPath,
   resolveBoardCoordinates,
   resolveDestinationRepo,
   isRepoAllowed,
@@ -231,6 +233,65 @@ describe('loadGdlcConfig', () => {
 
   it('returns an empty config when neither layer has a file', () => {
     expect(loadGdlcConfig(tmpDir(), { XDG_CONFIG_HOME: tmpDir() })).toEqual({});
+  });
+
+  it('issue #106: finds the project layer when cwd is nested two directories below the project root', () => {
+    const projectRoot = tmpDir();
+    writeConfig(join(projectRoot, '.config'), ['destination:', '  repo: "acme/central"', ''].join('\n'));
+    const nestedCwd = join(projectRoot, 'plugins', 'some-plugin', 'mcp-server');
+    mkdirSync(nestedCwd, { recursive: true });
+
+    const config = loadGdlcConfig(nestedCwd, { XDG_CONFIG_HOME: tmpDir() });
+    expect(config).toEqual({ destination: { repo: 'acme/central' } });
+  });
+});
+
+describe('findProjectConfigRoot', () => {
+  it('returns startDir itself when the config file is already there', () => {
+    const projectRoot = tmpDir();
+    writeConfig(join(projectRoot, '.config'), 'destination:\n  repo: "acme/central"\n');
+    expect(findProjectConfigRoot(projectRoot)).toBe(projectRoot);
+  });
+
+  it('climbs upward from a nested subdirectory to find an ancestor project root', () => {
+    const projectRoot = tmpDir();
+    writeConfig(join(projectRoot, '.config'), 'destination:\n  repo: "acme/central"\n');
+    const nested = join(projectRoot, 'a', 'b', 'c');
+    mkdirSync(nested, { recursive: true });
+    expect(findProjectConfigRoot(nested)).toBe(projectRoot);
+  });
+
+  it('returns null when no ancestor has the file, via an injected existsFn so the search never touches the real filesystem', () => {
+    // A real climb to the filesystem root risks a false match against
+    // whatever the test-running machine's real ancestor directories happen
+    // to contain; an injected existsFn keeps this hermetic.
+    const existsFn = () => false;
+    expect(findProjectConfigRoot('/some/deeply/nested/path', existsFn)).toBeNull();
+  });
+
+  it('issue #106: does NOT find a project root that is a DESCENDANT of startDir -- the exact reported topology', () => {
+    // The bug report's actual scenario: cwd is the workspace root, an
+    // ANCESTOR of the real project directory (repos/gdlc), not nested
+    // inside it. Upward search climbs away from descendants, never toward
+    // them -- this is a deliberate, documented limitation (see ADR-0005),
+    // not something this function is expected to solve.
+    const workspaceRoot = tmpDir();
+    const projectDir = join(workspaceRoot, 'repos', 'gdlc');
+    writeConfig(join(projectDir, '.config'), 'destination:\n  repo: "acme/central"\n');
+    expect(findProjectConfigRoot(workspaceRoot)).toBeNull();
+  });
+});
+
+describe('resolveProjectConfigPath', () => {
+  it('returns the resolved file path when found', () => {
+    const projectRoot = tmpDir();
+    writeConfig(join(projectRoot, '.config'), 'destination:\n  repo: "acme/central"\n');
+    expect(resolveProjectConfigPath(projectRoot)).toBe(resolveConfigPath(join(projectRoot, '.config')));
+  });
+
+  it('returns null when nothing is found', () => {
+    const existsFn = () => false;
+    expect(resolveProjectConfigPath('/some/deeply/nested/path', existsFn)).toBeNull();
   });
 });
 

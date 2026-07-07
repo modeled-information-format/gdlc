@@ -297,9 +297,17 @@ unlike that tool this one never throws when nothing resolves — an
 unconfigured board is a valid state here, not an error.
 
 Returns `{ openMilestones: [{ number, title, url, dueOn }], projectBoard:
-<get_project_items result> | null }`. `projectBoard` is `null` unless a
-complete `projectOwnerLogin`/`projectNumber` pair resolves, explicit or
-configured.
+<get_project_items result> | null, projectConfigPath: string | null }`.
+`projectBoard` is `null` unless a complete `projectOwnerLogin`/`projectNumber`
+pair resolves, explicit or configured. `projectConfigPath` (issue #106 /
+ADR-0005) is the filesystem path of the project-layer `.config/gdlc/config.yml`
+that was actually used, found by searching upward from the MCP server's cwd
+toward the filesystem root — or `null` if none was found by the time the
+filesystem root was reached. A `null` here alongside a `null` `projectBoard`
+means no project config was reachable at all (check this field before
+assuming "unconfigured" — see ADR-0005 for the one case upward search can't
+resolve: a cwd that is an *ancestor* of the project root, e.g. a multi-repo
+workspace directory, rather than nested inside it).
 
 ## get_agent_capabilities
 

@@ -18,6 +18,13 @@ export interface SessionContextResult {
         dueOn: string | null;
     }>;
     projectBoard: Awaited<ReturnType<typeof getProjectItems>> | null;
+    /** Issue #106: the filesystem path of the project-layer config file that
+     * was actually used (after upward search from cwd), or `null` if none was
+     * found. Previously this resolution was entirely invisible -- a `null`
+     * `projectBoard` above looked identical whether no board was configured
+     * anywhere, or a real config file simply wasn't reachable from the MCP
+     * server's cwd. This field makes that distinction observable. */
+    projectConfigPath: string | null;
 }
 export declare function getSessionContext(input: GetSessionContextInput, deps?: GithubClientDeps): Promise<SessionContextResult>;
 export interface AgentCapabilities {
