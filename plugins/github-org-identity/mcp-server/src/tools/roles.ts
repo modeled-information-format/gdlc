@@ -36,10 +36,11 @@ type OrganizationRolesSupport = 'supported' | 'indeterminate';
  * github-sdlc-planning's resolvers.ts: the in-flight promise itself is
  * cached (not just its resolved value), so concurrent calls for the same
  * not-yet-checked org (e.g. a batched listRoleTeams + listRoleUsers) await
- * one request instead of each firing their own. A rejection (definite
- * non-enterprise plan) evicts itself on completion, so it's never cached --
- * a transient failure or a plan change is always re-checked on the next
- * call.
+ * one request instead of each firing their own. Only a rejection (definite
+ * non-enterprise plan) evicts itself on completion, so a transient failure
+ * there is always re-checked on the next call -- a resolved entry
+ * ('supported' or 'indeterminate') is NOT re-checked; see the no-TTL note
+ * below (gdlc#127).
  *
  * Keyed only by org, not by identity (gdlc#126): index.ts's `wrap()` never
  * passes `deps` to any of these tools, so every real call uses the default

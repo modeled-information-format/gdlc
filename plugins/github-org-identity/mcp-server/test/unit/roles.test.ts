@@ -100,6 +100,21 @@ describe('listRoleTeams', () => {
     expect(orgCalls).toBe(1);
   });
 
+  it('also caches an indeterminate (missing plan field) result, not just a supported one', async () => {
+    let orgCalls = 0;
+    server.use(
+      http.get('https://api.github.com/orgs/acme', () => {
+        orgCalls += 1;
+        return HttpResponse.json({});
+      }),
+    );
+    mockRest('get', '/orgs/acme/organization-roles/42/teams', [{ slug: 'security', name: 'Security' }]);
+    mockRest('get', '/orgs/acme/organization-roles/42/users', [{ login: 'octocat', assignment: 'direct' }]);
+    await listRoleTeams({ org: 'acme', roleId: 42 });
+    await listRoleUsers({ org: 'acme', roleId: 42 });
+    expect(orgCalls).toBe(1);
+  });
+
   it('does not cache a rejection, so a free-plan org is re-checked on the next call', async () => {
     let orgCalls = 0;
     server.use(
