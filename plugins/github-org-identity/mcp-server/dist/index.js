@@ -31097,7 +31097,9 @@ async function githubRest(path, opts = {}, deps = {}) {
 }
 
 // src/tools/roles.ts
+var supportedOrgs = /* @__PURE__ */ new Set();
 async function assertOrganizationRolesSupported(org, deps) {
+  if (supportedOrgs.has(org)) return;
   const data = await githubRest(`/orgs/${org}`, {}, deps);
   const planName = data.plan?.name;
   if (planName !== "enterprise") {
@@ -31107,6 +31109,7 @@ async function assertOrganizationRolesSupported(org, deps) {
       { org, plan: planName ?? null }
     );
   }
+  supportedOrgs.add(org);
 }
 async function listOrganizationRoles(input, deps = {}) {
   await assertOrganizationRolesSupported(input.org, deps);
@@ -31114,9 +31117,11 @@ async function listOrganizationRoles(input, deps = {}) {
   return data.roles.map((r) => ({ id: r.id, name: r.name, description: r.description, source: r.source, baseRole: r.base_role }));
 }
 async function listRoleTeams(input, deps = {}) {
+  await assertOrganizationRolesSupported(input.org, deps);
   return await githubRest(`/orgs/${input.org}/organization-roles/${input.roleId}/teams`, {}, deps);
 }
 async function listRoleUsers(input, deps = {}) {
+  await assertOrganizationRolesSupported(input.org, deps);
   const data = await githubRest(`/orgs/${input.org}/organization-roles/${input.roleId}/users`, {}, deps);
   return data.map((u) => ({ login: u.login, assignment: u.assignment ?? null }));
 }
@@ -31131,21 +31136,25 @@ function assertConfirmed(roleId, confirmRoleId) {
 }
 async function assignTeamRole(input, deps = {}) {
   assertConfirmed(input.roleId, input.confirmRoleId);
+  await assertOrganizationRolesSupported(input.org, deps);
   await githubRest(`/orgs/${input.org}/organization-roles/teams/${encodeURIComponent(input.teamSlug)}/${input.roleId}`, { method: "PUT" }, deps);
   return { org: input.org, roleId: input.roleId, teamSlug: input.teamSlug };
 }
 async function removeTeamRole(input, deps = {}) {
   assertConfirmed(input.roleId, input.confirmRoleId);
+  await assertOrganizationRolesSupported(input.org, deps);
   await githubRest(`/orgs/${input.org}/organization-roles/teams/${encodeURIComponent(input.teamSlug)}/${input.roleId}`, { method: "DELETE" }, deps);
   return { org: input.org, roleId: input.roleId, teamSlug: input.teamSlug };
 }
 async function assignUserRole(input, deps = {}) {
   assertConfirmed(input.roleId, input.confirmRoleId);
+  await assertOrganizationRolesSupported(input.org, deps);
   await githubRest(`/orgs/${input.org}/organization-roles/users/${encodeURIComponent(input.username)}/${input.roleId}`, { method: "PUT" }, deps);
   return { org: input.org, roleId: input.roleId, username: input.username };
 }
 async function removeUserRole(input, deps = {}) {
   assertConfirmed(input.roleId, input.confirmRoleId);
+  await assertOrganizationRolesSupported(input.org, deps);
   await githubRest(`/orgs/${input.org}/organization-roles/users/${encodeURIComponent(input.username)}/${input.roleId}`, { method: "DELETE" }, deps);
   return { org: input.org, roleId: input.roleId, username: input.username };
 }

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { http, HttpResponse } from 'msw';
 import { mockRest } from '../helpers.js';
+import { server } from '../setup.js';
 import {
   listOrganizationRoles,
   listRoleTeams,
@@ -47,14 +49,39 @@ describe('listOrganizationRoles', () => {
 
 describe('listRoleTeams', () => {
   it('maps the teams holding a role', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'enterprise' } });
     mockRest('get', '/orgs/acme/organization-roles/42/teams', [{ slug: 'security', name: 'Security' }]);
     const result = await listRoleTeams({ org: 'acme', roleId: 42 });
     expect(result).toEqual([{ slug: 'security', name: 'Security' }]);
+  });
+
+  it('throws feature_unavailable for a free-plan org without calling the teams endpoint', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'free' } });
+    await expect(listRoleTeams({ org: 'acme', roleId: 42 })).rejects.toMatchObject({
+      code: 'feature_unavailable',
+      details: { org: 'acme', plan: 'free' },
+    });
+  });
+
+  it('does not re-check the org plan on a second guarded call for the same org', async () => {
+    let orgCalls = 0;
+    server.use(
+      http.get('https://api.github.com/orgs/acme', () => {
+        orgCalls += 1;
+        return HttpResponse.json({ plan: { name: 'enterprise' } });
+      }),
+    );
+    mockRest('get', '/orgs/acme/organization-roles/42/teams', [{ slug: 'security', name: 'Security' }]);
+    mockRest('get', '/orgs/acme/organization-roles/42/users', [{ login: 'octocat', assignment: 'direct' }]);
+    await listRoleTeams({ org: 'acme', roleId: 42 });
+    await listRoleUsers({ org: 'acme', roleId: 42 });
+    expect(orgCalls).toBe(1);
   });
 });
 
 describe('listRoleUsers', () => {
   it('maps users, defaulting a missing assignment to null', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'enterprise' } });
     mockRest('get', '/orgs/acme/organization-roles/42/users', [
       { login: 'octocat', assignment: 'direct' },
       { login: 'hubot' },
@@ -65,10 +92,19 @@ describe('listRoleUsers', () => {
       { login: 'hubot', assignment: null },
     ]);
   });
+
+  it('throws feature_unavailable for a free-plan org without calling the users endpoint', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'free' } });
+    await expect(listRoleUsers({ org: 'acme', roleId: 42 })).rejects.toMatchObject({
+      code: 'feature_unavailable',
+      details: { org: 'acme', plan: 'free' },
+    });
+  });
 });
 
 describe('assignTeamRole', () => {
   it('assigns the role when roleId and confirmRoleId match', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'enterprise' } });
     mockRest('put', '/orgs/acme/organization-roles/teams/security/42', {}, 204);
     const result = await assignTeamRole({ org: 'acme', roleId: 42, confirmRoleId: 42, teamSlug: 'security' });
     expect(result).toEqual({ org: 'acme', roleId: 42, teamSlug: 'security' });
@@ -81,7 +117,16 @@ describe('assignTeamRole', () => {
     });
   });
 
+  it('throws feature_unavailable for a free-plan org without calling the API', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'free' } });
+    await expect(assignTeamRole({ org: 'acme', roleId: 42, confirmRoleId: 42, teamSlug: 'security' })).rejects.toMatchObject({
+      code: 'feature_unavailable',
+      details: { org: 'acme', plan: 'free' },
+    });
+  });
+
   it('URL-encodes a teamSlug containing reserved characters instead of corrupting the request path', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'enterprise' } });
     mockRest('put', '/orgs/acme/organization-roles/teams/eng%2Fsecurity/42', {}, 204);
     const result = await assignTeamRole({ org: 'acme', roleId: 42, confirmRoleId: 42, teamSlug: 'eng/security' });
     expect(result).toEqual({ org: 'acme', roleId: 42, teamSlug: 'eng/security' });
@@ -90,6 +135,7 @@ describe('assignTeamRole', () => {
 
 describe('removeTeamRole', () => {
   it('removes the role when roleId and confirmRoleId match', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'enterprise' } });
     mockRest('delete', '/orgs/acme/organization-roles/teams/security/42', {}, 204);
     const result = await removeTeamRole({ org: 'acme', roleId: 42, confirmRoleId: 42, teamSlug: 'security' });
     expect(result).toEqual({ org: 'acme', roleId: 42, teamSlug: 'security' });
@@ -101,7 +147,16 @@ describe('removeTeamRole', () => {
     });
   });
 
+  it('throws feature_unavailable for a free-plan org without calling the API', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'free' } });
+    await expect(removeTeamRole({ org: 'acme', roleId: 42, confirmRoleId: 42, teamSlug: 'security' })).rejects.toMatchObject({
+      code: 'feature_unavailable',
+      details: { org: 'acme', plan: 'free' },
+    });
+  });
+
   it('URL-encodes a teamSlug containing reserved characters instead of corrupting the request path', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'enterprise' } });
     mockRest('delete', '/orgs/acme/organization-roles/teams/eng%2Fsecurity/42', {}, 204);
     const result = await removeTeamRole({ org: 'acme', roleId: 42, confirmRoleId: 42, teamSlug: 'eng/security' });
     expect(result).toEqual({ org: 'acme', roleId: 42, teamSlug: 'eng/security' });
@@ -110,6 +165,7 @@ describe('removeTeamRole', () => {
 
 describe('assignUserRole', () => {
   it('assigns the role when roleId and confirmRoleId match', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'enterprise' } });
     mockRest('put', '/orgs/acme/organization-roles/users/octocat/42', {}, 204);
     const result = await assignUserRole({ org: 'acme', roleId: 42, confirmRoleId: 42, username: 'octocat' });
     expect(result).toEqual({ org: 'acme', roleId: 42, username: 'octocat' });
@@ -122,7 +178,16 @@ describe('assignUserRole', () => {
     });
   });
 
+  it('throws feature_unavailable for a free-plan org without calling the API', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'free' } });
+    await expect(assignUserRole({ org: 'acme', roleId: 42, confirmRoleId: 42, username: 'octocat' })).rejects.toMatchObject({
+      code: 'feature_unavailable',
+      details: { org: 'acme', plan: 'free' },
+    });
+  });
+
   it('URL-encodes a username containing reserved characters instead of corrupting the request path', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'enterprise' } });
     mockRest('put', '/orgs/acme/organization-roles/users/oct%2Focat/42', {}, 204);
     const result = await assignUserRole({ org: 'acme', roleId: 42, confirmRoleId: 42, username: 'oct/ocat' });
     expect(result).toEqual({ org: 'acme', roleId: 42, username: 'oct/ocat' });
@@ -131,6 +196,7 @@ describe('assignUserRole', () => {
 
 describe('removeUserRole', () => {
   it('removes the role when roleId and confirmRoleId match', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'enterprise' } });
     mockRest('delete', '/orgs/acme/organization-roles/users/octocat/42', {}, 204);
     const result = await removeUserRole({ org: 'acme', roleId: 42, confirmRoleId: 42, username: 'octocat' });
     expect(result).toEqual({ org: 'acme', roleId: 42, username: 'octocat' });
@@ -142,7 +208,16 @@ describe('removeUserRole', () => {
     });
   });
 
+  it('throws feature_unavailable for a free-plan org without calling the API', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'free' } });
+    await expect(removeUserRole({ org: 'acme', roleId: 42, confirmRoleId: 42, username: 'octocat' })).rejects.toMatchObject({
+      code: 'feature_unavailable',
+      details: { org: 'acme', plan: 'free' },
+    });
+  });
+
   it('URL-encodes a username containing reserved characters instead of corrupting the request path', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'enterprise' } });
     mockRest('delete', '/orgs/acme/organization-roles/users/oct%2Focat/42', {}, 204);
     const result = await removeUserRole({ org: 'acme', roleId: 42, confirmRoleId: 42, username: 'oct/ocat' });
     expect(result).toEqual({ org: 'acme', roleId: 42, username: 'oct/ocat' });
