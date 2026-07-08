@@ -26,7 +26,28 @@ interface RestListOrganizationRolesResponse {
   roles: RestOrganizationRole[];
 }
 
+interface RestOrg {
+  plan?: { name?: string };
+}
+
+/** Organization roles are a GitHub Enterprise Cloud feature; every other
+ * plan tier deterministically 404s on the organization-roles endpoints.
+ * Checking the org's plan first turns that into a clear, typed error
+ * instead of a generic github_api_error the caller has to interpret. */
+async function assertOrganizationRolesSupported(org: string, deps: GithubClientDeps): Promise<void> {
+  const data = (await githubRest(`/orgs/${org}`, {}, deps)) as RestOrg;
+  const planName = data.plan?.name;
+  if (planName !== 'enterprise') {
+    throw new OrgIdentityError(
+      'feature_unavailable',
+      `Organization roles are a GitHub Enterprise Cloud feature; org "${org}" is on the "${planName ?? 'unknown'}" plan, which does not support them.`,
+      { org, plan: planName ?? null },
+    );
+  }
+}
+
 export async function listOrganizationRoles(input: ListOrganizationRolesInput, deps: GithubClientDeps = {}): Promise<OrganizationRole[]> {
+  await assertOrganizationRolesSupported(input.org, deps);
   const data = (await githubRest(`/orgs/${input.org}/organization-roles`, {}, deps)) as RestListOrganizationRolesResponse;
   return data.roles.map((r) => ({ id: r.id, name: r.name, description: r.description, source: r.source, baseRole: r.base_role }));
 }

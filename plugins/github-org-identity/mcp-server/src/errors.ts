@@ -1,4 +1,4 @@
-export type OrgIdentityErrorCode = 'github_api_error' | 'missing_scope' | 'confirmation_mismatch';
+export type OrgIdentityErrorCode = 'github_api_error' | 'missing_scope' | 'confirmation_mismatch' | 'feature_unavailable';
 
 export interface OrgIdentityErrorDetails {
   [key: string]: unknown;

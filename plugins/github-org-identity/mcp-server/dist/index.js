@@ -31097,7 +31097,19 @@ async function githubRest(path, opts = {}, deps = {}) {
 }
 
 // src/tools/roles.ts
+async function assertOrganizationRolesSupported(org, deps) {
+  const data = await githubRest(`/orgs/${org}`, {}, deps);
+  const planName = data.plan?.name;
+  if (planName !== "enterprise") {
+    throw new OrgIdentityError(
+      "feature_unavailable",
+      `Organization roles are a GitHub Enterprise Cloud feature; org "${org}" is on the "${planName ?? "unknown"}" plan, which does not support them.`,
+      { org, plan: planName ?? null }
+    );
+  }
+}
 async function listOrganizationRoles(input, deps = {}) {
+  await assertOrganizationRolesSupported(input.org, deps);
   const data = await githubRest(`/orgs/${input.org}/organization-roles`, {}, deps);
   return data.roles.map((r) => ({ id: r.id, name: r.name, description: r.description, source: r.source, baseRole: r.base_role }));
 }

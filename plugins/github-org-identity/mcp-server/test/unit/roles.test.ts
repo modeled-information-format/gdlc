@@ -11,7 +11,8 @@ import {
 } from '../../src/tools/roles.js';
 
 describe('listOrganizationRoles', () => {
-  it('maps roles including custom ones with a null description', async () => {
+  it('maps roles including custom ones with a null description on an Enterprise-plan org', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'enterprise' } });
     mockRest('get', '/orgs/acme/organization-roles', {
       total_count: 2,
       roles: [
@@ -24,6 +25,23 @@ describe('listOrganizationRoles', () => {
       { id: 1, name: 'all_repo_admin', description: 'Admin on every repo', source: 'Predefined', baseRole: null },
       { id: 42, name: 'security-reviewer', description: null, source: 'Organization', baseRole: 'read' },
     ]);
+  });
+
+  it('throws feature_unavailable for a free-plan org without calling the organization-roles endpoint', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'free' } });
+    mockRest('get', '/orgs/acme/organization-roles', { message: 'Not Found' }, 404);
+    await expect(listOrganizationRoles({ org: 'acme' })).rejects.toMatchObject({
+      code: 'feature_unavailable',
+      details: { org: 'acme', plan: 'free' },
+    });
+  });
+
+  it('throws feature_unavailable with plan null when the org response has no plan field', async () => {
+    mockRest('get', '/orgs/acme', {});
+    await expect(listOrganizationRoles({ org: 'acme' })).rejects.toMatchObject({
+      code: 'feature_unavailable',
+      details: { org: 'acme', plan: null },
+    });
   });
 });
 
