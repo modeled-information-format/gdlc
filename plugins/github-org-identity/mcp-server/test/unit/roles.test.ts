@@ -38,12 +38,20 @@ describe('listOrganizationRoles', () => {
     });
   });
 
-  it('throws feature_unavailable with plan null when the org response has no plan field', async () => {
+  it('falls through to the real endpoint (and succeeds) when the org response has no plan field, since a missing plan is indeterminate rather than a negative signal -- e.g. an App-installation token without the separate Organization-plan permission, or a non-owner admin:org holder, on an org that is actually Enterprise Cloud', async () => {
     mockRest('get', '/orgs/acme', {});
-    await expect(listOrganizationRoles({ org: 'acme' })).rejects.toMatchObject({
-      code: 'feature_unavailable',
-      details: { org: 'acme', plan: null },
+    mockRest('get', '/orgs/acme/organization-roles', {
+      total_count: 1,
+      roles: [{ id: 1, name: 'all_repo_admin', description: 'Admin on every repo', source: 'Predefined', base_role: null }],
     });
+    const result = await listOrganizationRoles({ org: 'acme' });
+    expect(result).toEqual([{ id: 1, name: 'all_repo_admin', description: 'Admin on every repo', source: 'Predefined', baseRole: null }]);
+  });
+
+  it('surfaces the real endpoint 404 as github_api_error (not feature_unavailable) when the plan is indeterminate and the org genuinely does not support organization roles', async () => {
+    mockRest('get', '/orgs/acme', {});
+    mockRest('get', '/orgs/acme/organization-roles', { message: 'Not Found' }, 404);
+    await expect(listOrganizationRoles({ org: 'acme' })).rejects.toMatchObject({ code: 'github_api_error' });
   });
 });
 

@@ -31098,15 +31098,20 @@ async function githubRest(path, opts = {}, deps = {}) {
 
 // src/tools/roles.ts
 var supportedOrgs = /* @__PURE__ */ new Set();
+var indeterminateOrgs = /* @__PURE__ */ new Set();
 async function assertOrganizationRolesSupported(org, deps) {
-  if (supportedOrgs.has(org)) return;
+  if (supportedOrgs.has(org) || indeterminateOrgs.has(org)) return;
   const data = await githubRest(`/orgs/${org}`, {}, deps);
   const planName = data.plan?.name;
+  if (planName === void 0) {
+    indeterminateOrgs.add(org);
+    return;
+  }
   if (planName !== "enterprise") {
     throw new OrgIdentityError(
       "feature_unavailable",
-      `Organization roles are a GitHub Enterprise Cloud feature; org "${org}" is on the "${planName ?? "unknown"}" plan, which does not support them.`,
-      { org, plan: planName ?? null }
+      `Organization roles are a GitHub Enterprise Cloud feature; org "${org}" is on the "${planName}" plan, which does not support them.`,
+      { org, plan: planName }
     );
   }
   supportedOrgs.add(org);
