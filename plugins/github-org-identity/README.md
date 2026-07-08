@@ -60,6 +60,17 @@ mutating org permissions — not a heavier approval workflow, and not a
 guarantee against a caller who deliberately passes matching values without
 meaning to.
 
+## Error codes
+
+Every tool throws a structured `OrgIdentityError` with one of four codes:
+
+| Code | Meaning |
+| --- | --- |
+| `missing_scope` | No GitHub token available. |
+| `confirmation_mismatch` | A write tool's `roleId`/`confirmRoleId` echo didn't match — see above. |
+| `feature_unavailable` | Organization roles are a GitHub Enterprise Cloud feature; the org's plan doesn't support them (or a definite plan name confirms it isn't Enterprise Cloud). |
+| `github_api_error` | Any other non-OK response from the GitHub API, including a 404/403 when the org's plan can't be determined from the resolved identity (see "Auth" above) but the org genuinely doesn't support organization roles. |
+
 ## Skill
 
 - `org-role-audit` — lists organization roles and their team/user

@@ -53,6 +53,16 @@ describe('listOrganizationRoles', () => {
     mockRest('get', '/orgs/acme/organization-roles', { message: 'Not Found' }, 404);
     await expect(listOrganizationRoles({ org: 'acme' })).rejects.toMatchObject({ code: 'github_api_error' });
   });
+
+  it('treats an explicit null plan name as indeterminate, not as a definite rejection', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: null } });
+    mockRest('get', '/orgs/acme/organization-roles', {
+      total_count: 1,
+      roles: [{ id: 1, name: 'all_repo_admin', description: 'Admin on every repo', source: 'Predefined', base_role: null }],
+    });
+    const result = await listOrganizationRoles({ org: 'acme' });
+    expect(result).toEqual([{ id: 1, name: 'all_repo_admin', description: 'Admin on every repo', source: 'Predefined', baseRole: null }]);
+  });
 });
 
 describe('listRoleTeams', () => {

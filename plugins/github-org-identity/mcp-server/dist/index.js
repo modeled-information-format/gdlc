@@ -31101,7 +31101,7 @@ var orgPlanSupportCache = /* @__PURE__ */ new Map();
 async function checkOrganizationRolesSupport(org, deps) {
   const data = await githubRest(`/orgs/${org}`, {}, deps);
   const planName = data.plan?.name;
-  if (planName === void 0) return "indeterminate";
+  if (typeof planName !== "string") return "indeterminate";
   if (planName !== "enterprise") {
     throw new OrgIdentityError(
       "feature_unavailable",

@@ -76,7 +76,12 @@ export function resetOrganizationRolesSupportCacheForTests(): void {
 async function checkOrganizationRolesSupport(org: string, deps: GithubClientDeps): Promise<OrganizationRolesSupport> {
   const data = (await githubRest(`/orgs/${org}`, {}, deps)) as RestOrg;
   const planName = data.plan?.name;
-  if (planName === undefined) return 'indeterminate';
+  // A non-string value (missing entirely, or an explicit null) is not a
+  // definite plan name -- indeterminate, not a rejection. Checking the
+  // runtime type rather than just `=== undefined` guards against a plan
+  // object present with a null name, which RestOrg's own type doesn't rule
+  // out at runtime even though it's typed as `string | undefined`.
+  if (typeof planName !== 'string') return 'indeterminate';
   if (planName !== 'enterprise') {
     throw new OrgIdentityError(
       'feature_unavailable',
