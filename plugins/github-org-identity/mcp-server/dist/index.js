@@ -31098,18 +31098,20 @@ async function githubRest(path, opts = {}, deps = {}) {
 
 // src/tools/roles.ts
 var orgPlanSupportCache = /* @__PURE__ */ new Map();
+var DEFINITELY_UNSUPPORTED_PLANS = /* @__PURE__ */ new Set(["free", "team", "business"]);
 async function checkOrganizationRolesSupport(org, deps) {
   const data = await githubRest(`/orgs/${org}`, {}, deps);
   const planName = data.plan?.name;
   if (typeof planName !== "string") return "indeterminate";
-  if (planName !== "enterprise") {
+  if (DEFINITELY_UNSUPPORTED_PLANS.has(planName)) {
     throw new OrgIdentityError(
       "feature_unavailable",
       `Organization roles are a GitHub Enterprise Cloud feature; org "${org}" is on the "${planName}" plan, which does not support them.`,
       { org, plan: planName }
     );
   }
-  return "supported";
+  if (planName === "enterprise") return "supported";
+  return "indeterminate";
 }
 async function assertOrganizationRolesSupported(org, deps) {
   let cached2 = orgPlanSupportCache.get(org);

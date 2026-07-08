@@ -62,7 +62,11 @@ meaning to.
 
 ## Error codes
 
-Every tool throws a structured `OrgIdentityError` with one of four codes:
+Every tool throws a structured `OrgIdentityError` with one of four codes for
+every failure mode this plugin's own logic detects. The one exception: a
+GitHub secondary/primary rate limit exhausted after retries surfaces as a
+plain (non-`OrgIdentityError`) rate-limit error from the underlying REST
+client, not one of the four codes below.
 
 | Code | Meaning |
 | --- | --- |

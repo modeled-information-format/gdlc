@@ -142,7 +142,7 @@ async function handleResponse(res: Response): Promise<unknown> {
   return text ? JSON.parse(text) : undefined;
 }
 
-interface RestOptions {
+export interface RestOptions {
   method?: string;
   body?: unknown;
 }

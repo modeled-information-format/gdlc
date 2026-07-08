@@ -1,4 +1,4 @@
-import { githubRest, type GithubClientDeps } from '../github-client.js';
+import { githubRest, type GithubClientDeps, type RestOptions } from '../github-client.js';
 import { OrgIdentityError } from '../errors.js';
 
 export interface ListOrganizationRolesInput {
@@ -64,13 +64,27 @@ export function resetOrganizationRolesSupportCacheForTests(): void {
   orgPlanSupportCache.clear();
 }
 
+/** Plan tiers GitHub documents as not supporting organization roles (an
+ * Enterprise Cloud-only feature). A denylist of known-unsupported values,
+ * rather than an allowlist of only `'enterprise'`, so a plan name GitHub
+ * renames, adds (an EMU-specific label, say), or that this list simply
+ * doesn't know about yet is treated as indeterminate -- falling through to
+ * the real endpoint -- instead of being rejected outright. Rejecting only
+ * on a value we're confident about, and treating everything else as
+ * uncertain, matches this guard's overall philosophy (see
+ * checkOrganizationRolesSupport below) and avoids a false rejection from
+ * API drift, the same class of bug the missing/null-plan-name fixes above
+ * already exist to prevent. */
+const DEFINITELY_UNSUPPORTED_PLANS = new Set(['free', 'team', 'business']);
+
 /** `plan` is only visible to an org owner (classic PAT) or an App
  * installation holding the separate "Organization plan" permission --
  * neither of which every authorized caller of these tools necessarily has
  * (e.g. an App installation with only organization_administration, or a
  * non-owner admin:org holder). A missing plan is therefore indeterminate,
- * not evidence the feature is unsupported: reject only on a definite
- * non-enterprise plan name, and report indeterminate otherwise so the
+ * not evidence the feature is unsupported: reject only on a plan name we
+ * know for certain doesn't support organization roles, and report
+ * indeterminate otherwise (including an unrecognized plan name) so the
  * caller falls through to the real endpoint, exactly as before this guard
  * existed. */
 async function checkOrganizationRolesSupport(org: string, deps: GithubClientDeps): Promise<OrganizationRolesSupport> {
@@ -82,14 +96,15 @@ async function checkOrganizationRolesSupport(org: string, deps: GithubClientDeps
   // object present with a null name, which RestOrg's own type doesn't rule
   // out at runtime even though it's typed as `string | undefined`.
   if (typeof planName !== 'string') return 'indeterminate';
-  if (planName !== 'enterprise') {
+  if (DEFINITELY_UNSUPPORTED_PLANS.has(planName)) {
     throw new OrgIdentityError(
       'feature_unavailable',
       `Organization roles are a GitHub Enterprise Cloud feature; org "${org}" is on the "${planName}" plan, which does not support them.`,
       { org, plan: planName },
     );
   }
-  return 'supported';
+  if (planName === 'enterprise') return 'supported';
+  return 'indeterminate';
 }
 
 /** Organization roles are a GitHub Enterprise Cloud feature; every other
@@ -106,23 +121,22 @@ async function assertOrganizationRolesSupported(org: string, deps: GithubClientD
   await cached;
 }
 
-interface OrganizationRolesRequestOptions {
-  method?: string;
-}
-
 /** Single chokepoint for every organization-roles REST call: `path` is the
  * segment after `/orgs/{org}` (e.g. `/organization-roles`,
  * `/organization-roles/42/teams`). Routing every call through here --
  * instead of each tool calling assertOrganizationRolesSupported itself and
  * then githubRest directly -- makes it structurally impossible to reach one
  * of these endpoints without the guard, rather than relying on every future
- * tool remembering to call it. */
-async function organizationRolesRequest(
-  org: string,
-  path: string,
-  opts: OrganizationRolesRequestOptions,
-  deps: GithubClientDeps,
-): Promise<unknown> {
+ * tool remembering to call it.
+ *
+ * The plan-check GET and this call are two independent githubRest calls,
+ * each with their own rate-limit retry/backoff (github-client.ts); a
+ * not-yet-cached org under primary rate-limit exhaustion can retry the
+ * plan check for the full backoff window before this call even starts its
+ * own. Accepted latency cost of centralizing the guard as a separate
+ * request rather than folding it into a single call; revisit if MCP-host
+ * tool-call timeouts make this a real problem. */
+async function organizationRolesRequest(org: string, path: string, opts: RestOptions, deps: GithubClientDeps): Promise<unknown> {
   await assertOrganizationRolesSupported(org, deps);
   return githubRest(`/orgs/${org}${path}`, opts, deps);
 }

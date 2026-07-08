@@ -63,6 +63,29 @@ describe('listOrganizationRoles', () => {
     const result = await listOrganizationRoles({ org: 'acme' });
     expect(result).toEqual([{ id: 1, name: 'all_repo_admin', description: 'Admin on every repo', source: 'Predefined', baseRole: null }]);
   });
+
+  it('treats an unrecognized plan name as indeterminate rather than rejecting, so an unknown/renamed tier falls through to the real endpoint instead of a false rejection', async () => {
+    mockRest('get', '/orgs/acme', { plan: { name: 'some-future-tier' } });
+    mockRest('get', '/orgs/acme/organization-roles', {
+      total_count: 1,
+      roles: [{ id: 1, name: 'all_repo_admin', description: 'Admin on every repo', source: 'Predefined', base_role: null }],
+    });
+    const result = await listOrganizationRoles({ org: 'acme' });
+    expect(result).toEqual([{ id: 1, name: 'all_repo_admin', description: 'Admin on every repo', source: 'Predefined', baseRole: null }]);
+  });
+
+  it('still rejects the other two known-unsupported plan tiers (team, business), not just free', async () => {
+    for (const plan of ['team', 'business']) {
+      mockRest('get', '/orgs/acme', { plan: { name: plan } });
+      // A rejection self-evicts from the cache on settlement (see the cache
+      // doc comment above), so each loop iteration re-checks for real
+      // rather than reusing a stale cached verdict from the prior plan.
+      await expect(listOrganizationRoles({ org: 'acme' })).rejects.toMatchObject({
+        code: 'feature_unavailable',
+        details: { org: 'acme', plan },
+      });
+    }
+  });
 });
 
 describe('listRoleTeams', () => {
