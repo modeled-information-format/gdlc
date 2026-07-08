@@ -31097,16 +31097,11 @@ async function githubRest(path, opts = {}, deps = {}) {
 }
 
 // src/tools/roles.ts
-var supportedOrgs = /* @__PURE__ */ new Set();
-var indeterminateOrgs = /* @__PURE__ */ new Set();
-async function assertOrganizationRolesSupported(org, deps) {
-  if (supportedOrgs.has(org) || indeterminateOrgs.has(org)) return;
+var orgPlanSupportCache = /* @__PURE__ */ new Map();
+async function checkOrganizationRolesSupport(org, deps) {
   const data = await githubRest(`/orgs/${org}`, {}, deps);
   const planName = data.plan?.name;
-  if (planName === void 0) {
-    indeterminateOrgs.add(org);
-    return;
-  }
+  if (planName === void 0) return "indeterminate";
   if (planName !== "enterprise") {
     throw new OrgIdentityError(
       "feature_unavailable",
@@ -31114,7 +31109,16 @@ async function assertOrganizationRolesSupported(org, deps) {
       { org, plan: planName }
     );
   }
-  supportedOrgs.add(org);
+  return "supported";
+}
+async function assertOrganizationRolesSupported(org, deps) {
+  let cached2 = orgPlanSupportCache.get(org);
+  if (!cached2) {
+    cached2 = checkOrganizationRolesSupport(org, deps);
+    cached2.catch(() => orgPlanSupportCache.delete(org));
+    orgPlanSupportCache.set(org, cached2);
+  }
+  await cached2;
 }
 async function listOrganizationRoles(input, deps = {}) {
   await assertOrganizationRolesSupported(input.org, deps);

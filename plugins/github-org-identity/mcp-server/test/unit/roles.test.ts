@@ -85,6 +85,33 @@ describe('listRoleTeams', () => {
     await listRoleUsers({ org: 'acme', roleId: 42 });
     expect(orgCalls).toBe(1);
   });
+
+  it('dedupes concurrent guarded calls for the same not-yet-checked org into a single org-plan request', async () => {
+    let orgCalls = 0;
+    server.use(
+      http.get('https://api.github.com/orgs/acme', () => {
+        orgCalls += 1;
+        return HttpResponse.json({ plan: { name: 'enterprise' } });
+      }),
+    );
+    mockRest('get', '/orgs/acme/organization-roles/42/teams', [{ slug: 'security', name: 'Security' }]);
+    mockRest('get', '/orgs/acme/organization-roles/42/users', [{ login: 'octocat', assignment: 'direct' }]);
+    await Promise.all([listRoleTeams({ org: 'acme', roleId: 42 }), listRoleUsers({ org: 'acme', roleId: 42 })]);
+    expect(orgCalls).toBe(1);
+  });
+
+  it('does not cache a rejection, so a free-plan org is re-checked on the next call', async () => {
+    let orgCalls = 0;
+    server.use(
+      http.get('https://api.github.com/orgs/acme', () => {
+        orgCalls += 1;
+        return HttpResponse.json({ plan: { name: 'free' } });
+      }),
+    );
+    await expect(listRoleTeams({ org: 'acme', roleId: 42 })).rejects.toMatchObject({ code: 'feature_unavailable' });
+    await expect(listRoleUsers({ org: 'acme', roleId: 42 })).rejects.toMatchObject({ code: 'feature_unavailable' });
+    expect(orgCalls).toBe(2);
+  });
 });
 
 describe('listRoleUsers', () => {

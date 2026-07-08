@@ -30,41 +30,35 @@ interface RestOrg {
   plan?: { name?: string };
 }
 
-/** Orgs already confirmed (or known-indeterminate) so a loop calling several
- * of these tools against the same org (e.g. one per role) doesn't re-check
- * the plan on every call. Only a definite result is cached -- a rejection
- * always re-checks, so a transient failure or a plan change is never stuck
- * behind a stale negative. */
-const supportedOrgs = new Set<string>();
-const indeterminateOrgs = new Set<string>();
+type OrganizationRolesSupport = 'supported' | 'indeterminate';
+
+/** Memoizes the plan check per org, matching the issueTypesCache pattern in
+ * github-sdlc-planning's resolvers.ts: the in-flight promise itself is
+ * cached (not just its resolved value), so concurrent calls for the same
+ * not-yet-checked org (e.g. a batched listRoleTeams + listRoleUsers) await
+ * one request instead of each firing their own. A rejection (definite
+ * non-enterprise plan) evicts itself on completion, so it's never cached --
+ * a transient failure or a plan change is always re-checked on the next
+ * call. */
+const orgPlanSupportCache = new Map<string, Promise<OrganizationRolesSupport>>();
 
 export function resetOrganizationRolesSupportCacheForTests(): void {
-  supportedOrgs.clear();
-  indeterminateOrgs.clear();
+  orgPlanSupportCache.clear();
 }
 
-/** Organization roles are a GitHub Enterprise Cloud feature; every other
- * plan tier deterministically 404s on the organization-roles endpoints.
- * Checking the org's plan first turns that into a clear, typed error
- * instead of a generic github_api_error the caller has to interpret. Every
- * tool below that touches an organization-roles endpoint calls this first.
- *
- * `plan` is only visible to an org owner (classic PAT) or an App
+/** `plan` is only visible to an org owner (classic PAT) or an App
  * installation holding the separate "Organization plan" permission --
  * neither of which every authorized caller of these tools necessarily has
  * (e.g. an App installation with only organization_administration, or a
  * non-owner admin:org holder). A missing plan is therefore indeterminate,
  * not evidence the feature is unsupported: reject only on a definite
- * non-enterprise plan name, and fall through to the real endpoint
- * otherwise, exactly as before this guard existed. */
-async function assertOrganizationRolesSupported(org: string, deps: GithubClientDeps): Promise<void> {
-  if (supportedOrgs.has(org) || indeterminateOrgs.has(org)) return;
+ * non-enterprise plan name, and report indeterminate otherwise so the
+ * caller falls through to the real endpoint, exactly as before this guard
+ * existed. */
+async function checkOrganizationRolesSupport(org: string, deps: GithubClientDeps): Promise<OrganizationRolesSupport> {
   const data = (await githubRest(`/orgs/${org}`, {}, deps)) as RestOrg;
   const planName = data.plan?.name;
-  if (planName === undefined) {
-    indeterminateOrgs.add(org);
-    return;
-  }
+  if (planName === undefined) return 'indeterminate';
   if (planName !== 'enterprise') {
     throw new OrgIdentityError(
       'feature_unavailable',
@@ -72,7 +66,22 @@ async function assertOrganizationRolesSupported(org: string, deps: GithubClientD
       { org, plan: planName },
     );
   }
-  supportedOrgs.add(org);
+  return 'supported';
+}
+
+/** Organization roles are a GitHub Enterprise Cloud feature; every other
+ * plan tier deterministically 404s on the organization-roles endpoints.
+ * Checking the org's plan first turns that into a clear, typed error
+ * instead of a generic github_api_error the caller has to interpret. Every
+ * tool below that touches an organization-roles endpoint calls this first. */
+async function assertOrganizationRolesSupported(org: string, deps: GithubClientDeps): Promise<void> {
+  let cached = orgPlanSupportCache.get(org);
+  if (!cached) {
+    cached = checkOrganizationRolesSupport(org, deps);
+    cached.catch(() => orgPlanSupportCache.delete(org));
+    orgPlanSupportCache.set(org, cached);
+  }
+  await cached;
 }
 
 export async function listOrganizationRoles(input: ListOrganizationRolesInput, deps: GithubClientDeps = {}): Promise<OrganizationRole[]> {
