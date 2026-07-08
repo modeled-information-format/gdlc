@@ -31097,15 +31097,44 @@ async function githubRest(path, opts = {}, deps = {}) {
 }
 
 // src/tools/roles.ts
+var orgPlanSupportCache = /* @__PURE__ */ new Map();
+var DEFINITELY_UNSUPPORTED_PLANS = /* @__PURE__ */ new Set(["free", "team", "business"]);
+async function checkOrganizationRolesSupport(org, deps) {
+  const data = await githubRest(`/orgs/${org}`, {}, deps);
+  const planName = data.plan?.name;
+  if (typeof planName !== "string") return "indeterminate";
+  if (DEFINITELY_UNSUPPORTED_PLANS.has(planName)) {
+    throw new OrgIdentityError(
+      "feature_unavailable",
+      `Organization roles are a GitHub Enterprise Cloud feature; org "${org}" is on the "${planName}" plan, which does not support them.`,
+      { org, plan: planName }
+    );
+  }
+  if (planName === "enterprise") return "supported";
+  return "indeterminate";
+}
+async function assertOrganizationRolesSupported(org, deps) {
+  let cached2 = orgPlanSupportCache.get(org);
+  if (!cached2) {
+    cached2 = checkOrganizationRolesSupport(org, deps);
+    cached2.catch(() => orgPlanSupportCache.delete(org));
+    orgPlanSupportCache.set(org, cached2);
+  }
+  await cached2;
+}
+async function organizationRolesRequest(org, path, opts, deps) {
+  await assertOrganizationRolesSupported(org, deps);
+  return githubRest(`/orgs/${org}${path}`, opts, deps);
+}
 async function listOrganizationRoles(input, deps = {}) {
-  const data = await githubRest(`/orgs/${input.org}/organization-roles`, {}, deps);
+  const data = await organizationRolesRequest(input.org, "/organization-roles", {}, deps);
   return data.roles.map((r) => ({ id: r.id, name: r.name, description: r.description, source: r.source, baseRole: r.base_role }));
 }
 async function listRoleTeams(input, deps = {}) {
-  return await githubRest(`/orgs/${input.org}/organization-roles/${input.roleId}/teams`, {}, deps);
+  return await organizationRolesRequest(input.org, `/organization-roles/${input.roleId}/teams`, {}, deps);
 }
 async function listRoleUsers(input, deps = {}) {
-  const data = await githubRest(`/orgs/${input.org}/organization-roles/${input.roleId}/users`, {}, deps);
+  const data = await organizationRolesRequest(input.org, `/organization-roles/${input.roleId}/users`, {}, deps);
   return data.map((u) => ({ login: u.login, assignment: u.assignment ?? null }));
 }
 function assertConfirmed(roleId, confirmRoleId) {
@@ -31119,22 +31148,22 @@ function assertConfirmed(roleId, confirmRoleId) {
 }
 async function assignTeamRole(input, deps = {}) {
   assertConfirmed(input.roleId, input.confirmRoleId);
-  await githubRest(`/orgs/${input.org}/organization-roles/teams/${encodeURIComponent(input.teamSlug)}/${input.roleId}`, { method: "PUT" }, deps);
+  await organizationRolesRequest(input.org, `/organization-roles/teams/${encodeURIComponent(input.teamSlug)}/${input.roleId}`, { method: "PUT" }, deps);
   return { org: input.org, roleId: input.roleId, teamSlug: input.teamSlug };
 }
 async function removeTeamRole(input, deps = {}) {
   assertConfirmed(input.roleId, input.confirmRoleId);
-  await githubRest(`/orgs/${input.org}/organization-roles/teams/${encodeURIComponent(input.teamSlug)}/${input.roleId}`, { method: "DELETE" }, deps);
+  await organizationRolesRequest(input.org, `/organization-roles/teams/${encodeURIComponent(input.teamSlug)}/${input.roleId}`, { method: "DELETE" }, deps);
   return { org: input.org, roleId: input.roleId, teamSlug: input.teamSlug };
 }
 async function assignUserRole(input, deps = {}) {
   assertConfirmed(input.roleId, input.confirmRoleId);
-  await githubRest(`/orgs/${input.org}/organization-roles/users/${encodeURIComponent(input.username)}/${input.roleId}`, { method: "PUT" }, deps);
+  await organizationRolesRequest(input.org, `/organization-roles/users/${encodeURIComponent(input.username)}/${input.roleId}`, { method: "PUT" }, deps);
   return { org: input.org, roleId: input.roleId, username: input.username };
 }
 async function removeUserRole(input, deps = {}) {
   assertConfirmed(input.roleId, input.confirmRoleId);
-  await githubRest(`/orgs/${input.org}/organization-roles/users/${encodeURIComponent(input.username)}/${input.roleId}`, { method: "DELETE" }, deps);
+  await organizationRolesRequest(input.org, `/organization-roles/users/${encodeURIComponent(input.username)}/${input.roleId}`, { method: "DELETE" }, deps);
   return { org: input.org, roleId: input.roleId, username: input.username };
 }
 

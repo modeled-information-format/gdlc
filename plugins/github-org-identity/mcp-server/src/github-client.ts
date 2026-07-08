@@ -15,10 +15,13 @@ const defaultExecFileSync: ExecFileSyncFn = (command, args, options) => execFile
  * fallback. Organization-roles endpoints additionally require the
  * resolved identity to hold org-level admin:org (classic PAT) or the
  * App-installation members/organization_administration permission — this
- * client does not pre-check that (unlike the sibling plugins' Projects v2
- * assertProjectScope), since org-identity has no first read call that's
- * safe to spend on a scope probe; a missing-permission response from the
- * real endpoint surfaces as a plain github_api_error instead. */
+ * client does not pre-check that permission scope (unlike the sibling
+ * plugins' Projects v2 assertProjectScope): a missing-permission response
+ * from the real endpoint surfaces as a plain github_api_error. (A separate
+ * pre-check does exist one layer up, in roles.ts's
+ * assertOrganizationRolesSupported -- that one probes the org's *plan
+ * tier*, a different axis from the identity's *permission scope* checked
+ * here, and reports a typed feature_unavailable rather than gating on it.) */
 export function resolveToken(execImpl: ExecFileSyncFn = defaultExecFileSync): string {
   if (cachedToken) return cachedToken;
   const envToken = process.env.GITHUB_TOKEN;
@@ -139,7 +142,7 @@ async function handleResponse(res: Response): Promise<unknown> {
   return text ? JSON.parse(text) : undefined;
 }
 
-interface RestOptions {
+export interface RestOptions {
   method?: string;
   body?: unknown;
 }
