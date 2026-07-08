@@ -39,7 +39,24 @@ type OrganizationRolesSupport = 'supported' | 'indeterminate';
  * one request instead of each firing their own. A rejection (definite
  * non-enterprise plan) evicts itself on completion, so it's never cached --
  * a transient failure or a plan change is always re-checked on the next
- * call. */
+ * call.
+ *
+ * Keyed only by org, not by identity (gdlc#126): index.ts's `wrap()` never
+ * passes `deps` to any of these tools, so every real call uses the default
+ * `deps = {}`, which resolves through github-client.ts's `resolveToken()` --
+ * itself a process-lifetime singleton. One stdio server process is one
+ * identity for its whole lifetime; there is no code path in this codebase
+ * that varies `deps.fetchImpl`/the token per call (`roles.test.ts` only
+ * intercepts at the network layer via msw, never passes `deps` either). If
+ * that ever changes -- e.g. this module gets embedded somewhere that swaps
+ * identity mid-process -- this cache would need to key on identity too.
+ *
+ * No TTL on a resolved entry (gdlc#127): matches issueTypesCache's own
+ * process-lifetime-only design. An org's plan tier changing mid-process is
+ * rare enough, and this server's process lifetime short enough (one stdio
+ * session), that the complexity of expiring/re-validating a resolved
+ * verdict isn't proportionate here -- an accepted trade-off, not an
+ * oversight. */
 const orgPlanSupportCache = new Map<string, Promise<OrganizationRolesSupport>>();
 
 export function resetOrganizationRolesSupportCacheForTests(): void {
@@ -72,8 +89,7 @@ async function checkOrganizationRolesSupport(org: string, deps: GithubClientDeps
 /** Organization roles are a GitHub Enterprise Cloud feature; every other
  * plan tier deterministically 404s on the organization-roles endpoints.
  * Checking the org's plan first turns that into a clear, typed error
- * instead of a generic github_api_error the caller has to interpret. Every
- * tool below that touches an organization-roles endpoint calls this first. */
+ * instead of a generic github_api_error the caller has to interpret. */
 async function assertOrganizationRolesSupported(org: string, deps: GithubClientDeps): Promise<void> {
   let cached = orgPlanSupportCache.get(org);
   if (!cached) {
@@ -84,9 +100,29 @@ async function assertOrganizationRolesSupported(org: string, deps: GithubClientD
   await cached;
 }
 
+interface OrganizationRolesRequestOptions {
+  method?: string;
+}
+
+/** Single chokepoint for every organization-roles REST call: `path` is the
+ * segment after `/orgs/{org}` (e.g. `/organization-roles`,
+ * `/organization-roles/42/teams`). Routing every call through here --
+ * instead of each tool calling assertOrganizationRolesSupported itself and
+ * then githubRest directly -- makes it structurally impossible to reach one
+ * of these endpoints without the guard, rather than relying on every future
+ * tool remembering to call it. */
+async function organizationRolesRequest(
+  org: string,
+  path: string,
+  opts: OrganizationRolesRequestOptions,
+  deps: GithubClientDeps,
+): Promise<unknown> {
+  await assertOrganizationRolesSupported(org, deps);
+  return githubRest(`/orgs/${org}${path}`, opts, deps);
+}
+
 export async function listOrganizationRoles(input: ListOrganizationRolesInput, deps: GithubClientDeps = {}): Promise<OrganizationRole[]> {
-  await assertOrganizationRolesSupported(input.org, deps);
-  const data = (await githubRest(`/orgs/${input.org}/organization-roles`, {}, deps)) as RestListOrganizationRolesResponse;
+  const data = (await organizationRolesRequest(input.org, '/organization-roles', {}, deps)) as RestListOrganizationRolesResponse;
   return data.roles.map((r) => ({ id: r.id, name: r.name, description: r.description, source: r.source, baseRole: r.base_role }));
 }
 
@@ -101,8 +137,7 @@ export interface RoleTeam {
 }
 
 export async function listRoleTeams(input: RoleRef, deps: GithubClientDeps = {}): Promise<RoleTeam[]> {
-  await assertOrganizationRolesSupported(input.org, deps);
-  return (await githubRest(`/orgs/${input.org}/organization-roles/${input.roleId}/teams`, {}, deps)) as RoleTeam[];
+  return (await organizationRolesRequest(input.org, `/organization-roles/${input.roleId}/teams`, {}, deps)) as RoleTeam[];
 }
 
 export interface RoleUser {
@@ -119,8 +154,7 @@ interface RestRoleUser {
  * membership -- assignment is undefined on older API responses, reported
  * as null rather than assumed "direct". */
 export async function listRoleUsers(input: RoleRef, deps: GithubClientDeps = {}): Promise<RoleUser[]> {
-  await assertOrganizationRolesSupported(input.org, deps);
-  const data = (await githubRest(`/orgs/${input.org}/organization-roles/${input.roleId}/users`, {}, deps)) as RestRoleUser[];
+  const data = (await organizationRolesRequest(input.org, `/organization-roles/${input.roleId}/users`, {}, deps)) as RestRoleUser[];
   return data.map((u) => ({ login: u.login, assignment: u.assignment ?? null }));
 }
 
@@ -155,15 +189,13 @@ export interface TeamRoleResult {
 
 export async function assignTeamRole(input: TeamRoleInput, deps: GithubClientDeps = {}): Promise<TeamRoleResult> {
   assertConfirmed(input.roleId, input.confirmRoleId);
-  await assertOrganizationRolesSupported(input.org, deps);
-  await githubRest(`/orgs/${input.org}/organization-roles/teams/${encodeURIComponent(input.teamSlug)}/${input.roleId}`, { method: 'PUT' }, deps);
+  await organizationRolesRequest(input.org, `/organization-roles/teams/${encodeURIComponent(input.teamSlug)}/${input.roleId}`, { method: 'PUT' }, deps);
   return { org: input.org, roleId: input.roleId, teamSlug: input.teamSlug };
 }
 
 export async function removeTeamRole(input: TeamRoleInput, deps: GithubClientDeps = {}): Promise<TeamRoleResult> {
   assertConfirmed(input.roleId, input.confirmRoleId);
-  await assertOrganizationRolesSupported(input.org, deps);
-  await githubRest(`/orgs/${input.org}/organization-roles/teams/${encodeURIComponent(input.teamSlug)}/${input.roleId}`, { method: 'DELETE' }, deps);
+  await organizationRolesRequest(input.org, `/organization-roles/teams/${encodeURIComponent(input.teamSlug)}/${input.roleId}`, { method: 'DELETE' }, deps);
   return { org: input.org, roleId: input.roleId, teamSlug: input.teamSlug };
 }
 
@@ -182,14 +214,12 @@ export interface UserRoleResult {
 
 export async function assignUserRole(input: UserRoleInput, deps: GithubClientDeps = {}): Promise<UserRoleResult> {
   assertConfirmed(input.roleId, input.confirmRoleId);
-  await assertOrganizationRolesSupported(input.org, deps);
-  await githubRest(`/orgs/${input.org}/organization-roles/users/${encodeURIComponent(input.username)}/${input.roleId}`, { method: 'PUT' }, deps);
+  await organizationRolesRequest(input.org, `/organization-roles/users/${encodeURIComponent(input.username)}/${input.roleId}`, { method: 'PUT' }, deps);
   return { org: input.org, roleId: input.roleId, username: input.username };
 }
 
 export async function removeUserRole(input: UserRoleInput, deps: GithubClientDeps = {}): Promise<UserRoleResult> {
   assertConfirmed(input.roleId, input.confirmRoleId);
-  await assertOrganizationRolesSupported(input.org, deps);
-  await githubRest(`/orgs/${input.org}/organization-roles/users/${encodeURIComponent(input.username)}/${input.roleId}`, { method: 'DELETE' }, deps);
+  await organizationRolesRequest(input.org, `/organization-roles/users/${encodeURIComponent(input.username)}/${input.roleId}`, { method: 'DELETE' }, deps);
   return { org: input.org, roleId: input.roleId, username: input.username };
 }
