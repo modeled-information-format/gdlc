@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The `github-sdlc-planning` MCP server's Docker image build (`docker-publish.yml`)
+  no longer fails `npm ci` on every push to `main`. Its `package.json`
+  depends on `@github-sdlc-plugins/singleflight-cache` via a monorepo-relative
+  `file:` path that resolved outside the Docker build context (previously
+  scoped to the mcp-server's own directory); the context is now the repo
+  root, with a matching `.dockerignore` and a restructured `Dockerfile` that
+  mirrors the same repo-relative layout the `file:` dependency expects (#147).
+
 - `github-bug-capture`'s `hooks` pack Stop-hook diagnostic-capture no longer
   re-triggers on every subsequent Stop event once a real failure signature
   is found. It previously had no memory of what it had already scanned, so
