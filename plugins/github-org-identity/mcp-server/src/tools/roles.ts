@@ -1,5 +1,6 @@
 import { githubRest, type GithubClientDeps, type RestOptions } from '../github-client.js';
 import { OrgIdentityError } from '../errors.js';
+import { singleflightCache } from '@github-sdlc-plugins/singleflight-cache';
 
 export interface ListOrganizationRolesInput {
   org: string;
@@ -32,15 +33,16 @@ interface RestOrg {
 
 type OrganizationRolesSupport = 'supported' | 'indeterminate';
 
-/** Memoizes the plan check per org, matching the issueTypesCache pattern in
- * github-sdlc-planning's resolvers.ts: the in-flight promise itself is
- * cached (not just its resolved value), so concurrent calls for the same
- * not-yet-checked org (e.g. a batched listRoleTeams + listRoleUsers) await
- * one request instead of each firing their own. Only a rejection (definite
- * non-enterprise plan) evicts itself on completion, so a transient failure
- * there is always re-checked on the next call -- a resolved entry
- * ('supported' or 'indeterminate') is NOT re-checked; see the no-TTL note
- * below (gdlc#127).
+/** Memoizes the plan check per org via the shared singleflightCache helper
+ * (gdlc#130 -- extracted from this exact pattern, which used to be
+ * hand-rolled here identically to github-sdlc-planning's issueTypesCache):
+ * the in-flight promise itself is cached (not just its resolved value), so
+ * concurrent calls for the same not-yet-checked org (e.g. a batched
+ * listRoleTeams + listRoleUsers) await one request instead of each firing
+ * their own. Only a rejection (definite non-enterprise plan) evicts itself
+ * on completion, so a transient failure there is always re-checked on the
+ * next call -- a resolved entry ('supported' or 'indeterminate') is NOT
+ * re-checked; see the no-TTL note below (gdlc#127).
  *
  * Keyed only by org, not by identity (gdlc#126): index.ts's `wrap()` never
  * passes `deps` to any of these tools, so every real call uses the default
@@ -112,13 +114,7 @@ async function checkOrganizationRolesSupport(org: string, deps: GithubClientDeps
  * Checking the org's plan first turns that into a clear, typed error
  * instead of a generic github_api_error the caller has to interpret. */
 async function assertOrganizationRolesSupported(org: string, deps: GithubClientDeps): Promise<void> {
-  let cached = orgPlanSupportCache.get(org);
-  if (!cached) {
-    cached = checkOrganizationRolesSupport(org, deps);
-    cached.catch(() => orgPlanSupportCache.delete(org));
-    orgPlanSupportCache.set(org, cached);
-  }
-  await cached;
+  await singleflightCache(orgPlanSupportCache, org, () => checkOrganizationRolesSupport(org, deps));
 }
 
 /** Single chokepoint for every organization-roles REST call: `path` is the

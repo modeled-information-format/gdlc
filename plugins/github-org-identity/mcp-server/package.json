@@ -16,6 +16,7 @@
     "verify:live": "tsx scripts/verify-live.ts"
   },
   "dependencies": {
+    "@github-sdlc-plugins/singleflight-cache": "file:../../../packages/singleflight-cache",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.4.3"
   },
