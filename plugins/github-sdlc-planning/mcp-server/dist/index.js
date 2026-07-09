@@ -39268,7 +39268,7 @@ function withIssueDestination(fn) {
 }
 
 // src/index.ts
-var server = new McpServer({ name: "github-sdlc-planning", version: "0.5.1" });
+var server = new McpServer({ name: "github-sdlc-planning", version: "0.6.0" });
 function toolResult(data) {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }
