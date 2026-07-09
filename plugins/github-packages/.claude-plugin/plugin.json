@@ -1,7 +1,7 @@
 {
   "name": "github-packages",
   "displayName": "GitHub Packages",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "List org packages and versions across npm, Maven, RubyGems, Docker (legacy registry), Container (ghcr.io), NuGet, and generic registries; delete/restore a package or version.",
   "author": {
     "name": "modeled-information-format"

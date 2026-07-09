@@ -69,9 +69,12 @@ ADR-0001 as the pattern the rest of the marketplace follows too:
    framing regardless of whether it has any Claude Code skill installed.
 2. **The progressive-enhancement layer** sits on top, Claude-Code-specific,
    and is optional:
-   - **Skills**: `project-setup`, `epic-decomposition`, `sprint-plan`,
-     `milestone-triage`, `template-gallery` — each a higher-level workflow
-     built from the same 16 tools.
+   - **Skills**: `project-setup`, `epic-decomposition`, `epic-pipeline`,
+     `sprint-plan`, `milestone-triage`, `template-gallery` — each a
+     higher-level workflow built from the same 16 tools. `epic-pipeline`
+     composes the full plugin suite (not just this plugin's own tools) into
+     one decompose-to-merged-PR pipeline; see
+     [ADR context and usage](../../how-to/plan-work-with-the-plugins.md).
    - **An agent**: `project-setup`'s six-stage pipeline (classify intent →
      resolve template → configure fields → seed draft issues → wire
      automations → report).
