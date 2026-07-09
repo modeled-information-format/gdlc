@@ -37,8 +37,11 @@ organization role — the team-level counterpart to `list_role_users`.
 - `missing_scope` — no resolvable token.
 - `feature_unavailable` — the org's plan doesn't support organization
   roles (a GitHub Enterprise Cloud feature).
-- `github_api_error` — the `roleId` doesn't exist in this org, or the
-  identity lacks org-roles read access.
+- `github_api_error` — the `roleId` doesn't exist in this org, the
+  identity lacks org-roles read access, or the org's plan was
+  indeterminate (the identity can't read `org.plan`) and the org
+  genuinely doesn't support organization roles — that case falls through
+  to the real endpoint rather than reporting `feature_unavailable`.
 
 ## Next
 

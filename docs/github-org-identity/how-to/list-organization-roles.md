@@ -47,7 +47,10 @@ them.
 - `feature_unavailable` — the org's plan doesn't support organization
   roles (a GitHub Enterprise Cloud feature).
 - `github_api_error` with a 403/404 — the resolved identity doesn't have
-  org-roles read access, or the org login is wrong.
+  org-roles read access, the org login is wrong, or the org's plan was
+  indeterminate (the identity can't read `org.plan`) and the org
+  genuinely doesn't support organization roles — that case falls through
+  to the real endpoint rather than reporting `feature_unavailable`.
 
 ## Next
 
