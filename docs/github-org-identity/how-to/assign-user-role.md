@@ -3,7 +3,7 @@ id: c800e9b4-aab1-4f78-a364-1c3ab31d768b
 type: procedural
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-05T00:00:00Z
+modified: 2026-07-08T00:00:00Z
 title: Assign an organization role to a user
 diataxis_type: how-to
 ---
@@ -50,8 +50,13 @@ before.
 - `confirmation_mismatch` — `roleId` and `confirmRoleId` didn't match; no
   API call was made.
 - `missing_scope` — no resolvable token.
+- `feature_unavailable` — the org's plan doesn't support organization
+  roles (a GitHub Enterprise Cloud feature).
 - `github_api_error` — the `roleId` doesn't exist, the `username` isn't an
-  org member, or the identity lacks org-roles write access.
+  org member, the identity lacks org-roles write access, or the org's
+  plan was indeterminate (the identity can't read `org.plan`) and the org
+  genuinely doesn't support organization roles — that case falls through
+  to the real endpoint rather than reporting `feature_unavailable`.
 
 ## Next
 

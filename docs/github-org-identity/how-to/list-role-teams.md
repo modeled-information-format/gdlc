@@ -3,7 +3,7 @@ id: 6bef7c63-9060-4566-8879-5bb22cd5910b
 type: procedural
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-05T00:00:00Z
+modified: 2026-07-08T00:00:00Z
 title: List the teams holding an organization role
 diataxis_type: how-to
 ---
@@ -35,8 +35,13 @@ organization role — the team-level counterpart to `list_role_users`.
 ## If the call fails
 
 - `missing_scope` — no resolvable token.
-- `github_api_error` — the `roleId` doesn't exist in this org, or the
-  identity lacks org-roles read access.
+- `feature_unavailable` — the org's plan doesn't support organization
+  roles (a GitHub Enterprise Cloud feature).
+- `github_api_error` — the `roleId` doesn't exist in this org, the
+  identity lacks org-roles read access, or the org's plan was
+  indeterminate (the identity can't read `org.plan`) and the org
+  genuinely doesn't support organization roles — that case falls through
+  to the real endpoint rather than reporting `feature_unavailable`.
 
 ## Next
 

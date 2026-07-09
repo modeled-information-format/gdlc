@@ -3,7 +3,7 @@ id: d55a158c-2fdd-4c78-bb3f-6fda97087ed6
 type: procedural
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-05T00:00:00Z
+modified: 2026-07-08T00:00:00Z
 title: List an org's organization roles
 diataxis_type: how-to
 ---
@@ -44,8 +44,13 @@ them.
 
 - `missing_scope` — no resolvable token. Set `GITHUB_TOKEN`, or run
   `gh auth login --scopes admin:org`.
+- `feature_unavailable` — the org's plan doesn't support organization
+  roles (a GitHub Enterprise Cloud feature).
 - `github_api_error` with a 403/404 — the resolved identity doesn't have
-  org-roles read access, or the org login is wrong.
+  org-roles read access, the org login is wrong, or the org's plan was
+  indeterminate (the identity can't read `org.plan`) and the org
+  genuinely doesn't support organization roles — that case falls through
+  to the real endpoint rather than reporting `feature_unavailable`.
 
 ## Next
 
