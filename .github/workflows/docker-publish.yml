@@ -28,6 +28,9 @@ name: Docker
       # a file: reference, so a change here must rebuild the image too, not
       # only be caught the next time the mcp-server's own files change.
       - packages/singleflight-cache/**
+      # The build context is now the repo root, so a change to what it
+      # excludes is itself a build-relevant change (Copilot review finding).
+      - .dockerignore
       - .github/workflows/docker-publish.yml
   workflow_dispatch:
 
