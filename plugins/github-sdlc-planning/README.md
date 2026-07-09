@@ -3,7 +3,7 @@ id: c867194d-1baa-48c1-869e-5c8d43362ff7
 type: semantic
 created: 2026-07-03T00:00:00Z
 namespace: github-sdlc-plugins/github-sdlc-planning
-modified: 2026-07-06T00:00:00Z
+modified: 2026-07-08T00:00:00Z
 title: github-sdlc-planning
 diataxis_type: reference
 ---
@@ -56,6 +56,11 @@ required for every Projects v2 write. Fine-grained PAT equivalent: Issues
 - `sprint-plan` — plan a sprint from backlog + team size + cadence
 - `milestone-triage` — review and re-sequence open milestones
 - `template-gallery` — list and instantiate curated project templates
+- `epic-pipeline` — decompose a goal into a native Epic/Story/Task hierarchy
+  and carry it through to a reviewed, merged pull request, composing
+  `epic-decomposition`, `github-pull-requests`, `github-bug-capture`,
+  `github-repo-config`, `github-insights`, `github-packages`, and
+  `github-org-identity` end to end instead of hand-rolled `gh`/GraphQL calls
 
 ## Agent
 

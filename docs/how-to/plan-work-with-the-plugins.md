@@ -3,7 +3,7 @@ id: 8b5d1e73-6a2f-4c08-b9d4-2f7e9a1c6d52
 type: procedural
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-06T00:00:00Z
+modified: 2026-07-08T00:00:00Z
 title: Plan and track work with the planning and PR plugins
 diataxis_type: how-to
 ---
@@ -12,6 +12,13 @@ Run a plan-to-merge cycle: decompose a goal into issues, board them, open
 and classify the PR, and let linkage close the loop. Assumes Claude Code
 with this marketplace added (root [README](../../README.md#quick-start))
 and `github-pull-requests` installed (which brings `github-sdlc-planning`).
+
+Steps 1–5 below can be driven by hand, tool by tool, or run end to end by
+asking for the **epic-pipeline** skill (`github-sdlc-planning`) with a goal,
+seed issue, or plan/design doc — it composes the exact same tools this page
+describes (plus `file-bug`/`pr-review-route` and a `get_branch_protection`
+pre-flight) into one decompose-then-execute pipeline, gated on explicit
+confirmation before executing and before merging.
 
 ## 1. Decompose a goal into issues
 

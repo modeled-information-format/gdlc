@@ -1,0 +1,136 @@
+{
+  "skill_name": "epic-pipeline",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Plan only: turn \"add rate limiting to the public API\" into a work plan for acme/api-server. Don't implement anything yet.",
+      "expected_output": "Uses epic-decomposition to create the Epic/Story/Task hierarchy, places every issue on the board via add_item_to_project, sets Kind/Type on each, reads Status before writing it, and stops after reporting the hierarchy without touching any code.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "add_item_to_project",
+          "description": "Places new issues on the board rather than leaving them off it"
+        },
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "get_branch_protection",
+          "description": "Phase 0 reads branch protection before any decomposition happens"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "gh api graphql",
+          "description": "Never hand-rolls a GraphQL call for something a plugin tool already covers"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "gh pr create",
+          "description": "Plan-only run never opens a PR at all"
+        }
+      ],
+      "expectations": [
+        "Creates one Epic with Story/Task children via native sub-issues",
+        "Every created issue is placed on the board and gets a Kind/Type field value",
+        "Does not blindly overwrite a board Status without reading it first",
+        "Stops after the Phase 1 report; no code is written and no PR is opened"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Execute the plan for Epic #200 in acme/api-server: implement every Task, then open the PR.",
+      "expected_output": "Implements each Task on one shared branch, runs gates, opens a single PR via create_pull_request, classifies it, routes review (including Copilot), and confirms linkage via get_linked_issues rather than assuming Closes #N worked.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "create_pull_request",
+          "description": "Opens the PR through the plugin tool, not gh pr create"
+        },
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "classify_pull_request",
+          "description": "Applies type/size/risk labels to the new PR"
+        },
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "get_linked_issues",
+          "description": "Confirms PR-to-issue linkage structurally instead of assuming it from PR body text"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "gh pr create",
+          "description": "Never falls back to the raw gh CLI PR-creation path this pipeline replaces"
+        },
+        {
+          "type": "shell_command",
+          "command": "python3 -c \"import re,sys; t=open('transcript.md').read(); n=len(set(re.findall(r'checkout -b ([\\w./-]+)', t))); print(n); sys.exit(0 if n<=1 else 1)\"",
+          "description": "Implements on at most one shared feature branch, not one branch per Task"
+        }
+      ],
+      "expectations": [
+        "All Task implementations land on a single shared branch",
+        "One PR is opened referencing every Task with Closes #N",
+        "classify_pull_request and add_pull_request_to_project are both called",
+        "Does not merge the PR without explicit user confirmation"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "While implementing Task #205 you notice the existing retry logic silently swallows a timeout error. File it and keep going.",
+      "expected_output": "Invokes the file-bug skill rather than a hand-rolled create_issue call, and if the bug gets fixed before the PR opens, advances its lifecycle state instead of leaving it at its filed state.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "file-bug",
+          "description": "Uses the file-bug skill for the discovered defect"
+        },
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "search_similar_issues",
+          "description": "file-bug's own duplicate check ran before a new issue was created"
+        }
+      ],
+      "expectations": [
+        "The discovered bug is filed through file-bug, not a standalone create_issue call",
+        "If resolved in the same session, its lifecycle state is advanced via set_lifecycle_state rather than left untouched",
+        "Task implementation continues after the bug is filed rather than stalling the pipeline"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "PR #310 for Epic #200 just got merged. Close the loop.",
+      "expected_output": "Calls sync_linked_issues_project_field to stamp the post-merge board field across every linked issue, rolls Story/Epic Status to Done only after checking it isn't already there, and reports any skippedCrossRepo entries needing manual follow-up.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "sync_linked_issues_project_field",
+          "description": "Uses the plugin's own post-merge field-sync tool"
+        },
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "already|current|read.*before|Done.*native",
+          "description": "Checks current Status before writing Done rather than blindly overwriting it"
+        }
+      ],
+      "expectations": [
+        "sync_linked_issues_project_field is called after merge, never before",
+        "Any skippedCrossRepo issues are reported for manual follow-up, not silently dropped",
+        "Story/Epic Status rollup checks current state before writing rather than assuming it's still Todo/In Progress"
+      ]
+    }
+  ]
+}
