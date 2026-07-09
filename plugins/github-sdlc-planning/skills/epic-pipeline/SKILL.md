@@ -31,8 +31,10 @@ make this composition safe.
    `projectConfigPath` field — a debugging aid naming which config file (if
    any) resolved, useful if a later default looks wrong.
 2. Confirm auth up front, the same way the `project-setup` agent does: call
-   `get_agent_capabilities`. Board writes need a `project`-scoped classic PAT
-   or an App/fine-grained token — don't discover a `missing_scope` failure
+   `github-sdlc-planning`'s `get_agent_capabilities` (the tool name exists in
+   more than one plugin — name the plugin so the wrong capability checker
+   isn't picked). Board writes need a `project`-scoped classic PAT or an
+   App/fine-grained token — don't discover a `missing_scope` failure
    mid-pipeline after issues already exist.
 3. Parse `$ARGUMENTS` the same four ways the general-purpose command does: an
    existing issue (`#123`/URL — read its body/labels/type and call
@@ -40,8 +42,8 @@ make this composition safe.
    path, or a free-text goal; plus `--plan-only`/`--execute`. If `--execute`
    names a seed issue that already has a full Epic→Story→Task hierarchy via
    `list_sub_issues`, skip Phase 1 entirely and go straight to Phase 2 rather
-   than re-decomposing or duplicating it. No usable seed at all →
-   `AskUserQuestion` before continuing.
+   than re-decomposing or duplicating it. No usable seed at all → ask the
+   user what the plan should come from before continuing.
 4. Ground the plan: read related code/docs, search for existing coverage
    (`gh issue list --search`; `search_similar_issues` if the goal reads like
    a defect rather than new work), and note what's already true vs.
@@ -99,10 +101,13 @@ Only after explicit confirmation (or `--execute`).
      `create_issue`. If it gets resolved before the PR goes up, move it
      forward with `set_lifecycle_state` (`closeIfDone` if actually done)
      instead of leaving it at its filed state forever.
-   - Necessary work the plan didn't cover → its own `create_issue`,
-     sub-issue- or relates-to-linked back to the Task/Story/Epic, with
-     Kind/Status set in the same call — never only a PR/commit comment.
-     Track it for the final report.
+   - Necessary work the plan didn't cover → its own `create_issue`
+     (`mif.type` set appropriately), sub-issue- or relates-to-linked back to
+     the Task/Story/Epic. `create_issue` cannot set Projects v2 board fields
+     itself — follow it with `add_item_to_project` and the same
+     read-Status-before-writing `set_field_value` step Phase 1 uses for
+     Kind/Status, never only a PR/commit comment. Track it for the final
+     report.
 2. Run the repo's real gates and fix failures before opening a PR;
    cross-check failures against Phase 0's required-checks list so nothing
    here is a surprise.
@@ -111,10 +116,12 @@ Only after explicit confirmation (or `--execute`).
    - `classify_pull_request` for `type:`/`size:`/`risk:` labels.
    - `add_pull_request_to_project` to put the PR itself on the board.
    - The `pr-review-route` skill for CODEOWNERS-driven reviewer routing, on
-     confirmation; separately request Copilot review (`gh api
-     repos/<owner>/<repo>/pulls/<n>/requested_reviewers -f
-     reviewers[]=Copilot`) — Copilot only fires on a non-draft PR, so don't
-     open as draft if a Copilot pass is wanted.
+     confirmation; separately request Copilot review via the same
+     `request_review` tool (`reviewers: ["Copilot"]`) — it calls the
+     identical `requested_reviewers` REST endpoint a hand-rolled `gh api`
+     call would, so there is no reason to bypass the plugin tool here.
+     Copilot only fires on a non-draft PR, so don't open as draft if a
+     Copilot pass is wanted.
    - `get_linked_issues` to confirm — not assume — which Tasks the PR's
      `closingIssuesReferences` actually resolved (it retries; linkage
      populates asynchronously). Anything reported in `skippedCrossRepo`

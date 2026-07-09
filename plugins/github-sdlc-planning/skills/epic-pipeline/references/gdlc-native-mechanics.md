@@ -16,9 +16,12 @@ already explain.
 | `github-packages` | `list_org_packages`, `get_org_package`, `list_package_versions`, `get_package_version`, `delete_package`, `delete_package_version`, `restore_package`, `restore_package_version` |
 | `github-insights` | `get_repo_traffic_views`, `get_repo_traffic_clones`, `get_repo_contributor_stats`, `get_community_profile`, `get_dependency_graph_sbom` |
 
-The pipeline's core loop (Phases 1–2) lives in the first two rows. The
-remaining four are situational, not decorative — reach for them when the
-Epic actually calls for it, not on every run:
+The pipeline's core loop (Phases 1–2) lives in the first two rows.
+`github-bug-capture` (the third row) is used by default whenever Phase 2
+execution surfaces a defect, via `file-bug`/`set_lifecycle_state`. The
+remaining four (`github-repo-config`, `github-insights`, `github-packages`,
+`github-org-identity`) are genuinely situational, not decorative — reach for
+them when the Epic actually calls for it, not on every run:
 
 - **`github-repo-config`**: Phase 0's branch-protection read is always in
   scope. `get_repo_custom_properties`/`get_org_health_file` are worth a look
