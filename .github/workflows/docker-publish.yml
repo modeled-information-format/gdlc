@@ -24,6 +24,13 @@ name: Docker
     branches: [main]
     paths:
       - plugins/github-sdlc-planning/mcp-server/**
+      # Issue #147: the mcp-server's package.json depends on this package via
+      # a file: reference, so a change here must rebuild the image too, not
+      # only be caught the next time the mcp-server's own files change.
+      - packages/singleflight-cache/**
+      # The build context is now the repo root, so a change to what it
+      # excludes is itself a build-relevant change (Copilot review finding).
+      - .dockerignore
       - .github/workflows/docker-publish.yml
   workflow_dispatch:
 
@@ -69,7 +76,16 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: plugins/github-sdlc-planning/mcp-server
+          # Issue #147: the mcp-server's package.json depends on
+          # @github-sdlc-plugins/singleflight-cache via
+          # file:../../../packages/singleflight-cache, a monorepo-relative
+          # path that resolves outside a build context scoped to the
+          # mcp-server's own directory. The context is the repo root so
+          # that dependency is actually present to COPY; `file:` points
+          # back at the Dockerfile, which still lives alongside the
+          # service it builds.
+          context: .
+          file: plugins/github-sdlc-planning/mcp-server/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

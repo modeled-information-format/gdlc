@@ -1,0 +1,17 @@
+# The Docker build context is the repo root (issue #147, so the
+# github-sdlc-planning MCP server's file: dependency on
+# packages/singleflight-cache is actually present). This keeps that
+# context lean: excludes are scoped the same way .gitignore's own /dist
+# entry is (root-anchored, so plugins/*/mcp-server/dist and
+# packages/*/dist — which the build genuinely needs — are never matched
+# by the bare "dist" name here).
+node_modules
+.git
+/dist
+.astro
+coverage
+*.log
+.env
+.env.local
+.DS_Store
+*.tsbuildinfo
