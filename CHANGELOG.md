@@ -5,26 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-07-09
 
-### Fixed
+### Added
 
-- The `github-sdlc-planning` MCP server's Docker image build (`docker-publish.yml`)
-  no longer fails `npm ci` on every push to `main`. Its `package.json`
-  depends on `@github-sdlc-plugins/singleflight-cache` via a monorepo-relative
-  `file:` path that resolved outside the Docker build context (previously
-  scoped to the mcp-server's own directory); the context is now the repo
-  root, with a matching `.dockerignore` and a restructured `Dockerfile` that
-  mirrors the same repo-relative layout the `file:` dependency expects (#147).
-
-- `github-bug-capture`'s `hooks` pack Stop-hook diagnostic-capture no longer
-  re-triggers on every subsequent Stop event once a real failure signature
-  is found. It previously had no memory of what it had already scanned, so
-  its own prior notification (which quotes the triggering excerpt verbatim)
-  became a fresh match on the next pass, compounding a layer of
-  JSON-string-escaping each cycle. Fixed with a per-transcript high-water-mark
-  and explicit exclusion of the hook's own previously-injected output from
-  what it scans (#146).
+- New `epic-pipeline` skill on `github-sdlc-planning`: composes the full
+  plugin suite (`epic-decomposition`, `github-pull-requests`'s PR-lifecycle
+  tools, `github-bug-capture`'s `file-bug`, `github-repo-config`'s
+  branch-protection read) into one decompose-to-merged-PR pipeline,
+  replacing hand-rolled `gh api graphql`/`gh pr create` calls with the
+  plugin tools this marketplace already ships (#138).
+- New internal `packages/singleflight-cache` package: the duplicated
+  get-or-create/self-evict-on-rejection in-flight-promise-cache pattern
+  from `github-sdlc-planning` and `github-org-identity` is now one shared,
+  independently-tested implementation both consume via a `file:`
+  dependency. No behavior change for either plugin (#133).
 
 ### Changed
 
@@ -47,6 +42,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   must migrate that key into `.config/gdlc/config.yml`'s `board:` section.
   After this change, no `.claude/<plugin>.local.md` config carrier remains
   anywhere in the plugin suite (#139).
+
+### Fixed
+
+- The `github-sdlc-planning` MCP server's Docker image build (`docker-publish.yml`)
+  no longer fails `npm ci` on every push to `main`. Its `package.json`
+  depends on `@github-sdlc-plugins/singleflight-cache` via a monorepo-relative
+  `file:` path that resolved outside the Docker build context (previously
+  scoped to the mcp-server's own directory); the context is now the repo
+  root, with a matching `.dockerignore` and a restructured `Dockerfile` that
+  mirrors the same repo-relative layout the `file:` dependency expects (#147).
+- `github-bug-capture`'s `hooks` pack Stop-hook diagnostic-capture no longer
+  re-triggers on every subsequent Stop event once a real failure signature
+  is found. It previously had no memory of what it had already scanned, so
+  its own prior notification (which quotes the triggering excerpt verbatim)
+  became a fresh match on the next pass, compounding a layer of
+  JSON-string-escaping each cycle. Fixed with a per-transcript high-water-mark
+  and explicit exclusion of the hook's own previously-injected output from
+  what it scans (#146).
+- `github-org-identity`'s organization-roles tools (`list_organization_roles`
+  and the other six) now throw a typed `feature_unavailable` error, instead
+  of a generic `github_api_error`, when the target org's plan doesn't
+  support organization roles (a GitHub Enterprise Cloud-only feature) — a
+  plan-tier precondition check runs before the call, memoized per org, and
+  falls through to the real endpoint unchanged whenever the plan can't be
+  determined from the resolved identity (#129). Docs across
+  `docs/github-org-identity/` now document the fourth error code, which had
+  landed code-only (#134).
 
 ## [0.5.1] - 2026-07-07
 
