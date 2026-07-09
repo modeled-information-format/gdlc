@@ -14,9 +14,10 @@ tags:
   - configuration
   - xdg
   - plugin-composition
-status: accepted
+status: superseded
+x-superseded-by: adr-0006-eliminate-markdown-config-carriers.md
 created: 2026-07-05
-updated: 2026-07-06
+updated: 2026-07-09
 author: MIF Maintainers
 project: gdlc
 technologies:
@@ -29,13 +30,18 @@ audience:
   - maintainers
 related:
   - adr-0003-board-status-hygiene.md
+  - adr-0006-eliminate-markdown-config-carriers.md
 ---
 
 # ADR-0004: One XDG-Mirrored Path for Global and Project Config; `.claude/<plugin>.local.md` Stays Local-Only
 
 ## Status
 
-Accepted
+Superseded by [ADR-0006: Eliminate the Remaining Markdown Config
+Carriers][adr-0006], specifically for the pack-toggle carrier decision
+below. The project/global-layer path design and the `targeting`/
+`destination`/`board` schema this ADR established are unaffected and remain
+in force.
 
 ## Context
 
@@ -428,4 +434,25 @@ plan.
 **Action Required:** None for this ADR. Issues #80–#84 now implement
 against this chosen carrier and path convention.
 
+### 2026-07-09
+
+**Status:** Partial
+
+**Findings:**
+
+| Finding | Files | Lines | Assessment |
+| --- | --- | --- | --- |
+| Epic #139 reverses this ADR's pack-toggle carrier decision (`.claude/<plugin>.local.md` no longer stays local-only); the project/global-layer path design and `targeting`/`destination`/`board` schema are unaffected | - | - | partial |
+
+**Summary:** [ADR-0006](adr-0006-eliminate-markdown-config-carriers.md)
+supersedes this ADR's decision to keep `github-bug-capture`'s pack toggles
+in `.claude/github-bug-capture.local.md`, and formally closes the one-release
+window this ADR opened for the legacy `board:` key fallback. This ADR's
+original reasoning and its `.config/gdlc/config.yml` path/schema design
+remain accurate history and are not rewritten.
+
+**Action Required:** None for this ADR. See ADR-0006 for the superseding
+decision and its implementing issues (#140–#144).
+
 [adr-0003]: adr-0003-board-status-hygiene.md
+[adr-0006]: adr-0006-eliminate-markdown-config-carriers.md
