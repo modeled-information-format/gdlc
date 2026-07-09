@@ -241,9 +241,12 @@ fallback in `.claude/github-sdlc-planning.local.md` is removed outright.
   boolean>` on `GdlcConfig`, normalized the same fail-soft way as the other
   sections.
 - `github-bug-capture`'s `hooks/lib/settings.mjs` drops its markdown-frontmatter
-  parser entirely and reads the `packs:` section of `.config/gdlc/config.yml`
-  (project layer; global layer as a fallback for any pack not set at the
-  project layer), via a dependency-free reader mirroring
+  parser entirely and reads the `packs:` section of `.config/gdlc/config.yml`:
+  the project layer's `packs:` section, if present at all, replaces the
+  global layer's wholly (the same section-wise cascade `targeting`/
+  `destination`/`board` already use, not a key-by-key merge); the global
+  layer is only consulted when the project layer has no `packs:` section at
+  all. Implemented via a dependency-free reader mirroring
   `in-progress.mjs`'s `parseGdlcBoardSection`.
 - `github-sdlc-planning`'s `hooks/lib/in-progress.mjs` drops
   `readLegacyBoardConfig`/`parseBoardConfig` and the third fallback tier in
