@@ -108,6 +108,25 @@ every release after that re-pins it automatically, no manual edit needed:
   dependent plugin's `plugin.json` names the dependency explicitly with a
   `marketplace` field. Without the allowlist entry, install fails with a
   `cross-marketplace` error.
+- **Shared code with no plugin-level dependency**: not every reused
+  implementation belongs in another plugin's `dependencies[]` array. That
+  array is for referencing a sibling *plugin* — if the code you want to
+  share carries no MCP/GraphQL/domain logic of its own (a generic helper, a
+  small utility), extract it into its own package under `packages/<name>/`
+  instead (see `packages/singleflight-cache/` for a worked example, added by
+  [gdlc#130](https://github.com/modeled-information-format/gdlc/issues/130)).
+  Consuming plugins add a plain npm `file:../../../packages/<name>`
+  dependency in their `mcp-server/package.json` — no `plugin.json` change,
+  no catalog entry, since it isn't a Claude Code plugin. This matters when a
+  plugin is documented as deliberately having no dependency on a sibling
+  plugin's domain machinery (see `github-org-identity`'s
+  `docs/github-org-identity/explanation/org-identity-scope.md`): a `file:`
+  dependency on a domain-free `packages/<name>` package doesn't compromise
+  that, since it's a dependency on a generic utility, not on the sibling
+  plugin. Wire the new package's own `quality-gates.yml` job with
+  `needs: [test-singleflight-cache]`-style ordering (a "build the sibling's
+  dist/ first" step) for every consumer, matching the existing
+  `test-planning-mcp-server` chain.
 
 ## 4. Open a PR — catalog admission runs fail-closed
 

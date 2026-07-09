@@ -31096,6 +31096,17 @@ async function githubRest(path, opts = {}, deps = {}) {
   );
 }
 
+// ../../../packages/singleflight-cache/dist/index.js
+async function singleflightCache(cache, key, compute) {
+  let cached2 = cache.get(key);
+  if (!cached2) {
+    cached2 = compute();
+    cached2.catch(() => cache.delete(key));
+    cache.set(key, cached2);
+  }
+  return cached2;
+}
+
 // src/tools/roles.ts
 var orgPlanSupportCache = /* @__PURE__ */ new Map();
 var DEFINITELY_UNSUPPORTED_PLANS = /* @__PURE__ */ new Set(["free", "team", "business"]);
@@ -31114,13 +31125,7 @@ async function checkOrganizationRolesSupport(org, deps) {
   return "indeterminate";
 }
 async function assertOrganizationRolesSupported(org, deps) {
-  let cached2 = orgPlanSupportCache.get(org);
-  if (!cached2) {
-    cached2 = checkOrganizationRolesSupport(org, deps);
-    cached2.catch(() => orgPlanSupportCache.delete(org));
-    orgPlanSupportCache.set(org, cached2);
-  }
-  await cached2;
+  await singleflightCache(orgPlanSupportCache, org, () => checkOrganizationRolesSupport(org, deps));
 }
 async function organizationRolesRequest(org, path, opts, deps) {
   await assertOrganizationRolesSupported(org, deps);

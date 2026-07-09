@@ -1,5 +1,6 @@
 import { githubRest, githubGraphQL } from './github-client.js';
 import { PlanningError } from './errors.js';
+import { singleflightCache } from '@github-sdlc-plugins/singleflight-cache';
 /** AC-3: resolve GitHub node IDs before any Projects v2 mutation, never a
  * numeric issue/project number. Edge Case: name which lookup step failed. */
 export async function resolveRepositoryId(owner, repo, deps = {}) {
@@ -71,17 +72,12 @@ const ISSUE_TYPES_QUERY = `
  * projectScopeChecked pattern in github-client.ts. Unlike #105's since-removed
  * token cache, this is keyed by org login rather than the ambient credential,
  * so it isn't stale-account-prone the same way -- an org's issue types don't
- * depend on which account is asking. A failed fetch evicts itself so a
- * transient error doesn't cache forever. */
+ * depend on which account is asking. Backed by the shared singleflightCache
+ * helper (gdlc#130): a failed fetch evicts itself so a transient error
+ * doesn't cache forever. */
 const issueTypesCache = new Map();
 async function fetchIssueTypes(org, deps) {
-    let cached = issueTypesCache.get(org);
-    if (!cached) {
-        cached = githubGraphQL(ISSUE_TYPES_QUERY, { login: org }, {}, deps).then((data) => data.organization?.issueTypes?.nodes ?? []);
-        cached.catch(() => issueTypesCache.delete(org));
-        issueTypesCache.set(org, cached);
-    }
-    return cached;
+    return singleflightCache(issueTypesCache, org, () => githubGraphQL(ISSUE_TYPES_QUERY, { login: org }, {}, deps).then((data) => data.organization?.issueTypes?.nodes ?? []));
 }
 /** Test-only: clear the per-org issueTypes memoization between test cases. */
 export function resetIssueTypesCacheForTests() {

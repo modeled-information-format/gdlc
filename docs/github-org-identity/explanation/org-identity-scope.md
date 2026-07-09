@@ -51,7 +51,14 @@ This is why the plugin has no `dependencies` entry on any sibling
 plugin (confirmed in `.claude-plugin/plugin.json`): it's a pure REST
 integration against `/orgs/{org}/organization-roles/*`, with no GraphQL
 node-id resolution and nothing to compose with `github-sdlc-planning`'s or
-`github-pull-requests`' MIF/Projects-v2 machinery.
+`github-pull-requests`' MIF/Projects-v2 machinery. Its `mcp-server/package.json`
+does carry one `file:` dependency, on `@github-sdlc-plugins/singleflight-cache`
+(gdlc#130) — a small, domain-free package with a single generic caching
+helper and no MCP, GitHub, or MIF logic of its own. That's a dependency on a
+shared utility, not on a sibling plugin's domain machinery, so it doesn't
+change anything above: `github-org-identity` still has no `dependencies`
+entry in `.claude-plugin/plugin.json`, because a Claude Code plugin
+dependency and an npm-level implementation dependency are different things.
 
 ## Why the four write tools echo the role ID
 

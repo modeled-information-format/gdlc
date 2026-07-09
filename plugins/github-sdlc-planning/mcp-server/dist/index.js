@@ -38494,6 +38494,17 @@ async function githubGraphQL(query, variables = {}, opts = {}, deps = {}) {
   );
 }
 
+// ../../../packages/singleflight-cache/dist/index.js
+async function singleflightCache(cache, key, compute) {
+  let cached2 = cache.get(key);
+  if (!cached2) {
+    cached2 = compute();
+    cached2.catch(() => cache.delete(key));
+    cache.set(key, cached2);
+  }
+  return cached2;
+}
+
 // src/resolvers.ts
 async function resolveRepositoryId(owner, repo, deps = {}) {
   try {
@@ -38566,15 +38577,13 @@ var ISSUE_TYPES_QUERY = `
 `;
 var issueTypesCache = /* @__PURE__ */ new Map();
 async function fetchIssueTypes(org, deps) {
-  let cached2 = issueTypesCache.get(org);
-  if (!cached2) {
-    cached2 = githubGraphQL(ISSUE_TYPES_QUERY, { login: org }, {}, deps).then(
+  return singleflightCache(
+    issueTypesCache,
+    org,
+    () => githubGraphQL(ISSUE_TYPES_QUERY, { login: org }, {}, deps).then(
       (data) => data.organization?.issueTypes?.nodes ?? []
-    );
-    cached2.catch(() => issueTypesCache.delete(org));
-    issueTypesCache.set(org, cached2);
-  }
-  return cached2;
+    )
+  );
 }
 async function resolveIssueTypeId(org, typeName, deps = {}) {
   const nodes = await fetchIssueTypes(org, deps);
