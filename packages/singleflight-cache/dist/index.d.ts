@@ -5,5 +5,11 @@
  * compute. A rejection self-evicts its entry so the next call retries; a
  * resolved value is never evicted (no TTL) — callers that need a reset
  * (e.g. between test cases) own their `cache` Map and can clear it directly.
+ *
+ * The eviction only removes the entry if it's still the same promise this
+ * call created (Copilot review finding on gdlc#130's PR): a bare
+ * `cache.delete(key)` would otherwise let a stale rejection race a
+ * concurrent external reset (e.g. a test-reset helper clearing the cache)
+ * and delete a newer, unrelated in-flight entry for the same key.
  */
 export declare function singleflightCache<K, V>(cache: Map<K, Promise<V>>, key: K, compute: () => Promise<V>): Promise<V>;

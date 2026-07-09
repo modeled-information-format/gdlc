@@ -59,6 +59,32 @@ describe('singleflightCache', () => {
     expect(calls).toBe(2);
   });
 
+  it('does not evict a newer entry when a stale in-flight promise for the same key rejects after an external reset', async () => {
+    const cache = new Map<string, Promise<number>>();
+    let rejectFirst!: (err: Error) => void;
+    const first = singleflightCache(
+      cache,
+      'a',
+      () =>
+        new Promise<number>((_resolve, reject) => {
+          rejectFirst = reject;
+        }),
+    );
+    // Simulate an external reset (e.g. a test-reset helper's cache.clear())
+    // racing the still-pending first computation.
+    cache.clear();
+    const second = await singleflightCache(cache, 'a', async () => 99);
+    expect(second).toBe(99);
+
+    rejectFirst(new Error('late rejection'));
+    await expect(first).rejects.toThrow('late rejection');
+    // let the stale .catch() eviction microtask run
+    await Promise.resolve();
+
+    expect(cache.get('a')).toBeDefined();
+    await expect(cache.get('a')).resolves.toBe(99);
+  });
+
   it('keys entries independently', async () => {
     const cache = new Map<string, Promise<string>>();
     const computeA = vi.fn(async () => 'A');
