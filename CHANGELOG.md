@@ -41,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   working "for one release") is removed entirely. A repo still relying on it
   must migrate that key into `.config/gdlc/config.yml`'s `board:` section.
   After this change, no `.claude/<plugin>.local.md` config carrier remains
-  anywhere in the plugin suite (#139).
+  anywhere in the plugin suite (issue #139, delivered by PR #145).
 
 ### Fixed
 
@@ -51,7 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `file:` path that resolved outside the Docker build context (previously
   scoped to the mcp-server's own directory); the context is now the repo
   root, with a matching `.dockerignore` and a restructured `Dockerfile` that
-  mirrors the same repo-relative layout the `file:` dependency expects (#147).
+  mirrors the same repo-relative layout the `file:` dependency expects
+  (issue #147, fixed by PR #149).
 - `github-bug-capture`'s `hooks` pack Stop-hook diagnostic-capture no longer
   re-triggers on every subsequent Stop event once a real failure signature
   is found. It previously had no memory of what it had already scanned, so
@@ -59,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   became a fresh match on the next pass, compounding a layer of
   JSON-string-escaping each cycle. Fixed with a per-transcript high-water-mark
   and explicit exclusion of the hook's own previously-injected output from
-  what it scans (#146).
+  what it scans (issue #146, fixed by PR #148).
 - `github-org-identity`'s organization-roles tools (`list_organization_roles`
   and the other six) now throw a typed `feature_unavailable` error, instead
   of a generic `github_api_error`, when the target org's plan doesn't
