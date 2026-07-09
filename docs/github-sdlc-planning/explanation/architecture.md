@@ -3,7 +3,7 @@ id: 3c476b9f-2d8c-460f-86ed-e94ca6fd225b
 type: semantic
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-06T00:00:00Z
+modified: 2026-07-09T00:00:00Z
 title: Why github-sdlc-planning exists and how it's built
 diataxis_type: explanation
 ---
@@ -119,11 +119,9 @@ Tool call: mcp__github-sdlc-planning__{create_issue,update_issue,add_sub_issue,
      └─ set-in-progress.mjs (matcher: add_sub_issue|update_issue only)
           ├─ extractAffectedIssue(tool_input) → the issue that started work
           └─ readBoardConfig(cwd) — hooks/lib/in-progress.mjs's own
-             dependency-free cascade (ADR-0004):
+             dependency-free cascade (ADR-0004, legacy tier removed by ADR-0006):
              1. .config/gdlc/config.yml's board: section (project layer)
              2. $XDG_CONFIG_HOME/gdlc/config.yml's board: section (global)
-             3. .claude/github-sdlc-planning.local.md's board: key
-                (legacy, deprecated, one release, with a warning)
              → setIssueInProgress(...) via gh api graphql, or a silent
                no-op if no layer resolves
 ```
@@ -166,7 +164,8 @@ behavior:
 | ADR | Title | Relevance to this plugin |
 | --- | --- | --- |
 | [ADR-0003](../../decisions/adr-0003-board-status-hygiene.md) | Rely on Native Projects v2 Workflows for Status Hygiene; Add a Hook Only for the In-Progress Gap | **Directly governs this plugin.** It decided (a) `add_item_to_project` must query for an existing board item before mutating, returning `existed: true` instead of creating a duplicate — implemented in `mcp-server/src/tools/projects.ts`; and (b) the `set-in-progress` `PostToolUse` hook in this plugin's own `hooks/` directory, which fires on `add_sub_issue`/`update_issue` and calls the equivalent of `set_field_value` to move a board item to In Progress. Status: accepted, implemented, and audited compliant. |
-| [ADR-0004](../../decisions/adr-0004-project-config-surface.md) | One XDG-Mirrored Path for Global and Project Config; `.claude/<plugin>.local.md` Stays Local-Only | **Directly governs this plugin.** It decided the carrier `set-in-progress.mjs`'s board-mapping resolution now reads first — `.config/gdlc/config.yml`, mirroring `$XDG_CONFIG_HOME/gdlc/config.yml` — superseding the `board:` key this plugin previously shipped in `.claude/github-sdlc-planning.local.md` (kept working for one release as a deprecated fallback). Also governs `mcp-server/src/config.ts`, the shared loader `github-bug-capture` depends on this plugin for. Status: accepted, implemented (issues #80-84), and audited compliant. |
+| [ADR-0004](../../decisions/adr-0004-project-config-surface.md) (superseded in part by ADR-0006) | One XDG-Mirrored Path for Global and Project Config; `.claude/<plugin>.local.md` Stays Local-Only | **Directly governs this plugin.** It decided the carrier `set-in-progress.mjs`'s board-mapping resolution reads — `.config/gdlc/config.yml`, mirroring `$XDG_CONFIG_HOME/gdlc/config.yml` — superseding the `board:` key this plugin previously shipped in `.claude/github-sdlc-planning.local.md`. Also governs `mcp-server/src/config.ts`, the shared loader `github-bug-capture` depends on this plugin for. Status: accepted, implemented (issues #80-84), audited compliant, then partially superseded (see below). |
+| [ADR-0006](../../decisions/adr-0006-eliminate-markdown-config-carriers.md) | Eliminate the Remaining Markdown Config Carriers | **Directly governs this plugin.** Removed the legacy `board:` fallback tier ADR-0004 had kept "for one release" — `set-in-progress.mjs` now reads only the two `.config/gdlc/config.yml` layers, no `.claude/*.local.md` file at all. Also extends `config.ts`'s schema with a `packs:` section for `github-bug-capture`'s pack toggles. Status: accepted, implemented, audited compliant. |
 | [ADR-0001](../../decisions/adr-0001-bug-capture-layer1-core.md) | MCP-Server Core for the github-bug-capture Plugin's Agent-Neutral Layer 1 | **Not specific to this plugin.** It decides `github-bug-capture`'s own architecture. It references `github-sdlc-planning` only as prior art for the house pattern this plugin already established — no requirement in the ADR's Decision changes anything in `github-sdlc-planning`'s code. |
 | [ADR-0002](../../decisions/adr-0002-pr-issue-linkage-ownership.md) | PR-to-Issue Linkage Stays in github-pull-requests; github-bug-capture Consumes It | **Not specific to this plugin.** It settles a boundary between `github-pull-requests` and `github-bug-capture`. `github-sdlc-planning` is mentioned only as the root of the transitive dependency chain (`bug-capture → pull-requests → sdlc-planning`) whose fragility the ADR flags as a risk — it imposes no decision on this plugin's own tools. |
 

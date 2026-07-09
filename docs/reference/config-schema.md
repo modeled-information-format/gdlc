@@ -3,7 +3,7 @@ id: 20d89b34-8277-4da6-bd0f-0c2888c7a680
 type: semantic
 created: 2026-07-06T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-06T00:00:00Z
+modified: 2026-07-09T00:00:00Z
 title: Layered config schema (global + project)
 diataxis_type: reference
 ---
@@ -50,33 +50,49 @@ board:
   projectOwnerLogin: "org-or-user"
   projectNumber: 1
   projectOwnerType: "organization"  # or "user"; default "organization"
+packs:
+  hooks: true                # optional; enhancement-pack opt-in toggles
+  triage-skills: true         # (github-bug-capture: hooks, triage-skills,
+  mcp-integration: false      # mcp-integration, gh-aw today). Keyed by
+  gh-aw: false                # pack name -> boolean; unset = disabled.
 ```
 
 `targeting` and `destination` are new (issue #78's capture-scope and
 posting-destination requirements; no prior carrier existed for them).
-`board` supersedes the `board:` key previously shipped in
-`.claude/github-sdlc-planning.local.md` (see *Migration* below).
+`board` supersedes the `board:` key formerly shipped in
+`.claude/github-sdlc-planning.local.md` (see *History* below). `packs`
+supersedes `github-bug-capture`'s `packs:` map formerly shipped in
+`.claude/github-bug-capture.local.md` ([ADR-0006](../decisions/adr-0006-eliminate-markdown-config-carriers.md)):
+after that ADR, no `.claude/<plugin>.local.md` config carrier remains
+anywhere in the plugin suite.
 
 ## Cascade: project overrides global, section-wise
 
 The loader merges **per top-level section** (`targeting`, `destination`,
-`board`), not per leaf key and not deep-merged arrays: if the project file
+`board`, `packs`), not per leaf key and not deep-merged arrays: if the project file
 defines a section, that section's value from the project file is used
 whole; otherwise the global file's value for that section is used;
 otherwise the section is absent. This matches the epic's "closer-to-project
 wins" direction without an ambiguous array-concatenation rule for
 `allowRepos`/`allowOrgs`.
 
-## Migration: the legacy `board:` key
+## History: the two retired markdown carriers
 
-The config-loader (issue #82) tries `.config/gdlc/config.yml`'s `board`
-section first. If that section is absent, it falls back for one release to
-the legacy `board:` map in `.claude/github-sdlc-planning.local.md`
-(`docs/how-to/plan-work-with-the-plugins.md` step 3), emitting one
-deprecation notice on first use. `` `.claude/<plugin>.local.md` `` files
-otherwise keep their original, narrower purpose: personal, uncommitted,
-per-developer runtime toggles (e.g. github-bug-capture's `packs:` map),
-never team-shared targeting/board policy.
+Two `.claude/<plugin>.local.md` markdown carriers existed before this
+schema absorbed both of them; neither is read anymore.
+
+- **The legacy `board:` key** in `.claude/github-sdlc-planning.local.md`
+  (`docs/how-to/plan-work-with-the-plugins.md` step 3, historical). ADR-0004
+  superseded it with `.config/gdlc/config.yml`'s `board:` section and kept
+  it working "for one release" with a deprecation notice; ADR-0006 removed
+  the fallback entirely once that window closed.
+- **The `packs:` map** in `.claude/github-bug-capture.local.md`. ADR-0004
+  originally kept this local-only on purpose — a personal, uncommitted,
+  per-developer runtime toggle should not share a carrier with team-shared,
+  committed policy. [ADR-0006](../decisions/adr-0006-eliminate-markdown-config-carriers.md)
+  reversed that call explicitly, accepting the trade-off it names: pack
+  toggles are now committed, team-shared policy in `.config/gdlc/config.yml`'s
+  `packs:` section, the same as `targeting`/`destination`/`board`.
 
 ## Where the loader lives
 
@@ -105,17 +121,17 @@ already is for `github-pull-requests` — not the MCP-subprocess composition
 ADR-0002 reserves for owned business logic like PR-issue linkage. Issue
 #82/#83's implementation PR adds this edge explicitly.
 
-The one exception is `github-sdlc-planning`'s **hooks** layer
-(`hooks/lib/in-progress.mjs`), which is deliberately dependency-free (no
-`node_modules` available at hook-execution time — see
-`github-bug-capture`'s `hooks/lib/settings.mjs`, which documents the same
-constraint for its own plugin) and cannot import an npm-backed module. It
-keeps its own minimal, dependency-free reader for the `board` section of
-the new plain-YAML files, mirroring its existing hand-rolled `board:`
-frontmatter parser rather than sharing code with the MCP-server loader.
-Both readers are kept behaviorally identical on purpose (issue #83's
+The one exception is each plugin's **hooks** layer, which is deliberately
+dependency-free (no `node_modules` available at hook-execution time) and
+cannot import an npm-backed module: `github-sdlc-planning`'s
+`hooks/lib/in-progress.mjs` and `github-bug-capture`'s `hooks/lib/settings.mjs`
+each keep their own minimal, dependency-free reader (`board:` and `packs:`
+respectively) for `.config/gdlc/config.yml`'s plain-YAML sections, rather
+than sharing code with the MCP-server loader or with each other. Both
+`board:` readers are kept behaviorally identical on purpose (issue #83's
 review caught and fixed a real divergence between them) — see *Verified
-end-to-end* below.
+end-to-end* below. `settings.mjs`'s `packs:` reader (ADR-0006) mirrors the
+same parsing/resolution pattern `in-progress.mjs` proved out for `board:`.
 
 ## Verified end-to-end (issue #84)
 

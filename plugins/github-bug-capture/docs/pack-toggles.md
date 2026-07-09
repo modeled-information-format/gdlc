@@ -4,30 +4,31 @@ The research blueprint requires "zero-core-change extensibility": enabling or
 disabling an AI-enhancement pack must be one configuration change, never a
 core-code change. This marketplace installs plugins whole (there is no
 per-pack `enabledPlugins` granularity), so the control plane lives one level
-down, in the plugin-settings pattern: a per-project settings file that every
-pack checks before acting.
+down, in the shared `.config/gdlc/config.yml` layered config every pack
+checks before acting.
 
-## The settings file
+## The config file
 
-`.claude/github-bug-capture.local.md` in the consuming project. It is
-per-project, per-user state; keep it out of version control via that
-project's .gitignore or .git/info/exclude:
+`.config/gdlc/config.yml` (project layer, committed) or
+`$XDG_CONFIG_HOME/gdlc/config.yml` (global layer), same cascade as
+`targeting`/`destination`/`board` — see
+[the config schema reference](../../../docs/reference/config-schema.md).
+Originally this lived in a personal, uncommitted `.claude/github-bug-capture.local.md`
+frontmatter file; [ADR-0006](../../../docs/decisions/adr-0006-eliminate-markdown-config-carriers.md)
+moved it here explicitly, accepting the trade-off that pack toggles are now
+committed, team-shared policy rather than a personal per-developer setting:
 
-```markdown
----
+```yaml
 packs:
   hooks: false
   triage-skills: false
   mcp-integration: false
   gh-aw: false
----
-
-Notes for humans go here; only the frontmatter is machine-read.
 ```
 
 ## Semantics
 
-- **Default off, fail closed.** A missing file, a missing `packs:` map, a
+- **Default off, fail closed.** A missing file, a missing `packs:` section, a
   missing key, or an unparseable value all mean *disabled*. The Layer 1 core
   never consults this file — it is always on.
 - **Boolean values only.** `true` enables a pack; anything else disables it.
@@ -43,11 +44,18 @@ Notes for humans go here; only the frontmatter is machine-read.
 - **Read at use time, not load time.** Hooks and skills read the file on each
   invocation (`hooks/lib/settings.mjs`), so toggling takes effect without a
   plugin reload.
+- **Project layer wholly overrides global**, same as every other section in
+  this config: a `packs:` section present at the project layer replaces the
+  global one entirely rather than merging key-by-key.
 
-## Why frontmatter-in-markdown
+## Why `.config/gdlc/config.yml`
 
-It is the documented Claude Code plugin-settings convention
-(`.claude/<plugin-name>.local.md`): human-readable notes below the
-frontmatter, machine-read keys above, no new file format, no runtime
-dependency — the reader is dependency-free line parsing over a deliberately
-constrained schema (`packs:` map of `key: true|false`).
+Consistent with [ADR-0004](../../../docs/decisions/adr-0004-project-config-surface.md)'s
+structured-text-only, path-unified carrier, extended by
+[ADR-0006](../../../docs/decisions/adr-0006-eliminate-markdown-config-carriers.md)
+to also cover pack toggles: one plain-YAML file, no frontmatter wrapper, the
+same relative path suffix under both the project root and
+`$XDG_CONFIG_HOME`. `hooks/lib/settings.mjs`'s reader stays dependency-free
+(no `node_modules` at hook-execution time), mirroring the parsing/resolution
+pattern `github-sdlc-planning`'s `hooks/lib/in-progress.mjs` already proved
+out for its `board:` section.

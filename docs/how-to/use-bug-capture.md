@@ -3,7 +3,7 @@ id: 6f2a8c41-3d7e-4b95-a1c8-9e4d2f7b5a30
 type: procedural
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-06T00:00:00Z
+modified: 2026-07-09T00:00:00Z
 title: Capture and triage bugs with github-bug-capture
 diataxis_type: how-to
 ---
@@ -30,14 +30,13 @@ a classic token additionally need the `project` scope
 
 The Layer 1 tools work immediately with nothing configured. The AI
 enhancement packs are off by default; enable them per project in
-`.claude/github-bug-capture.local.md` (keep it out of version control):
+`.config/gdlc/config.yml`'s `packs:` section ([ADR-0006](../decisions/adr-0006-eliminate-markdown-config-carriers.md) —
+this is committed, team-shared policy, not a personal per-developer toggle):
 
-```markdown
----
+```yaml
 packs:
   hooks: true
   triage-skills: true
----
 ```
 
 Keys: `hooks` (failure detection in tool output), `triage-skills`
@@ -131,7 +130,7 @@ Repo-level CI automation (auto-label on open, close-keyword audit) is
 available as copyable templates:
 [workflows](../../plugins/github-bug-capture/workflows/README.md).
 
-> The legacy carrier -- a `board:` key in
-> `.claude/github-sdlc-planning.local.md` frontmatter -- still works for one
-> release as a fallback if `.config/gdlc/config.yml` has no `board:`
-> section, but is deprecated (ADR-0004); migrate when convenient.
+> The legacy `board:` key in `.claude/github-sdlc-planning.local.md`
+> frontmatter no longer works at all ([ADR-0006](../decisions/adr-0006-eliminate-markdown-config-carriers.md)
+> removed the one-release fallback ADR-0004 introduced); migrate that key
+> into `.config/gdlc/config.yml`'s `board:` section if you haven't already.

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `github-bug-capture`'s enhancement-pack toggles
+  (`hooks`/`triage-skills`/`mcp-integration`/`gh-aw`) now read
+  `.config/gdlc/config.yml`'s `packs:` section instead of
+  `.claude/github-bug-capture.local.md` frontmatter. This is a deliberate
+  reversal of ADR-0004's original "stays local-only" call
+  ([ADR-0006](docs/decisions/adr-0006-eliminate-markdown-config-carriers.md)):
+  pack toggles are now committed, team-shared policy rather than a personal,
+  uncommitted per-developer setting. Anyone with an existing
+  `.claude/github-bug-capture.local.md` must move its `packs:` map into
+  `.config/gdlc/config.yml` by hand — there is no automated fallback.
+
+### Removed
+
+- **Breaking:** `github-sdlc-planning`'s legacy `board:` key fallback in
+  `.claude/github-sdlc-planning.local.md` (deprecated by ADR-0004, kept
+  working "for one release") is removed entirely. A repo still relying on it
+  must migrate that key into `.config/gdlc/config.yml`'s `board:` section.
+  After this change, no `.claude/<plugin>.local.md` config carrier remains
+  anywhere in the plugin suite (#139).
+
 ## [0.5.1] - 2026-07-07
 
 ### Added

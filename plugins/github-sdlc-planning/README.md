@@ -3,7 +3,7 @@ id: c867194d-1baa-48c1-869e-5c8d43362ff7
 type: semantic
 created: 2026-07-03T00:00:00Z
 namespace: github-sdlc-plugins/github-sdlc-planning
-modified: 2026-07-08T00:00:00Z
+modified: 2026-07-09T00:00:00Z
 title: github-sdlc-planning
 diataxis_type: reference
 ---
@@ -82,20 +82,20 @@ behavior via an explicit tool call, never a degraded one):
 | `set-in-progress.mjs` | `PostToolUse`, `^mcp__github-sdlc-planning__(add_sub_issue|update_issue)$` | Closes the one gap GitHub's native Projects v2 workflows leave (see [ADR-0003](../../docs/decisions/adr-0003-board-status-hygiene.md)): marking an issue In Progress before a PR exists. |
 
 `set-in-progress.mjs` is gated on a board mapping, resolved by
-`hooks/lib/in-progress.mjs`'s `readBoardConfig` from three layers, in
-order (see [ADR-0004](../../docs/decisions/adr-0004-project-config-surface.md)
+`hooks/lib/in-progress.mjs`'s `readBoardConfig` from two layers, in
+order (see [ADR-0004](../../docs/decisions/adr-0004-project-config-surface.md),
+[ADR-0006](../../docs/decisions/adr-0006-eliminate-markdown-config-carriers.md),
 and [the layered config schema](../../docs/reference/config-schema.md)):
 
 1. The project layer, `.config/gdlc/config.yml`'s `board:` section
    (committed, team-shared).
 2. The global layer, `$XDG_CONFIG_HOME/gdlc/config.yml`'s `board:` section
    (default `~/.config/gdlc/config.yml`), if the project layer has none.
-3. The legacy carrier, a `board:` key in
-   `.claude/github-sdlc-planning.local.md` frontmatter (same convention as
-   `github-bug-capture`'s pack toggles; keep it out of version control via
-   the consuming project's `.gitignore` or `.git/info/exclude`) — deprecated,
-   kept working for one release, and only consulted if neither config layer
-   defines a `board:` section at all:
+
+The legacy carrier — a `board:` key in `.claude/github-sdlc-planning.local.md`
+frontmatter, kept working for one release as a deprecated fallback — was
+removed entirely by ADR-0006; a repo still relying on it must migrate the
+key into `.config/gdlc/config.yml`.
 
 ```yaml
 # .config/gdlc/config.yml (project layer; preferred)
