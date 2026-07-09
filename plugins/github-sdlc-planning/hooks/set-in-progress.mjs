@@ -6,10 +6,10 @@
 // MCP JSON-RPC session and cannot invoke set_field_value directly, so this
 // performs the identical updateProjectV2ItemFieldValue mutation via
 // `gh api graphql`, the same graceful-degradation path session-start.mjs
-// documents. Config-gated on .claude/github-sdlc-planning.local.md; every
-// failure path (gh missing, auth failure, GraphQL error, malformed stdin,
-// unconfigured board) is a silent no-op. A hook must never break the tool
-// call it observes.
+// documents. Config-gated on .config/gdlc/config.yml's board: section
+// (ADR-0004/ADR-0006); every failure path (gh missing, auth failure,
+// GraphQL error, malformed stdin, unconfigured board) is a silent no-op.
+// A hook must never break the tool call it observes.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { readBoardConfig, extractAffectedIssue, setIssueInProgress, buildAdditionalContext } from './lib/in-progress.mjs';

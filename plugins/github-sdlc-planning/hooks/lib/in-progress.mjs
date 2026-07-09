@@ -16,7 +16,6 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 
-const SETTINGS_RELPATH = join('.claude', 'github-sdlc-planning.local.md');
 const GDLC_CONFIG_RELPATH = join('gdlc', 'config.yml');
 
 /** Same relative suffix as the mcp-server's config.ts (issue #82) -- this
@@ -177,71 +176,19 @@ export function readGdlcConfigBoardSection(path) {
   return resolveGdlcLayerBoard(path).board;
 }
 
-/** Parse the `board:` map out of the settings-file frontmatter. Returns a
- * plain string-keyed map (values as raw strings) or `null` if the file isn't
- * frontmatter-shaped at all. Exported for tests. */
-export function parseBoardConfig(text) {
-  const lines = String(text).split(/\r?\n/);
-  if (lines[0] !== '---') return null;
-  let inBoard = false;
-  const board = {};
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (line === '---') break;
-    if (/^board:\s*$/.test(line)) {
-      inBoard = true;
-      continue;
-    }
-    if (inBoard) {
-      const m = /^ {2}([a-zA-Z][a-zA-Z0-9]*):\s*(.+?)\s*$/.exec(line);
-      if (m) {
-        board[m[1]] = m[2].replace(/^["']|["']$/g, '');
-        continue;
-      }
-      // A malformed indented entry is skipped; the first non-indented line
-      // ends the map, same convention as github-bug-capture's pack-toggles.
-      if (/^ {2}\S/.test(line)) continue;
-      inBoard = false;
-    }
-  }
-  return board;
-}
-
-/** Read the legacy `.claude/github-sdlc-planning.local.md` `board:`
- * frontmatter key. Exported for tests; superseded by
- * `.config/gdlc/config.yml` (ADR-0004) -- see `readBoardConfig`.
- *
- * Deliberately NOT covered by #106/ADR-0005's upward search (impartial-review
- * finding): this carrier is a different file (`.claude/*.local.md`, not
- * `.config/gdlc/config.yml`) that would need its own independent climb to
- * benefit the same way, and it is already scheduled for removal "for one
- * release" per the deprecation notice below -- not worth the added search
- * machinery for a carrier on its way out. A repo still on this carrier gets
- * the pre-#106 cwd-exact behavior; migrating to `.config/gdlc/config.yml`
- * gets the upward-search improvement for free. */
-export function readLegacyBoardConfig(cwd = process.cwd()) {
-  let text;
-  try {
-    text = readFileSync(join(cwd, SETTINGS_RELPATH), 'utf8');
-  } catch {
-    return null;
-  }
-  return validateBoardConfig(parseBoardConfig(text));
-}
-
 /** Fail-closed by design: no configured layer, a missing `board:` map, or
  * a malformed `projectNumber`/`projectOwnerType` at every layer all mean
  * "not configured" (`null`) rather than a thrown error. A hook must never
  * break the tool call it observes.
  *
- * Resolution order (ADR-0004's migration plan, issue #83): the project
- * layer's `.config/gdlc/config.yml` `board:` section -- searched upward
- * from `cwd` toward the filesystem root (issue #106 / ADR-0005), not just
- * at the literal `cwd` -- then the global layer's
- * `$XDG_CONFIG_HOME/gdlc/config.yml` `board:` section, then -- for one
- * release -- the legacy `.claude/github-sdlc-planning.local.md` `board:`
- * key, emitting one deprecation notice via `warn` when that legacy
- * fallback is what resolved it.
+ * Resolution order (ADR-0004's original design, ADR-0006 removes the third
+ * tier): the project layer's `.config/gdlc/config.yml` `board:` section --
+ * searched upward from `cwd` toward the filesystem root (issue #106 /
+ * ADR-0005), not just at the literal `cwd` -- then the global layer's
+ * `$XDG_CONFIG_HOME/gdlc/config.yml` `board:` section. The legacy
+ * `.claude/github-sdlc-planning.local.md` `board:` key fallback ADR-0004
+ * kept "for one release" is removed as of ADR-0006; a repo still relying on
+ * it must migrate its `board:` key into `.config/gdlc/config.yml`.
  *
  * A layer whose `board:` key is present but incomplete/invalid stops the
  * cascade there (returning `null`) rather than falling through to the
@@ -250,27 +197,13 @@ export function readLegacyBoardConfig(cwd = process.cwd()) {
  * or not. Falling through on partial-but-present data would let the same
  * config file resolve to different board coordinates depending on whether
  * this hook or an mcp-server tool call read it. */
-export function readBoardConfig(
-  cwd = process.cwd(),
-  env = process.env,
-  warn = (msg) => process.stderr.write(`${msg}\n`),
-  existsFn = existsSync,
-) {
+export function readBoardConfig(cwd = process.cwd(), env = process.env, existsFn = existsSync) {
   const projectPath = resolveGdlcProjectConfigPath(cwd, existsFn, env);
   const project = projectPath === null ? { present: false, board: null } : resolveGdlcLayerBoard(projectPath);
   if (project.present) return project.board;
 
   const global = resolveGdlcLayerBoard(resolveGdlcConfigPath(resolveGlobalGdlcConfigRoot(env)));
-  if (global.present) return global.board;
-
-  const fromLegacy = readLegacyBoardConfig(cwd);
-  if (fromLegacy !== null) {
-    warn(
-      'Deprecation: board: in .claude/github-sdlc-planning.local.md is superseded by ' +
-        'the board: section of .config/gdlc/config.yml (ADR-0004). Migrate when convenient.',
-    );
-  }
-  return fromLegacy;
+  return global.board;
 }
 
 const RELEVANT_TOOLS = new Set([

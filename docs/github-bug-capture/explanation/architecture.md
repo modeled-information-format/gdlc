@@ -3,7 +3,7 @@ id: 02e64942-43c2-4f11-b70c-fcc3625aec52
 type: semantic
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-05T00:00:00Z
+modified: 2026-07-09T00:00:00Z
 title: Why github-bug-capture is shaped the way it is
 diataxis_type: explanation
 ---
@@ -48,9 +48,12 @@ The result is two layers with different guarantees:
 - **Layer 2 — progressive-enhancement packs**: Claude Code skills
   (`skills/file-bug`, `skills/triage`, `skills/dedup-check`), a hooks
   library (`hooks/`, gated by the fail-closed pack-toggle reader in
-  `hooks/lib/settings.mjs` over `.claude/github-bug-capture.local.md`
-  frontmatter — missing file, missing key, or any non-`true` value all mean
-  disabled), and two sets of copy-in templates: `workflows/` (Actions
+  `hooks/lib/settings.mjs` over `.config/gdlc/config.yml`'s `packs:`
+  section — missing file, missing section, missing key, or any non-`true`
+  value all mean disabled; [ADR-0006](../../decisions/adr-0006-eliminate-markdown-config-carriers.md)
+  moved this off the retired `.claude/github-bug-capture.local.md` carrier,
+  making pack toggles committed team policy rather than a personal
+  per-developer setting), and two sets of copy-in templates: `workflows/` (Actions
   IssueOps templates — auto-label, close-keyword audit) and
   `workflows-gh-aw/` (a GitHub Agentic Workflows batch-triage template,
   explicitly marked technical preview). None of these Layer 2 surfaces ship

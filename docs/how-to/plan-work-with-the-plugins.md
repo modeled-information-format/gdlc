@@ -3,7 +3,7 @@ id: 8b5d1e73-6a2f-4c08-b9d4-2f7e9a1c6d52
 type: procedural
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-08T00:00:00Z
+modified: 2026-07-09T00:00:00Z
 title: Plan and track work with the planning and PR plugins
 diataxis_type: how-to
 ---
@@ -71,10 +71,10 @@ on close/merge. The same mapping also fills in `projectOwnerLogin`/
 `projectNumber` on `add_item_to_project`/`set_field_value`/
 `get_project_items`/`get_session_context` when a call omits them.
 
-> The legacy carrier -- a `board:` key in
-> `.claude/github-sdlc-planning.local.md` frontmatter -- still works for one
-> release as a fallback if `.config/gdlc/config.yml` has no `board:`
-> section, but is deprecated (ADR-0004); migrate when convenient.
+> The legacy `board:` key in `.claude/github-sdlc-planning.local.md`
+> frontmatter no longer works at all ([ADR-0006](../decisions/adr-0006-eliminate-markdown-config-carriers.md)
+> removed the one-release fallback ADR-0004 introduced); migrate that key
+> into `.config/gdlc/config.yml`'s `board:` section if you haven't already.
 
 ## 4. Open, classify, and route the PR
 

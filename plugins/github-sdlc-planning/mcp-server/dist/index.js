@@ -39096,6 +39096,13 @@ function normalizeConfig(parsed) {
     if (projectOwnerType === "organization" || projectOwnerType === "user") board.projectOwnerType = projectOwnerType;
     if (Object.keys(board).length > 0) config2.board = board;
   }
+  if (isPlainObject3(parsed.packs)) {
+    const packs = {};
+    for (const [key, value] of Object.entries(parsed.packs)) {
+      if (typeof value === "boolean") packs[key] = value;
+    }
+    if (Object.keys(packs).length > 0) config2.packs = packs;
+  }
   return config2;
 }
 function loadConfigFile(path) {

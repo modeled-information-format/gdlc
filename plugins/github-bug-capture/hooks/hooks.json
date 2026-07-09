@@ -1,5 +1,5 @@
 {
-  "description": "Hooks-pack (issue #39, opt-in via .claude/github-bug-capture.local.md's packs.hooks): scans Bash tool output and the end-of-turn transcript for common test/lint/build failure signatures, and surfaces the file-bug skill as additionalContext when one is found. Always a safe no-op when the pack is disabled or no failure signature is found; never calls MCP tools itself.",
+  "description": "Hooks-pack (issue #39, opt-in via .config/gdlc/config.yml's packs.hooks section): scans Bash tool output and the end-of-turn transcript for common test/lint/build failure signatures, and surfaces the file-bug skill as additionalContext when one is found. Always a safe no-op when the pack is disabled or no failure signature is found; never calls MCP tools itself.",
   "hooks": {
     "PostToolUse": [
       {

@@ -109,6 +109,15 @@ function normalizeConfig(parsed) {
         if (Object.keys(board).length > 0)
             config.board = board;
     }
+    if (isPlainObject(parsed.packs)) {
+        const packs = {};
+        for (const [key, value] of Object.entries(parsed.packs)) {
+            if (typeof value === 'boolean')
+                packs[key] = value;
+        }
+        if (Object.keys(packs).length > 0)
+            config.packs = packs;
+    }
     return config;
 }
 /** Read and parse one layer's `gdlc/config.yml`. A missing file, an
@@ -241,5 +250,12 @@ export function isRepoAllowed(config, owner, repo) {
     if (allowOrgs?.includes(owner))
         return true;
     return false;
+}
+/** Fail-closed by design (ADR-0006): a missing `packs` section, a missing
+ * key, or a non-`true` value all mean disabled. Matches the fail-closed
+ * contract `github-bug-capture`'s hooks-layer reader implements
+ * independently (dependency-free, so it can't import this module). */
+export function isPackEnabled(config, pack) {
+    return config.packs?.[pack] === true;
 }
 //# sourceMappingURL=config.js.map

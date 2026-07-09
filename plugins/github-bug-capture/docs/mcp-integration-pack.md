@@ -39,8 +39,8 @@ the four-pack control plane for blueprint traceability and forward
 compatibility, but it is documentation-only in this deviation: the
 Layer 1 MCP server never consults it (Layer 1 is never gated by any pack
 toggle — see `hooks/lib/settings.mjs`'s header comment), and no Layer 2 code
-branches on it. Setting `mcp-integration: true` in
-`.claude/github-bug-capture.local.md` records that a consumer is relying on
+branches on it. Setting `mcp-integration: true` in `.config/gdlc/config.yml`'s
+`packs:` section records that a consumer is relying on
 the bundled MCP wiring as their integration surface; setting it `false`
 changes nothing observable, since the server still starts. If a future
 gh-wrapper-first consumer genuinely needs to run Layer 1 with no MCP runtime
