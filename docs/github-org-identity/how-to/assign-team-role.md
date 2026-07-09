@@ -3,7 +3,7 @@ id: 625e08b5-387b-4106-a7e6-b07a1ef662e4
 type: procedural
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-05T00:00:00Z
+modified: 2026-07-08T00:00:00Z
 title: Assign an organization role to a team
 diataxis_type: how-to
 ---
@@ -52,6 +52,8 @@ before.
 - `confirmation_mismatch` — `roleId` and `confirmRoleId` didn't match; no
   API call was made. Retry with the same value in both fields.
 - `missing_scope` — no resolvable token.
+- `feature_unavailable` — the org's plan doesn't support organization
+  roles (a GitHub Enterprise Cloud feature).
 - `github_api_error` — the `roleId` or `teamSlug` doesn't exist, or the
   identity lacks org-roles write access.
 

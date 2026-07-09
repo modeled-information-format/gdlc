@@ -3,7 +3,7 @@ id: 73a7b3ee-249b-483f-8484-368b35860414
 type: procedural
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-05T00:00:00Z
+modified: 2026-07-08T00:00:00Z
 title: List the users holding an organization role
 diataxis_type: how-to
 ---
@@ -38,6 +38,8 @@ membership.
 ## If the call fails
 
 - `missing_scope` — no resolvable token.
+- `feature_unavailable` — the org's plan doesn't support organization
+  roles (a GitHub Enterprise Cloud feature).
 - `github_api_error` — the `roleId` doesn't exist in this org, or the
   identity lacks org-roles read access.
 

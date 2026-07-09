@@ -3,7 +3,7 @@ id: f8324566-2155-4df6-a09c-afda2d725cc6
 type: semantic
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-05T00:00:00Z
+modified: 2026-07-08T00:00:00Z
 title: github-org-identity MCP tools
 diataxis_type: reference
 ---
@@ -121,9 +121,13 @@ Returns `{ org, roleId, username }` on success (`DELETE` to
 ## Errors
 
 On failure, a tool returns either a structured `OrgIdentityError` with one
-of three codes — `github_api_error` (any non-2xx GitHub response, status
+of four codes — `github_api_error` (any non-2xx GitHub response, status
 included), `missing_scope` (no resolvable `GITHUB_TOKEN`/`gh auth token`),
-or `confirmation_mismatch` (write tools only, `roleId` != `confirmRoleId`)
-— or, for an error that isn't an `OrgIdentityError` instance (an
-unclassified failure that escaped typing), the generic fallback
-`{ error: "github_api_error", message }`.
+`confirmation_mismatch` (write tools only, `roleId` != `confirmRoleId`), or
+`feature_unavailable` (the org is on a plan that doesn't support
+organization roles — a GitHub Enterprise Cloud feature — detected by a
+plan check that runs before the underlying GitHub API request; an
+indeterminate plan, including one the resolved identity can't read, falls
+through to the real endpoint instead of guessing) — or, for an error that
+isn't an `OrgIdentityError` instance (an unclassified failure that escaped
+typing), the generic fallback `{ error: "github_api_error", message }`.

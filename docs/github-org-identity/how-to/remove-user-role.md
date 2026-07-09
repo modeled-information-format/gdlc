@@ -3,7 +3,7 @@ id: 65cc46a4-6c3e-4272-9769-45e32f443d80
 type: procedural
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-05T00:00:00Z
+modified: 2026-07-08T00:00:00Z
 title: Remove an organization role from a user
 diataxis_type: how-to
 ---
@@ -52,6 +52,8 @@ before.
 - `confirmation_mismatch` — `roleId` and `confirmRoleId` didn't match; no
   API call was made.
 - `missing_scope` — no resolvable token.
+- `feature_unavailable` — the org's plan doesn't support organization
+  roles (a GitHub Enterprise Cloud feature).
 - `github_api_error` — the `roleId` doesn't exist, the `username` isn't an
   org member, or the identity lacks org-roles write access.
 

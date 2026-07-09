@@ -3,7 +3,7 @@ id: aa42c86c-624d-417e-85d5-aaaa7ec39b2d
 type: procedural
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-05T00:00:00Z
+modified: 2026-07-08T00:00:00Z
 title: Remove an organization role from a team
 diataxis_type: how-to
 ---
@@ -49,6 +49,8 @@ before.
 - `confirmation_mismatch` — `roleId` and `confirmRoleId` didn't match; no
   API call was made.
 - `missing_scope` — no resolvable token.
+- `feature_unavailable` — the org's plan doesn't support organization
+  roles (a GitHub Enterprise Cloud feature).
 - `github_api_error` — the `roleId` or `teamSlug` doesn't exist, or the
   identity lacks org-roles write access.
 
