@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `github-bug-capture`'s `hooks` pack Stop-hook diagnostic-capture no longer
+  re-triggers on every subsequent Stop event once a real failure signature
+  is found. It previously had no memory of what it had already scanned, so
+  its own prior notification (which quotes the triggering excerpt verbatim)
+  became a fresh match on the next pass, compounding a layer of
+  JSON-string-escaping each cycle. Fixed with a per-transcript high-water-mark
+  and explicit exclusion of the hook's own previously-injected output from
+  what it scans (#146).
+
 ### Changed
 
 - **Breaking:** `github-bug-capture`'s enhancement-pack toggles
