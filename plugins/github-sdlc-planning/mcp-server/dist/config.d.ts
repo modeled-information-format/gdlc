@@ -24,6 +24,11 @@ export interface GdlcConfig {
         repo?: string;
     };
     board?: BoardConfig;
+    /** Enhancement-pack opt-in toggles (ADR-0006), keyed by pack name
+     * (e.g. `hooks`, `triage-skills`, `mcp-integration`, `gh-aw` for
+     * github-bug-capture today). Supersedes the legacy `packs:` map in
+     * `.claude/github-bug-capture.local.md`. */
+    packs?: Record<string, boolean>;
 }
 /** Same relative suffix under either root -- the one path rule both layers
  * share (ADR-0004's primary decision driver #2). */
@@ -128,3 +133,8 @@ export declare function resolveDestinationRepo(config: GdlcConfig): {
  * restriction), or when `owner/repo` matches `allowRepos` or `owner`
  * matches `allowOrgs`. */
 export declare function isRepoAllowed(config: GdlcConfig, owner: string, repo: string): boolean;
+/** Fail-closed by design (ADR-0006): a missing `packs` section, a missing
+ * key, or a non-`true` value all mean disabled. Matches the fail-closed
+ * contract `github-bug-capture`'s hooks-layer reader implements
+ * independently (dependency-free, so it can't import this module). */
+export declare function isPackEnabled(config: GdlcConfig, pack: string): boolean;

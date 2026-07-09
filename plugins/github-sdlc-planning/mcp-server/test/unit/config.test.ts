@@ -13,6 +13,7 @@ import {
   resolveBoardCoordinates,
   resolveDestinationRepo,
   isRepoAllowed,
+  isPackEnabled,
 } from '../../src/config.js';
 
 function tmpDir(): string {
@@ -76,6 +77,9 @@ describe('loadConfigFile', () => {
         '  projectOwnerLogin: acme',
         '  projectNumber: 3',
         '  projectOwnerType: organization',
+        'packs:',
+        '  hooks: true',
+        '  gh-aw: false',
         '',
       ].join('\n'),
     );
@@ -83,7 +87,20 @@ describe('loadConfigFile', () => {
       targeting: { allowRepos: ['acme/widgets'], allowOrgs: ['acme'] },
       destination: { repo: 'acme/central' },
       board: { projectOwnerLogin: 'acme', projectNumber: 3, projectOwnerType: 'organization' },
+      packs: { hooks: true, 'gh-aw': false },
     });
+  });
+
+  it('ADR-0006: drops non-boolean packs entries rather than throwing', () => {
+    const root = tmpDir();
+    writeConfig(root, ['packs:', '  hooks: "yes"', '  gh-aw: false', ''].join('\n'));
+    expect(loadConfigFile(resolveConfigPath(root))).toEqual({ packs: { 'gh-aw': false } });
+  });
+
+  it('ADR-0006: omits packs entirely when every entry is malformed', () => {
+    const root = tmpDir();
+    writeConfig(root, ['packs:', '  hooks: "yes"', ''].join('\n'));
+    expect(loadConfigFile(resolveConfigPath(root))).toEqual({});
   });
 
   it('drops unrecognized targeting/destination/board fields rather than throwing', () => {
@@ -201,6 +218,12 @@ describe('mergeConfigs', () => {
   it('falls back to global board alone when project has none', () => {
     const global = { board: { projectOwnerLogin: 'acme', projectNumber: 2 } };
     expect(mergeConfigs(global, {})).toEqual({ board: { projectOwnerLogin: 'acme', projectNumber: 2 } });
+  });
+
+  it('ADR-0006: takes project packs wholly over global when both define it', () => {
+    const global = { packs: { hooks: true, 'gh-aw': true } };
+    const project = { packs: { 'triage-skills': true } };
+    expect(mergeConfigs(global, project)).toEqual({ packs: { 'triage-skills': true } });
   });
 });
 
@@ -414,5 +437,20 @@ describe('isRepoAllowed', () => {
 
   it('rejects a repo not present in either allowlist', () => {
     expect(isRepoAllowed({ targeting: { allowRepos: ['acme/widgets'], allowOrgs: ['other-org'] } }, 'acme', 'gadgets')).toBe(false);
+  });
+});
+
+describe('isPackEnabled', () => {
+  it('ADR-0006: is fail-closed when no packs section is configured', () => {
+    expect(isPackEnabled({}, 'hooks')).toBe(false);
+  });
+
+  it('ADR-0006: is fail-closed when the pack key is absent', () => {
+    expect(isPackEnabled({ packs: { hooks: true } }, 'gh-aw')).toBe(false);
+  });
+
+  it('ADR-0006: is true only when the pack is explicitly true', () => {
+    expect(isPackEnabled({ packs: { hooks: true, 'gh-aw': false } }, 'hooks')).toBe(true);
+    expect(isPackEnabled({ packs: { hooks: true, 'gh-aw': false } }, 'gh-aw')).toBe(false);
   });
 });

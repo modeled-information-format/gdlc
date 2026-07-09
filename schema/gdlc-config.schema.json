@@ -38,13 +38,18 @@
     "board": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Project-to-org-project-board mapping. Supersedes the legacy board: key in .claude/github-sdlc-planning.local.md (ADR-0004).",
+      "description": "Project-to-org-project-board mapping. Supersedes the legacy board: key formerly in .claude/github-sdlc-planning.local.md (ADR-0004; that fallback is removed as of ADR-0006).",
       "properties": {
         "projectOwnerLogin": { "type": "string", "minLength": 1 },
         "projectNumber": { "type": "integer", "minimum": 1 },
         "projectOwnerType": { "type": "string", "enum": ["organization", "user"], "default": "organization" }
       },
       "required": ["projectOwnerLogin", "projectNumber"]
+    },
+    "packs": {
+      "type": "object",
+      "description": "Enhancement-pack opt-in toggles (github-bug-capture: hooks, triage-skills, mcp-integration, gh-aw today). Supersedes the legacy packs: map in .claude/github-bug-capture.local.md (ADR-0006). additionalProperties is deliberately open so a plugin can add a new pack name without a schema change; each value must still be a boolean.",
+      "additionalProperties": { "type": "boolean" }
     }
   }
 }
