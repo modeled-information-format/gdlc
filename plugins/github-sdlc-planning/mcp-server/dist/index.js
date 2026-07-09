@@ -38496,13 +38496,16 @@ async function githubGraphQL(query, variables = {}, opts = {}, deps = {}) {
 
 // ../../../packages/singleflight-cache/dist/index.js
 async function singleflightCache(cache, key, compute) {
-  let cached2 = cache.get(key);
-  if (!cached2) {
-    cached2 = compute();
-    cached2.catch(() => cache.delete(key));
-    cache.set(key, cached2);
-  }
-  return cached2;
+  const existing = cache.get(key);
+  if (existing)
+    return existing;
+  const created = compute();
+  created.catch(() => {
+    if (cache.get(key) === created)
+      cache.delete(key);
+  });
+  cache.set(key, created);
+  return created;
 }
 
 // src/resolvers.ts
