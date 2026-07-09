@@ -66,18 +66,22 @@ never assumes either way:
   fields (a "Shipped in" iteration, a release column), not a second
   Done-setter; don't conflate the two.
 
-## Config layering (ADR-0004 / ADR-0005)
+## Config layering (ADR-0004 / ADR-0005 / ADR-0006)
 
-`destination.repo` and `board.{projectOwnerLogin,projectNumber,
-projectOwnerType}` resolve from two YAML layers, project overriding global,
-per top-level section:
+`destination.repo`, `board.{projectOwnerLogin,projectNumber,
+projectOwnerType}`, and (as of ADR-0006) `packs.*` all resolve from the same
+two YAML layers, project overriding global, per top-level section:
 
 1. Project layer: `<projectRoot>/.config/gdlc/config.yml` (committed,
    team-shared).
 2. Global layer: `$XDG_CONFIG_HOME/gdlc/config.yml` (default
    `~/.config/gdlc/config.yml`).
-3. Legacy fallback (one release only, deprecated): a `board:` key in
-   `.claude/github-sdlc-planning.local.md`.
+
+No third, `.claude/<plugin>.local.md`-based fallback exists anywhere in the
+plugin suite as of ADR-0006 — the legacy `board:` key fallback ADR-0004 kept
+"for one release" was removed outright, and `github-bug-capture`'s pack
+toggles moved here from their own previously-personal, uncommitted markdown
+carrier.
 
 Omit `owner`/`repo` or `projectOwnerLogin`/`projectNumber` on a tool call to
 let this resolution fill them in — but only ever omit both of a pair, never
