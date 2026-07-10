@@ -12,6 +12,7 @@ import {
   checkStatusProgression,
   scanTranscriptForComment,
   checkLifecycleComment,
+  resolveItemIdentity,
   checkSubIssueLinkage,
   runHygieneChecks,
   buildAdditionalContext,
@@ -200,6 +201,38 @@ describe('extractTouch', () => {
     expect(closed).toMatchObject({ action: 'update_issue', number: 6, closing: true });
   });
 
+  it('captures itemId from tool_input for a set_field_value touch, leaving owner/repo/number null', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-sdlc-planning__set_field_value', tool_input: { itemId: 'PVTI_from_input', fieldId: 'PVTSSF_x', value: { kind: 'text', text: 'v' } } },
+      null,
+    );
+    expect(touch).toMatchObject({ action: 'set_field_value', owner: null, repo: null, number: null, itemId: 'PVTI_from_input' });
+  });
+
+  it('falls back to tool_output.itemId when tool_input carries none (Copilot review finding on PR #174) -- SetFieldValueResult echoes itemId back too', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-sdlc-planning__set_field_value', tool_input: {}, tool_output: { itemId: 'PVTI_from_output' } },
+      null,
+    );
+    expect(touch).toMatchObject({ action: 'set_field_value', itemId: 'PVTI_from_output' });
+  });
+
+  it('prefers tool_input.itemId over tool_output.itemId when both are present', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-sdlc-planning__set_field_value', tool_input: { itemId: 'PVTI_from_input' }, tool_output: { itemId: 'PVTI_from_output' } },
+      null,
+    );
+    expect(touch).toMatchObject({ itemId: 'PVTI_from_input' });
+  });
+
+  it('leaves itemId null for a non-set_field_value action, even if tool_input/tool_output happen to carry that key', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-sdlc-planning__update_issue', tool_input: { owner: 'acme', repo: 'widgets', number: 1, itemId: 'PVTI_irrelevant' } },
+      null,
+    );
+    expect(touch).toMatchObject({ action: 'update_issue', itemId: null });
+  });
+
   it('is never miscategorized as a comment action -- issue_write has no comment-posting semantics', () => {
     // Confirms the fix for the finding that issue_write was previously in
     // COMMENT_ACTIONS: an issue_write touch on an Epic with zero sub-issues
@@ -334,37 +367,119 @@ describe('scanTranscriptForComment', () => {
 });
 
 describe('checkLifecycleComment', () => {
-  it('resolves with no findings for a non-transition action', () => {
-    const result = checkLifecycleComment({ action: 'gh_command', owner: 'acme', repo: 'widgets', number: 1 }, undefined);
+  it('resolves with no findings for a non-transition action', async () => {
+    const result = await checkLifecycleComment({ action: 'gh_command', owner: 'acme', repo: 'widgets', number: 1 }, undefined);
     expect(result).toEqual({ resolved: true, findings: [] });
   });
 
-  it('flags a transition with no comment found this turn', () => {
+  it('flags a transition with no comment found this turn', async () => {
     const path = tmpTranscriptWith([]);
-    const result = checkLifecycleComment({ action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 }, path);
+    const result = await checkLifecycleComment({ action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 }, path);
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0]).toContain('acme/widgets#1');
   });
 
-  it('does not flag a transition when a comment was found', () => {
+  it('does not flag a transition when a comment was found', async () => {
     const path = tmpTranscriptWith([
       { tool_name: 'mcp__github__add_issue_comment', tool_input: { owner: 'acme', repo: 'widgets', issue_number: 1 } },
     ]);
-    const result = checkLifecycleComment({ action: 'set_field_value', owner: 'acme', repo: 'widgets', number: 1 }, path);
+    const result = await checkLifecycleComment({ action: 'set_field_value', owner: 'acme', repo: 'widgets', number: 1 }, path);
     expect(result).toEqual({ resolved: true, findings: [] });
   });
 
-  it('is a silent no-op when the transcript cannot be read', () => {
-    const result = checkLifecycleComment({ action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 }, '/nonexistent/x.jsonl');
+  it('is a silent no-op when the transcript cannot be read', async () => {
+    const result = await checkLifecycleComment({ action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 }, '/nonexistent/x.jsonl');
     expect(result).toEqual({ resolved: true, findings: [] });
   });
 
-  it('fires identically for a gh-cli-surfaced update_issue touch (gh issue edit) as for the MCP-tool surface', () => {
+  it('fires identically for a gh-cli-surfaced update_issue touch (gh issue edit) as for the MCP-tool surface', async () => {
     const ghCliTouch = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh issue edit 1 --add-label bug' } }, { owner: 'acme', repo: 'widgets' });
     const path = tmpTranscriptWith([]);
-    const result = checkLifecycleComment(ghCliTouch, path);
+    const result = await checkLifecycleComment(ghCliTouch, path);
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0]).toContain('acme/widgets#1');
+  });
+
+  it('resolves a set_field_value touch\'s itemId to owner/repo/number via GraphQL before scanning (issue #172 fix)', async () => {
+    const path = tmpTranscriptWith([]);
+    const runGraphQL = async (_query, vars) => {
+      expect(vars).toEqual({ itemId: 'PVTI_abc123' });
+      return { node: { content: { number: 1, repository: { owner: { login: 'acme' }, name: 'widgets' } } } };
+    };
+    const touch = { action: 'set_field_value', owner: null, repo: null, number: null, itemId: 'PVTI_abc123' };
+    const result = await checkLifecycleComment(touch, path, undefined, runGraphQL);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toContain('acme/widgets#1');
+  });
+
+  it('does not flag a set_field_value touch when a comment for the resolved issue was found', async () => {
+    const path = tmpTranscriptWith([
+      { tool_name: 'mcp__github__add_issue_comment', tool_input: { owner: 'acme', repo: 'widgets', issue_number: 1 } },
+    ]);
+    const runGraphQL = async () => ({ node: { content: { number: 1, repository: { owner: { login: 'acme' }, name: 'widgets' } } } });
+    const touch = { action: 'set_field_value', owner: null, repo: null, number: null, itemId: 'PVTI_abc123' };
+    const result = await checkLifecycleComment(touch, path, undefined, runGraphQL);
+    expect(result).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('fails open (no finding, never a guess) when itemId resolution cannot determine owner/repo/number', async () => {
+    const path = tmpTranscriptWith([]);
+    const runGraphQL = async () => ({ node: { content: null } }); // e.g. a Draft Issue item
+    const touch = { action: 'set_field_value', owner: null, repo: null, number: null, itemId: 'PVTI_abc123' };
+    const result = await checkLifecycleComment(touch, path, undefined, runGraphQL);
+    expect(result).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('fails open when the itemId-resolution GraphQL call itself throws', async () => {
+    const path = tmpTranscriptWith([]);
+    const runGraphQL = async () => {
+      throw new Error('rate limited');
+    };
+    const touch = { action: 'set_field_value', owner: null, repo: null, number: null, itemId: 'PVTI_abc123' };
+    const result = await checkLifecycleComment(touch, path, undefined, runGraphQL);
+    expect(result).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('does not attempt identity resolution for a set_field_value touch with no itemId at all', async () => {
+    const path = tmpTranscriptWith([]);
+    const runGraphQL = async () => {
+      throw new Error('should never be called');
+    };
+    const touch = { action: 'set_field_value', owner: null, repo: null, number: null, itemId: null };
+    const result = await checkLifecycleComment(touch, path, undefined, runGraphQL);
+    expect(result).toEqual({ resolved: true, findings: [] });
+  });
+});
+
+describe('resolveItemIdentity', () => {
+  it('resolves an Issue-backed project item to owner/repo/number', async () => {
+    const runGraphQL = async (_query, vars) => {
+      expect(vars).toEqual({ itemId: 'PVTI_x' });
+      return { node: { content: { number: 42, repository: { owner: { login: 'acme' }, name: 'widgets' } } } };
+    };
+    expect(await resolveItemIdentity('PVTI_x', runGraphQL)).toEqual({ owner: 'acme', repo: 'widgets', number: 42 });
+  });
+
+  it('resolves a PullRequest-backed project item too', async () => {
+    const runGraphQL = async () => ({ node: { content: { number: 7, repository: { owner: { login: 'acme' }, name: 'widgets' } } } });
+    expect(await resolveItemIdentity('PVTI_x', runGraphQL)).toEqual({ owner: 'acme', repo: 'widgets', number: 7 });
+  });
+
+  it('returns null for a Draft Issue item (no linked content)', async () => {
+    const runGraphQL = async () => ({ node: { content: null } });
+    expect(await resolveItemIdentity('PVTI_x', runGraphQL)).toBeNull();
+  });
+
+  it('returns null on a malformed response', async () => {
+    const runGraphQL = async () => ({});
+    expect(await resolveItemIdentity('PVTI_x', runGraphQL)).toBeNull();
+  });
+
+  it('returns null (never throws) on a GraphQL error', async () => {
+    const runGraphQL = async () => {
+      throw new Error('boom');
+    };
+    expect(await resolveItemIdentity('PVTI_x', runGraphQL)).toBeNull();
   });
 });
 
@@ -457,18 +572,21 @@ describe('runHygieneChecks', () => {
   });
 
   it('never rejects even when the FIRST synchronous read of touch.action throws (regression for the eager-evaluation fix)', async () => {
-    // Execution order inside runHygieneChecks's array literal is left to
-    // right: checkStatusProgression only ever reads touch.closesIssues, so
-    // it never trips this trap. With the fix, checkLifecycleComment's own
-    // call is deferred into a microtask (`Promise.resolve().then(() =>
-    // ...)`), so the FIRST synchronous read of touch.action during array
-    // construction is checkSubIssueLinkage's -- an `async function`, whose
-    // synchronous throw is auto-wrapped into a rejected settled result, not
-    // a raw exception. Before the fix, `Promise.resolve(checkLifecycleComment(...))`
-    // called that plain, non-async function directly while the array was
-    // still being built, so this exact same first-read throw was a raw
-    // synchronous exception that aborted the whole array literal before
-    // Promise.allSettled ever ran, rejecting runHygieneChecks entirely.
+    // checkStatusProgression, checkLifecycleComment, and checkSubIssueLinkage
+    // are all `async function`s now (checkLifecycleComment became one as
+    // part of issue #172's fix), and every one of them is called directly
+    // (no `.then()` deferral wrapper) while runHygieneChecks's array literal
+    // is built. Whichever of them reads `touch.action` first, a synchronous
+    // throw during that read is caught by the implicit async-function
+    // promise-wrapping and converted into a rejected settled result, never a
+    // raw exception -- so array construction always completes and
+    // Promise.allSettled always runs. Before the original eager-evaluation
+    // fix, `Promise.resolve(checkLifecycleComment(...))` called a plain,
+    // non-async function directly, so its synchronous throw WAS a raw
+    // exception that aborted the whole array literal before
+    // Promise.allSettled ever ran, rejecting runHygieneChecks entirely; this
+    // test still guards against that class of regression regardless of
+    // which check happens to touch `.action` first.
     let firstAccessSeen = false;
     const throwsOnFirstActionRead = new Proxy(
       { owner: 'acme', repo: 'widgets', number: 1, closesIssues: [] },

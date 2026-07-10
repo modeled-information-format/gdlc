@@ -52,15 +52,15 @@ function mcpAction(toolName) {
 
 const PR_CREATE_ACTIONS = new Set(['create_pull_request']);
 const ISSUE_CREATE_ACTIONS = new Set(['create_issue']);
-// KNOWN GAP (filed as a tracked follow-up issue, not fixed here -- it needs
-// a real design decision, not a mechanical patch): 'set_field_value' names
-// the tool this check most wants to police (a direct Status-field change),
-// but that tool's own input/output only ever carries `itemId`/`fieldId`,
-// never `owner`/`repo`/`number` -- extractTouch (a synchronous, dependency-
-// free function by design) cannot resolve an issue's identity from an
-// itemId without an async GraphQL round trip. checkLifecycleComment is
-// therefore structurally unreachable for `set_field_value` touches today;
-// see ADR-0007's Audit section for the full writeup.
+// 'set_field_value' names the tool this check most wants to police (a
+// direct Status-field change), but that tool's own input/output only ever
+// carries `itemId`/`fieldId`, never `owner`/`repo`/`number` -- a Projects
+// v2 item is addressed by itemId, not issue coordinates (issue #172).
+// extractTouch stays synchronous and carries the bare `itemId` through
+// instead (see its own doc comment); checkLifecycleComment resolves it to
+// owner/repo/number via `resolveItemIdentity` (an async GraphQL round
+// trip) before running its scan, failing open on any resolution error the
+// same way every other check does.
 const STATUS_MUTATE_ACTIONS = new Set(['set_field_value', 'update_issue']);
 // The generic github MCP server's own comment tool -- NOT issue_write,
 // which is a create/update tool (method: 'create'|'update') with no
@@ -193,15 +193,23 @@ function parseGhRepoFlag(command) {
 }
 
 /** Normalize one PostToolUse hook invocation into `{ surface, action,
- * owner, repo, number, closing, closesIssues }`, or `null` if this call
- * touches nothing this hook tracks. `owner`/`repo` fall back to the repo
- * this hook itself runs in when a tool call's own input doesn't carry
- * them (the common case for `gh` CLI calls run from a repo checkout).
- * `closing` is `true` only for a call that closes an existing issue/PR --
- * checkSubIssueLinkage skips those (closing an empty Epic/Story is a
- * different problem than not-yet-linked, see that check's own docstring);
- * checkLifecycleComment makes no such distinction, since a close is
- * itself a transition worth a comment like any other. */
+ * owner, repo, number, closing, closesIssues, itemId }`, or `null` if this
+ * call touches nothing this hook tracks. `owner`/`repo` fall back to the
+ * repo this hook itself runs in when a tool call's own input doesn't carry
+ * them (the common case for `gh` CLI calls run from a repo checkout) --
+ * this fallback is only ever populated by the entrypoint for a
+ * Bash-surfaced call today, so an MCP touch's `owner`/`repo` end up `null`
+ * whenever the tool's own input doesn't carry them either, but that's a
+ * property of the current caller, not something this function itself
+ * guarantees. `closing` is `true` only for a call that closes an existing
+ * issue/PR -- checkSubIssueLinkage skips those (closing an empty Epic/Story
+ * is a different problem than not-yet-linked, see that check's own
+ * docstring); checkLifecycleComment makes no such distinction, since a
+ * close is itself a transition worth a comment like any other. `itemId` is
+ * only ever set for a `set_field_value` touch (issue #172) -- that tool's
+ * own input/output carries no issue coordinates at all, only `itemId`/
+ * `fieldId`, so `number` is always `null` for this action specifically;
+ * checkLifecycleComment resolves `itemId` to real coordinates itself. */
 export function extractTouch(input, fallbackOwnerRepo) {
   const toolName = input?.tool_name;
   const toolInput = input?.tool_input;
@@ -281,7 +289,23 @@ export function extractTouch(input, fallbackOwnerRepo) {
     closesIssues = extractClosedIssueNumbers(bodyText).map((n) => ({ owner, repo, number: n }));
   }
 
-  return { surface: toolName.startsWith('mcp__github__') ? 'generic-github-mcp' : 'plugin-mcp', action, owner, repo, number, closing, closesIssues };
+  // set_field_value's own input/output carries itemId/fieldId, not
+  // owner/repo/number, since a Projects v2 item is addressed by itemId,
+  // not issue coordinates (issue #172). Carried through here as a
+  // passthrough field, checked in both tool_input and (as a fallback)
+  // tool_output -- SetFieldValueResult echoes itemId back too -- the same
+  // input-then-output fallback shape `number` already uses a few lines
+  // above. checkLifecycleComment resolves it to owner/repo/number via an
+  // async GraphQL round trip when needed, since extractTouch itself stays
+  // synchronous and dependency-free by design.
+  const itemId =
+    action === 'set_field_value'
+      ? typeof toolInput?.itemId === 'string' ? toolInput.itemId
+        : typeof normalizedOutput?.itemId === 'string' ? normalizedOutput.itemId
+        : null
+      : null;
+
+  return { surface: toolName.startsWith('mcp__github__') ? 'generic-github-mcp' : 'plugin-mcp', action, owner, repo, number, closing, closesIssues, itemId };
 }
 
 // ---------------------------------------------------------------------------
@@ -430,6 +454,39 @@ export function scanTranscriptForComment(transcriptPath, ref, readFn = readTrans
   return { resolved: true, found: false };
 }
 
+export const RESOLVE_PROJECT_ITEM_QUERY = `
+  query($itemId: ID!) {
+    node(id: $itemId) {
+      ... on ProjectV2Item {
+        content {
+          ... on Issue { number repository { owner { login } name } }
+          ... on PullRequest { number repository { owner { login } name } }
+        }
+      }
+    }
+  }
+`;
+
+/** Resolve a Projects v2 item's `itemId` to the issue/PR it belongs to --
+ * the only network call a `set_field_value` touch needs, since that
+ * tool's own input/output carries no issue coordinates at all, only
+ * `itemId`/`fieldId` (issue #172). Returns `null` on any ambiguity (a
+ * Draft Issue item with no linked `content`, a malformed response, a
+ * GraphQL error) -- never a guess. */
+export async function resolveItemIdentity(itemId, runGraphQL) {
+  try {
+    const data = await runGraphQL(RESOLVE_PROJECT_ITEM_QUERY, { itemId });
+    const content = data?.node?.content;
+    const owner = content?.repository?.owner?.login;
+    const repo = content?.repository?.name;
+    const number = content?.number;
+    if (typeof owner !== 'string' || typeof repo !== 'string' || typeof number !== 'number') return null;
+    return { owner, repo, number };
+  } catch {
+    return null;
+  }
+}
+
 /** WHEN a Status-mutating or issue-creating action touches a tracked issue,
  * THEN check whether a lifecycle comment accompanies it this turn.
  * Deliberately over-inclusive about which actions count as "a transition"
@@ -437,16 +494,36 @@ export function scanTranscriptForComment(transcriptPath, ref, readFn = readTrans
  * Status-field change this hook cannot identify from a bare `fieldId`) --
  * an acceptable false-positive rate for an advisory nudge, not a violation
  * of the "never guess" NFR, which governs the resolved/unresolved
- * distinction, not this heuristic's precision. */
-export function checkLifecycleComment(touch, transcriptPath, readFn) {
+ * distinction, not this heuristic's precision. For a `set_field_value`
+ * touch, `touch.number` is always null -- that tool's own input/output
+ * carries no issue coordinates at all (see extractTouch's doc comment).
+ * `touch.owner`/`repo` are `null` too given how this hook's own entrypoint
+ * calls `extractTouch` today (the `fallbackOwnerRepo` it passes is only
+ * ever populated for a Bash-surfaced call, never for an MCP one), but
+ * that's an artifact of the current caller, not an invariant `extractTouch`
+ * itself enforces -- this function still branches on `touch.itemId`
+ * specifically, not on `owner`/`repo` being unset, so it doesn't depend on
+ * that artifact holding. Its `itemId` is resolved to real issue
+ * coordinates via `resolveItemIdentity` first, failing open (no finding)
+ * if resolution doesn't succeed, the same as every other unresolvable
+ * case here. */
+export async function checkLifecycleComment(touch, transcriptPath, readFn, runGraphQL) {
   const isTransition = touch && (STATUS_MUTATE_ACTIONS.has(touch.action) || ISSUE_CREATE_ACTIONS.has(touch.action));
-  if (!isTransition || typeof touch.owner !== 'string' || typeof touch.repo !== 'string' || typeof touch.number !== 'number') {
+  if (!isTransition) return { resolved: true, findings: [] };
+
+  let identity = touch;
+  if (touch.action === 'set_field_value' && typeof touch.itemId === 'string') {
+    identity = await resolveItemIdentity(touch.itemId, runGraphQL);
+    if (!identity) return { resolved: true, findings: [] };
+  }
+
+  if (typeof identity.owner !== 'string' || typeof identity.repo !== 'string' || typeof identity.number !== 'number') {
     return { resolved: true, findings: [] };
   }
-  const scan = scanTranscriptForComment(transcriptPath, touch, readFn);
+  const scan = scanTranscriptForComment(transcriptPath, identity, readFn);
   if (!scan.resolved) return { resolved: true, findings: [] }; // unreadable transcript: silent no-op for this check
   if (scan.found) return { resolved: true, findings: [] };
-  return { resolved: true, findings: [`${touch.owner}/${touch.repo}#${touch.number}: transitioned with no lifecycle comment found this turn -- consider posting one.`] };
+  return { resolved: true, findings: [`${identity.owner}/${identity.repo}#${identity.number}: transitioned with no lifecycle comment found this turn -- consider posting one.`] };
 }
 
 // ---------------------------------------------------------------------------
@@ -508,13 +585,13 @@ export async function runHygieneChecks(touch, { runGraphQL, transcriptPath, read
   const findings = [];
   const results = await Promise.allSettled([
     checkStatusProgression(touch, runGraphQL),
-    // Deferred via .then() rather than called inline: checkLifecycleComment
-    // is synchronous, and calling it directly here would evaluate (and any
-    // throw from it would propagate) while this array literal is still
-    // being constructed -- before Promise.allSettled ever runs -- which
-    // would reject runHygieneChecks itself and silently discard the other
-    // two checks' findings too, not just this one's (NFR-5).
-    Promise.resolve().then(() => checkLifecycleComment(touch, transcriptPath, readFn)),
+    // checkLifecycleComment is async (issue #172's fix), so -- same as its
+    // two siblings here -- any throw inside it, synchronous or not, is
+    // caught by the implicit async-function promise wrapping and never
+    // propagates during this array literal's construction; a no-op
+    // .then()-deferral wrapper isn't needed to keep the three calls
+    // isolated under Promise.allSettled (NFR-5).
+    checkLifecycleComment(touch, transcriptPath, readFn, runGraphQL),
     checkSubIssueLinkage(touch, runGraphQL),
   ]);
   for (const result of results) {
