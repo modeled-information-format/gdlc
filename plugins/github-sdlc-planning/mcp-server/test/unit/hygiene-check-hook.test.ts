@@ -201,6 +201,38 @@ describe('extractTouch', () => {
     expect(closed).toMatchObject({ action: 'update_issue', number: 6, closing: true });
   });
 
+  it('captures itemId from tool_input for a set_field_value touch, leaving owner/repo/number null', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-sdlc-planning__set_field_value', tool_input: { itemId: 'PVTI_from_input', fieldId: 'PVTSSF_x', value: { kind: 'text', text: 'v' } } },
+      null,
+    );
+    expect(touch).toMatchObject({ action: 'set_field_value', owner: null, repo: null, number: null, itemId: 'PVTI_from_input' });
+  });
+
+  it('falls back to tool_output.itemId when tool_input carries none (Copilot review finding on PR #174) -- SetFieldValueResult echoes itemId back too', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-sdlc-planning__set_field_value', tool_input: {}, tool_output: { itemId: 'PVTI_from_output' } },
+      null,
+    );
+    expect(touch).toMatchObject({ action: 'set_field_value', itemId: 'PVTI_from_output' });
+  });
+
+  it('prefers tool_input.itemId over tool_output.itemId when both are present', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-sdlc-planning__set_field_value', tool_input: { itemId: 'PVTI_from_input' }, tool_output: { itemId: 'PVTI_from_output' } },
+      null,
+    );
+    expect(touch).toMatchObject({ itemId: 'PVTI_from_input' });
+  });
+
+  it('leaves itemId null for a non-set_field_value action, even if tool_input/tool_output happen to carry that key', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-sdlc-planning__update_issue', tool_input: { owner: 'acme', repo: 'widgets', number: 1, itemId: 'PVTI_irrelevant' } },
+      null,
+    );
+    expect(touch).toMatchObject({ action: 'update_issue', itemId: null });
+  });
+
   it('is never miscategorized as a comment action -- issue_write has no comment-posting semantics', () => {
     // Confirms the fix for the finding that issue_write was previously in
     // COMMENT_ACTIONS: an issue_write touch on an Epic with zero sub-issues

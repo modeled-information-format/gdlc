@@ -193,15 +193,23 @@ function parseGhRepoFlag(command) {
 }
 
 /** Normalize one PostToolUse hook invocation into `{ surface, action,
- * owner, repo, number, closing, closesIssues }`, or `null` if this call
- * touches nothing this hook tracks. `owner`/`repo` fall back to the repo
- * this hook itself runs in when a tool call's own input doesn't carry
- * them (the common case for `gh` CLI calls run from a repo checkout).
- * `closing` is `true` only for a call that closes an existing issue/PR --
- * checkSubIssueLinkage skips those (closing an empty Epic/Story is a
- * different problem than not-yet-linked, see that check's own docstring);
- * checkLifecycleComment makes no such distinction, since a close is
- * itself a transition worth a comment like any other. */
+ * owner, repo, number, closing, closesIssues, itemId }`, or `null` if this
+ * call touches nothing this hook tracks. `owner`/`repo` fall back to the
+ * repo this hook itself runs in when a tool call's own input doesn't carry
+ * them (the common case for `gh` CLI calls run from a repo checkout) --
+ * this fallback is only ever populated by the entrypoint for a
+ * Bash-surfaced call today, so an MCP touch's `owner`/`repo` end up `null`
+ * whenever the tool's own input doesn't carry them either, but that's a
+ * property of the current caller, not something this function itself
+ * guarantees. `closing` is `true` only for a call that closes an existing
+ * issue/PR -- checkSubIssueLinkage skips those (closing an empty Epic/Story
+ * is a different problem than not-yet-linked, see that check's own
+ * docstring); checkLifecycleComment makes no such distinction, since a
+ * close is itself a transition worth a comment like any other. `itemId` is
+ * only ever set for a `set_field_value` touch (issue #172) -- that tool's
+ * own input/output carries no issue coordinates at all, only `itemId`/
+ * `fieldId`, so `number` is always `null` for this action specifically;
+ * checkLifecycleComment resolves `itemId` to real coordinates itself. */
 export function extractTouch(input, fallbackOwnerRepo) {
   const toolName = input?.tool_name;
   const toolInput = input?.tool_input;
@@ -281,13 +289,21 @@ export function extractTouch(input, fallbackOwnerRepo) {
     closesIssues = extractClosedIssueNumbers(bodyText).map((n) => ({ owner, repo, number: n }));
   }
 
-  // set_field_value's own input/output only ever carries itemId/fieldId --
-  // never owner/repo/number, since a Projects v2 item is addressed by
-  // itemId, not issue coordinates (issue #172). Carried through here as a
-  // passthrough field; checkLifecycleComment resolves it to owner/repo/
-  // number via an async GraphQL round trip when needed, since extractTouch
-  // itself stays synchronous and dependency-free by design.
-  const itemId = action === 'set_field_value' && typeof toolInput?.itemId === 'string' ? toolInput.itemId : null;
+  // set_field_value's own input/output carries itemId/fieldId, not
+  // owner/repo/number, since a Projects v2 item is addressed by itemId,
+  // not issue coordinates (issue #172). Carried through here as a
+  // passthrough field, checked in both tool_input and (as a fallback)
+  // tool_output -- SetFieldValueResult echoes itemId back too -- the same
+  // input-then-output fallback shape `number` already uses a few lines
+  // above. checkLifecycleComment resolves it to owner/repo/number via an
+  // async GraphQL round trip when needed, since extractTouch itself stays
+  // synchronous and dependency-free by design.
+  const itemId =
+    action === 'set_field_value'
+      ? typeof toolInput?.itemId === 'string' ? toolInput.itemId
+        : typeof normalizedOutput?.itemId === 'string' ? normalizedOutput.itemId
+        : null
+      : null;
 
   return { surface: toolName.startsWith('mcp__github__') ? 'generic-github-mcp' : 'plugin-mcp', action, owner, repo, number, closing, closesIssues, itemId };
 }
@@ -479,10 +495,18 @@ export async function resolveItemIdentity(itemId, runGraphQL) {
  * an acceptable false-positive rate for an advisory nudge, not a violation
  * of the "never guess" NFR, which governs the resolved/unresolved
  * distinction, not this heuristic's precision. For a `set_field_value`
- * touch, `touch.owner`/`repo`/`number` are always null (see extractTouch's
- * doc comment); its `itemId` is resolved to real issue coordinates via
- * `resolveItemIdentity` first, failing open (no finding) if resolution
- * doesn't succeed, the same as every other unresolvable case here. */
+ * touch, `touch.number` is always null -- that tool's own input/output
+ * carries no issue coordinates at all (see extractTouch's doc comment).
+ * `touch.owner`/`repo` are `null` too given how this hook's own entrypoint
+ * calls `extractTouch` today (the `fallbackOwnerRepo` it passes is only
+ * ever populated for a Bash-surfaced call, never for an MCP one), but
+ * that's an artifact of the current caller, not an invariant `extractTouch`
+ * itself enforces -- this function still branches on `touch.itemId`
+ * specifically, not on `owner`/`repo` being unset, so it doesn't depend on
+ * that artifact holding. Its `itemId` is resolved to real issue
+ * coordinates via `resolveItemIdentity` first, failing open (no finding)
+ * if resolution doesn't succeed, the same as every other unresolvable
+ * case here. */
 export async function checkLifecycleComment(touch, transcriptPath, readFn, runGraphQL) {
   const isTransition = touch && (STATUS_MUTATE_ACTIONS.has(touch.action) || ISSUE_CREATE_ACTIONS.has(touch.action));
   if (!isTransition) return { resolved: true, findings: [] };
