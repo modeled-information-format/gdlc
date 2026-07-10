@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-07-10
+
+### Fixed
+
+- `github-sdlc-planning`, `github-pull-requests`, and `github-bug-capture`'s
+  `hooks.json` matchers hardcoded the bare `mcp__<plugin>__<action>` MCP
+  tool-name form; a marketplace-installed session actually exposes these
+  tools as `mcp__plugin_<marketplace>_<plugin>__<action>`, so the matchers
+  never matched and every one of these hooks (`set-in-progress.mjs`,
+  `hygiene-check.mjs`, `validate-mif.mjs`, `confirm-mutation.mjs`) silently
+  never ran in a real installed session — confirmed by
+  `get_agent_capabilities` reporting `hooksSupported: false`. Matchers now
+  match both tool-name forms, anchored on the required `mcp__` prefix so a
+  non-MCP tool name can never match; `github-sdlc-planning`'s three
+  internal scripts extract the action via a shared
+  `lib/mcp-tool-name.mjs` helper instead of an exact bare-name comparison
+  (issue #177, PR #178).
+
 ## [0.7.0] - 2026-07-10
 
 ### Added
