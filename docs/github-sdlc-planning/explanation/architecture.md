@@ -103,9 +103,11 @@ SessionStart (startup)
 └─ session-start.mjs
      └─ gh api repos/{owner}/{repo}/milestones → additionalContext
 
-Tool call: mcp__github-sdlc-planning__{create_issue,update_issue,add_sub_issue,
-           add_item_to_project,set_field_value,create_milestone,
-           assign_milestone,create_discussion}
+Tool call: {create_issue,update_issue,add_sub_issue,add_item_to_project,
+           set_field_value,create_milestone,assign_milestone,create_discussion}
+           — exposed as mcp__github-sdlc-planning__<action> (bare MCP server)
+           or mcp__plugin_<marketplace>_<plugin>__<action> (marketplace
+           install); every matcher/tool-identity check below matches both
 ├─ PreToolUse
 │    └─ confirm-mutation.mjs
 │         └─ describes the target from tool_input alone (never resolves
@@ -115,7 +117,7 @@ Tool call: mcp__github-sdlc-planning__{create_issue,update_issue,add_sub_issue,
 │            projectOwnerLogin/projectNumber) and omitted the other
 ├─ [the MCP server itself may resolve config here — see below]
 └─ PostToolUse
-     ├─ validate-mif.mjs (matcher: any mcp__github-sdlc-planning__.* call,
+     ├─ validate-mif.mjs (matcher: any of this plugin's own MCP tool calls,
      │    but only acts on create_issue/update_issue — MIF frontmatter is
      │    an issue-body convention, not a discussion one)
      │    └─ isMifConformant(body) → correction instruction if non-conformant

@@ -284,6 +284,28 @@ describe('extractAffectedIssue', () => {
     };
     expect(extractAffectedIssue(input)).toBeNull();
   });
+
+  it('recognizes the plugin-qualified tool-name form Claude Code uses for a marketplace-installed MCP server', () => {
+    // Regression test: Claude Code exposes a plugin's MCP tools as
+    // mcp__plugin_<marketplace>_<plugin>__<action>, not the bare
+    // mcp__<plugin>__<action> form this hook originally hardcoded. The
+    // hooks.json matcher and this action check both missed every real
+    // session as a result -- confirmed by hooksSupported: false and no
+    // in-progress transition firing on a live update_issue call.
+    const input = {
+      tool_name: 'mcp__plugin_github-sdlc-planning_github-sdlc-planning__update_issue',
+      tool_input: { owner: 'acme', repo: 'widgets', number: 9, title: 'New title' },
+    };
+    expect(extractAffectedIssue(input)).toEqual({ owner: 'acme', repo: 'widgets', number: 9 });
+  });
+
+  it('recognizes the plugin-qualified form for add_sub_issue too', () => {
+    const input = {
+      tool_name: 'mcp__plugin_github-sdlc-planning_github-sdlc-planning__add_sub_issue',
+      tool_input: { owner: 'acme', repo: 'widgets', parentNumber: 1, childNumber: 9 },
+    };
+    expect(extractAffectedIssue(input)).toEqual({ owner: 'acme', repo: 'widgets', number: 9 });
+  });
 });
 
 describe('isEligibleStatus', () => {

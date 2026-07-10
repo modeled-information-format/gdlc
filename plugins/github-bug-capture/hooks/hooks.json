@@ -20,7 +20,7 @@
         ]
       },
       {
-        "matcher": "mcp__github-bug-capture__.*",
+        "matcher": ".*github-bug-capture__.*",
         "hooks": [
           {
             "type": "command",

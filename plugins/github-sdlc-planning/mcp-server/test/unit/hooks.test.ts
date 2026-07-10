@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -8,6 +9,8 @@ import path from 'node:path';
 // scripts (JSON on stdin, JSON on stdout) so they're testable by spawning
 // them directly, the same contract Claude Code itself uses to invoke them.
 const hooksDir = path.resolve(fileURLToPath(import.meta.url), '../../../../hooks');
+// Sibling plugin roots, for the cross-plugin matcher sanity check below.
+const pluginsDir = path.resolve(fileURLToPath(import.meta.url), '../../../../../');
 
 function runHook(script: string, input: unknown): { hookSpecificOutput?: { hookEventName: string; additionalContext?: string; permissionDecision?: string; permissionDecisionReason?: string } } {
   const out = execFileSync('node', [path.join(hooksDir, script)], { input: JSON.stringify(input), encoding: 'utf8' });
@@ -44,6 +47,16 @@ describe('validate-mif.mjs (AC-9)', () => {
     const result = runHook('validate-mif.mjs', {
       tool_name: 'mcp__github-sdlc-planning__create_issue',
       tool_output: { content: [{ type: 'text', text: JSON.stringify({ number: 1, body: 'plain body' }) }] },
+    });
+    expect(result.hookSpecificOutput?.additionalContext).toContain('MIF frontmatter block');
+  });
+
+  it('recognizes the plugin-qualified tool-name form Claude Code uses for a marketplace-installed MCP server', () => {
+    // Regression test: see the matching case in in-progress-hook.test.ts
+    // for the underlying bug this guards against.
+    const result = runHook('validate-mif.mjs', {
+      tool_name: 'mcp__plugin_github-sdlc-planning_github-sdlc-planning__create_issue',
+      tool_output: JSON.stringify({ number: 1, body: 'plain body, no frontmatter' }),
     });
     expect(result.hookSpecificOutput?.additionalContext).toContain('MIF frontmatter block');
   });
@@ -99,6 +112,18 @@ describe('confirm-mutation.mjs', () => {
     expect(result.hookSpecificOutput?.permissionDecisionReason).toContain('invalid');
     expect(result.hookSpecificOutput?.permissionDecisionReason).not.toContain('config default');
   });
+
+  it('recognizes the plugin-qualified tool-name form Claude Code uses for a marketplace-installed MCP server', () => {
+    // Regression test: see the matching case in in-progress-hook.test.ts
+    // for the underlying bug this guards against.
+    const result = runHook('confirm-mutation.mjs', {
+      tool_name: 'mcp__plugin_github-sdlc-planning_github-sdlc-planning__create_issue',
+      tool_input: { owner: 'acme', repo: 'widgets', title: 'Ship it' },
+    });
+    expect(result.hookSpecificOutput?.hookEventName).toBe('PreToolUse');
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('ask');
+    expect(result.hookSpecificOutput?.permissionDecisionReason).toContain('Ship it');
+  });
 });
 
 describe('session-start.mjs', () => {
@@ -106,4 +131,55 @@ describe('session-start.mjs', () => {
     const result = runHook('session-start.mjs', { cwd: '/tmp' });
     expect(result).toEqual({});
   });
+});
+
+// Regression test for the bug this whole file's plugin-qualified-name cases
+// guard against at the script level: hooks.json's own `matcher` regex is
+// evaluated by Claude Code itself, outside this repo, so no runHook() test
+// above exercises it. Every affected plugin's own MCP-tool matcher must
+// match both the bare form (mcp__<plugin>__<action>) and the
+// plugin-qualified form Claude Code actually uses for a marketplace install
+// (mcp__plugin_<marketplace>_<plugin>__<action>) -- confirmed missing on
+// every one of these three plugins' hooks.json before this fix.
+describe('hooks.json PostToolUse/PreToolUse matchers match both tool-name forms', () => {
+  const cases: Array<{ plugin: string; bareToolName: string; qualifiedToolName: string }> = [
+    {
+      plugin: 'github-sdlc-planning',
+      bareToolName: 'mcp__github-sdlc-planning__update_issue',
+      qualifiedToolName: 'mcp__plugin_github-sdlc-planning_github-sdlc-planning__update_issue',
+    },
+    {
+      plugin: 'github-pull-requests',
+      bareToolName: 'mcp__github-pull-requests__create_pull_request',
+      qualifiedToolName: 'mcp__plugin_github-pull-requests_github-pull-requests__create_pull_request',
+    },
+    {
+      plugin: 'github-bug-capture',
+      bareToolName: 'mcp__github-bug-capture__search_similar_issues',
+      qualifiedToolName: 'mcp__plugin_github-bug-capture_github-bug-capture__search_similar_issues',
+    },
+  ];
+
+  for (const { plugin, bareToolName, qualifiedToolName } of cases) {
+    it(`${plugin}'s own-plugin matcher(s) match the bare and plugin-qualified tool-name forms`, () => {
+      const hooksJsonPath = path.join(pluginsDir, plugin, 'hooks', 'hooks.json');
+      const parsed = JSON.parse(readFileSync(hooksJsonPath, 'utf8'));
+      const ownPluginMatchers: string[] = [];
+      for (const events of Object.values(parsed.hooks) as Array<Array<{ matcher?: string }>>) {
+        for (const group of events) {
+          if (typeof group.matcher === 'string' && group.matcher.includes(plugin)) {
+            ownPluginMatchers.push(group.matcher);
+          }
+        }
+      }
+      expect(ownPluginMatchers.length).toBeGreaterThan(0);
+      for (const matcher of ownPluginMatchers) {
+        const re = new RegExp(matcher);
+        expect(re.test(bareToolName), `matcher ${matcher} should match bare form ${bareToolName}`).toBe(true);
+        expect(re.test(qualifiedToolName), `matcher ${matcher} should match qualified form ${qualifiedToolName}`).toBe(
+          true,
+        );
+      }
+    });
+  }
 });

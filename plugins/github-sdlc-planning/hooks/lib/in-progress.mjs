@@ -15,6 +15,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve as resolvePath } from 'node:path';
+import { mcpAction } from './mcp-tool-name.mjs';
 
 const GDLC_CONFIG_RELPATH = join('gdlc', 'config.yml');
 
@@ -206,10 +207,7 @@ export function readBoardConfig(cwd = process.cwd(), env = process.env, existsFn
   return global.board;
 }
 
-const RELEVANT_TOOLS = new Set([
-  'mcp__github-sdlc-planning__add_sub_issue',
-  'mcp__github-sdlc-planning__update_issue',
-]);
+const RELEVANT_ACTIONS = new Set(['add_sub_issue', 'update_issue']);
 
 /** Determine the issue that just had work started against it, from the hook
  * stdin payload's `tool_name`/`tool_input`. For `add_sub_issue`, the child is
@@ -219,13 +217,13 @@ const RELEVANT_TOOLS = new Set([
  * the native `Item closed` workflow. Returns `null` for anything else,
  * including malformed input. */
 export function extractAffectedIssue(input) {
-  const toolName = input?.tool_name;
-  if (!RELEVANT_TOOLS.has(toolName)) return null;
+  const action = mcpAction(input?.tool_name);
+  if (!RELEVANT_ACTIONS.has(action)) return null;
 
   const toolInput = input?.tool_input;
   if (toolInput === null || typeof toolInput !== 'object') return null;
 
-  if (toolName === 'mcp__github-sdlc-planning__add_sub_issue') {
+  if (action === 'add_sub_issue') {
     const owner = toolInput.childOwner ?? toolInput.owner;
     const repo = toolInput.childRepo ?? toolInput.repo;
     const number = toolInput.childNumber;
@@ -233,7 +231,7 @@ export function extractAffectedIssue(input) {
     return { owner, repo, number };
   }
 
-  // mcp__github-sdlc-planning__update_issue
+  // action === 'update_issue'
   if (toolInput.state === 'closed') return null;
   const { owner, repo, number } = toolInput;
   if (typeof owner !== 'string' || typeof repo !== 'string' || typeof number !== 'number') return null;
