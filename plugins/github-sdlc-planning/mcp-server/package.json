@@ -10,6 +10,7 @@
     ".": "./dist/index.js",
     "./config": "./dist/config.js",
     "./mif": "./dist/mif.js",
+    "./project-profile": "./dist/project-profile.js",
     "./resolvers": "./dist/resolvers.js",
     "./tools/projects": "./dist/tools/projects.js"
   },
