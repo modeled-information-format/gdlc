@@ -105,7 +105,7 @@ jobs:
       contents: read
       security-events: write
     uses: >-
-      modeled-information-format/.github/.github/workflows/reusable-shellcheck.yml@e9e93cd50943a5ec3a9ad4ce8bb52f2fd29814fc
+      modeled-information-format/.github/.github/workflows/reusable-shellcheck.yml@eb961149b0cbdb2b5b839c2ea85c14a52d830216
   semgrep:
     permissions:
       contents: read
