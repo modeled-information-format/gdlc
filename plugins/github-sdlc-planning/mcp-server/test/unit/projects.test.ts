@@ -142,6 +142,7 @@ describe('getProjectItems', () => {
       return {
         node: {
           items: {
+            pageInfo: { hasNextPage: false, endCursor: null },
             nodes: [
               {
                 id: 'PVTI_1',
@@ -182,6 +183,7 @@ describe('getProjectItems', () => {
       return {
         node: {
           items: {
+            pageInfo: { hasNextPage: false, endCursor: null },
             nodes: [{ id: 'PVTI_2', content: { title: 'A draft idea' }, fieldValues: { nodes: [] } }],
           },
         },
@@ -190,6 +192,40 @@ describe('getProjectItems', () => {
 
     const result = await getProjectItems({ projectOwnerLogin: 'acme', projectNumber: 4 });
     expect(result.items).toEqual([{ id: 'PVTI_2', title: 'A draft idea', number: null, repo: null, fieldValues: [] }]);
+  });
+
+  it('gdlc#200 regression: paginates past a 100-item first page instead of silently dropping the rest', async () => {
+    // Mirrors the live-confirmed shape: the org's real board has 235 items;
+    // this proves a >100-item board (here, 150 across 2 pages) is returned
+    // in full, not just page 1 -- the exact bug that produced
+    // sync_linked_issues_project_field's false-negative notFoundOnBoard for
+    // issues #319-323 in session 1f3d575b.
+    const page1 = Array.from({ length: 100 }, (_, i) => ({
+      id: `PVTI_${i}`,
+      content: { title: `Item ${i}`, number: i, repository: { nameWithOwner: 'acme/widgets' } },
+      fieldValues: { nodes: [] },
+    }));
+    const page2 = Array.from({ length: 50 }, (_, i) => ({
+      id: `PVTI_${100 + i}`,
+      content: { title: `Item ${100 + i}`, number: 100 + i, repository: { nameWithOwner: 'acme/widgets' } },
+      fieldValues: { nodes: [] },
+    }));
+    let pageQueries = 0;
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      pageQueries += 1;
+      if (body.variables.after === undefined || body.variables.after === null) {
+        return { node: { items: { pageInfo: { hasNextPage: true, endCursor: 'CURSOR_PAGE_2' }, nodes: page1 } } };
+      }
+      expect(body.variables.after).toBe('CURSOR_PAGE_2');
+      return { node: { items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: page2 } } };
+    });
+
+    const result = await getProjectItems({ projectOwnerLogin: 'acme', projectNumber: 4 });
+    expect(pageQueries).toBe(2);
+    expect(result.items).toHaveLength(150);
+    // The specific item that would previously be silently dropped:
+    expect(result.items.find((i) => i.number === 123)).toBeDefined();
   });
 });
 

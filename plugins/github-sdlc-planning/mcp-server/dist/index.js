@@ -39138,10 +39138,11 @@ async function setFieldValue(input, deps = {}) {
   return { itemId: input.itemId };
 }
 var GET_PROJECT_ITEMS_QUERY = `
-  query($projectId: ID!) {
+  query($projectId: ID!, $after: String) {
     node(id: $projectId) {
       ... on ProjectV2 {
-        items(first: 100) {
+        items(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
           nodes {
             id
             content {
@@ -39163,6 +39164,23 @@ var GET_PROJECT_ITEMS_QUERY = `
     }
   }
 `;
+async function fetchAllProjectItemNodes(projectId, deps) {
+  const allNodes = [];
+  let after = null;
+  for (; ; ) {
+    const data = await githubGraphQL(
+      GET_PROJECT_ITEMS_QUERY,
+      { projectId, after },
+      {},
+      deps
+    );
+    const items = data.node?.items;
+    allNodes.push(...items?.nodes ?? []);
+    if (!items?.pageInfo.hasNextPage) break;
+    after = items.pageInfo.endCursor;
+  }
+  return allNodes;
+}
 async function getProjectItems(input, deps = {}) {
   const projectId = await resolveProjectNodeId(
     input.projectOwnerLogin,
@@ -39170,8 +39188,7 @@ async function getProjectItems(input, deps = {}) {
     input.projectOwnerType ?? "organization",
     deps
   );
-  const data = await githubGraphQL(GET_PROJECT_ITEMS_QUERY, { projectId }, {}, deps);
-  const nodes = data.node?.items?.nodes ?? [];
+  const nodes = await fetchAllProjectItemNodes(projectId, deps);
   return {
     items: nodes.map((n) => ({
       id: n.id,

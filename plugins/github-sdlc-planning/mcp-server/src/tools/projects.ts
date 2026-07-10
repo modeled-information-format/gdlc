@@ -174,10 +174,11 @@ export interface GetProjectItemsResult {
 }
 
 const GET_PROJECT_ITEMS_QUERY = `
-  query($projectId: ID!) {
+  query($projectId: ID!, $after: String) {
     node(id: $projectId) {
       ... on ProjectV2 {
-        items(first: 100) {
+        items(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
           nodes {
             id
             content {
@@ -208,16 +209,45 @@ interface RawFieldValueNode {
   field?: { name?: string };
 }
 
+interface RawProjectItemNode {
+  id: string;
+  content: { title?: string; number?: number; repository?: { nameWithOwner?: string } } | null;
+  fieldValues: { nodes: RawFieldValueNode[] };
+}
+
 interface GetProjectItemsResponse {
   node: {
     items?: {
-      nodes: Array<{
-        id: string;
-        content: { title?: string; number?: number; repository?: { nameWithOwner?: string } } | null;
-        fieldValues: { nodes: RawFieldValueNode[] };
-      }>;
+      pageInfo: { hasNextPage: boolean; endCursor: string | null };
+      nodes: RawProjectItemNode[];
     };
   } | null;
+}
+
+/** gdlc#200: `items(first: 100)` alone only ever returns the board's first
+ * page -- confirmed live against the org's real 235-item project board,
+ * where this silently dropped issues #319-323 from every caller's view
+ * (root-causing `sync_linked_issues_project_field`'s false-negative
+ * `notFoundOnBoard`). Loops on `hasNextPage`/`endCursor` until GitHub
+ * reports no further page, aggregating every page's nodes before this
+ * function's one caller (`getProjectItems`) maps them -- callers see the
+ * same flat node list they always did, just complete. */
+async function fetchAllProjectItemNodes(projectId: string, deps: GithubClientDeps): Promise<RawProjectItemNode[]> {
+  const allNodes: RawProjectItemNode[] = [];
+  let after: string | null = null;
+  for (;;) {
+    const data: GetProjectItemsResponse = await githubGraphQL<GetProjectItemsResponse>(
+      GET_PROJECT_ITEMS_QUERY,
+      { projectId, after },
+      {},
+      deps,
+    );
+    const items = data.node?.items;
+    allNodes.push(...(items?.nodes ?? []));
+    if (!items?.pageInfo.hasNextPage) break;
+    after = items.pageInfo.endCursor;
+  }
+  return allNodes;
 }
 
 export async function getProjectItems(input: GetProjectItemsInput, deps: GithubClientDeps = {}): Promise<GetProjectItemsResult> {
@@ -227,8 +257,7 @@ export async function getProjectItems(input: GetProjectItemsInput, deps: GithubC
     input.projectOwnerType ?? 'organization',
     deps,
   );
-  const data = await githubGraphQL<GetProjectItemsResponse>(GET_PROJECT_ITEMS_QUERY, { projectId }, {}, deps);
-  const nodes = data.node?.items?.nodes ?? [];
+  const nodes = await fetchAllProjectItemNodes(projectId, deps);
   return {
     items: nodes.map((n) => ({
       id: n.id,
