@@ -102,7 +102,7 @@ server.registerTool(
   'list_sub_issues',
   {
     title: 'List sub-issues',
-    description: 'List a parent issue\'s sub-issues with completion summary.',
+    description: 'List `parentNumber`\'s sub-issues with completion summary.',
     inputSchema: { owner: z.string(), repo: z.string(), parentNumber: z.number().int() },
   },
   wrap(listSubIssues),
