@@ -373,7 +373,7 @@ jobs:
     needs: [meta]
     permissions: { id-token: write, contents: read }
     uses: >-
-      modeled-information-format/.github/.github/workflows/reusable-cosign-sign.yml@e9e93cd50943a5ec3a9ad4ce8bb52f2fd29814fc
+      modeled-information-format/.github/.github/workflows/reusable-cosign-sign.yml@eb961149b0cbdb2b5b839c2ea85c14a52d830216
     with:
       blob-path: .claude-plugin/marketplace.json
 
