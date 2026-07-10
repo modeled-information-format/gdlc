@@ -94,3 +94,57 @@ jobs:
             done
           done
           exit "$status"
+
+  # gdlc#190: every release bump touches plugin.json, mcp-server/package.json,
+  # marketplace.json's per-plugin entry, and the McpServer({version}) string
+  # in mcp-server/src/index.ts, in lockstep, by hand -- and the McpServer
+  # string specifically went stale for three releases (0.6.0 while everything
+  # else moved 0.7.0 -> 0.7.1) with no gate catching it, only found by manual
+  # grep. This job is that gate: fails the build the moment any of the four
+  # locations disagrees for any of the seven vendored plugins, so this
+  # specific drift cannot silently reoccur the way it already did once.
+  version-consistency-check:
+    name: version-consistency-check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Assert plugin.json / package.json / McpServer version / marketplace.json all agree, per plugin
+        run: |
+          set -euo pipefail
+          status=0
+          for dir in plugins/*/; do
+            plugin="$(basename "$dir")"
+            plugin_json="plugins/$plugin/.claude-plugin/plugin.json"
+            pkg_json="plugins/$plugin/mcp-server/package.json"
+            index_ts="plugins/$plugin/mcp-server/src/index.ts"
+            [ -f "$plugin_json" ] || continue
+            [ -f "$pkg_json" ] || continue
+            plugin_version="$(jq -r '.version' "$plugin_json")"
+            pkg_version="$(jq -r '.version' "$pkg_json")"
+            if [ "$plugin_version" != "$pkg_version" ]; then
+              echo "::error file=$pkg_json::package.json version ($pkg_version) != plugin.json version ($plugin_version)"
+              status=1
+            fi
+            if [ -f "$index_ts" ]; then
+              server_version="$(grep -oE "new McpServer\(\{[^}]*version: '[0-9]+\.[0-9]+\.[0-9]+'" "$index_ts" | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" || true)"
+              if [ -z "$server_version" ]; then
+                echo "::error file=$index_ts::no McpServer({version: '...'}) string found"
+                status=1
+              elif [ "$server_version" != "$plugin_version" ]; then
+                echo "::error file=$index_ts::McpServer version string ($server_version) != plugin.json version ($plugin_version)"
+                status=1
+              fi
+            fi
+            marketplace_version="$(jq -r --arg name "$plugin" '.plugins[] | select(.name == $name) | .version' .claude-plugin/marketplace.json)"
+            if [ -z "$marketplace_version" ]; then
+              echo "::error file=.claude-plugin/marketplace.json::no entry for plugin $plugin"
+              status=1
+            elif [ "$marketplace_version" != "$plugin_version" ]; then
+              echo "::error file=.claude-plugin/marketplace.json::marketplace version ($marketplace_version) for $plugin != plugin.json version ($plugin_version)"
+              status=1
+            fi
+          done
+          exit "$status"

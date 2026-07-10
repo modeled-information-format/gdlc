@@ -46,11 +46,42 @@ surface a real permission error if access is genuinely missing.
 | `get_linked_issues` | PR→issue link discovery: `closingIssuesReferences` first, Timeline-API/text-parsing fallback labeled `confidence: heuristic` |
 | `add_pull_request_to_project` | Add a PR to a Projects v2 board via `addProjectV2ItemById` |
 | `sync_linked_issues_project_field` | For a merged PR, set a Projects v2 field on every same-repo issue it closes — cross-repo closing issues are reported in `skippedCrossRepo`, never guessed at |
+| `check_pr_readiness` | issue #185/#188: single settled/not-settled verdict combining status checks, review state, review-thread resolution, and code-scanning alerts. Consults `prLifecycle.requireCleanCodeScanning` from `.config/gdlc/config.yml` (`false` skips the code-scanning check entirely, including the fetch) — the only `prLifecycle` toggle this tool reads; `requireLocalReview`/`requireCopilotReview` govern the hooks above, not this tool. Also available as `npm run pr-readiness -- <owner> <repo> <pullNumber>`, a CLI script meant to be called by name from a Monitor poll loop instead of hand-rolled `gh api`/`jq` |
 
 ## Skill
 
 - `pr-review-route` — CODEOWNERS-style reviewer suggestion, calls
   `request_review` on confirmation.
+
+## PR-lifecycle enforcement (issue #185)
+
+Opt-in via `.config/gdlc/config.yml`'s `prLifecycle` section (see
+[the config schema reference](../../docs/reference/config-schema.md#pr-lifecycle-enforcement-issue-185));
+fail-closed, off by default. Two hooks read it, both dependency-free
+(`hooks/lib/pr-lifecycle-config.mjs`, a from-scratch re-implementation of
+the same path-resolution/section-parsing pattern `github-sdlc-planning`'s
+`hooks/lib/in-progress.mjs`/`settings.mjs` use — deliberately not shared
+across the plugin boundary, matching this codebase's existing convention):
+
+| Hook | Event / matcher | What it does |
+| --- | --- | --- |
+| `pr-lifecycle-gate.mjs` | `PreToolUse`, `create_pull_request` only | When `requireLocalReview`, asks for confirmation naming the configured `localReviewer` command. |
+| `pr-lifecycle-reminder.mjs` | `PostToolUse`, `create_pull_request` only | When `requireCopilotReview`, reminds the agent to call `request_review` with Copilot immediately. |
+
+**Neither hook can execute `localReviewer` itself.** A Claude Code hook can
+only spawn an OS process (`node`/`bash`); it has no mechanism to invoke a
+slash command or skill, and `localReviewer`'s default
+(`/code-review:code-review --fix`) is exactly that. `pr-lifecycle-gate.mjs`
+surfaces the command as an instruction the *agent* must act on — the same
+legible-confirmation pattern `github-sdlc-planning`'s `confirm-mutation.mjs`
+already uses for board mutations — it does not, and cannot, run local
+review on your behalf. Don't read "gate" here as "enforced by the hook
+sandbox"; read it as "the agent is told, loudly, before it can proceed
+silently."
+
+Once a PR is open, `check_pr_readiness` (below) is the single source of
+truth for "is this PR actually ready" — checks, review state, review-thread
+resolution, and code-scanning alerts together, not just one of them.
 
 ## Scope boundary
 

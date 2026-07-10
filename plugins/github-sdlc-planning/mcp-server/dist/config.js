@@ -118,6 +118,22 @@ function normalizeConfig(parsed) {
         if (Object.keys(packs).length > 0)
             config.packs = packs;
     }
+    if (isPlainObject(parsed.prLifecycle)) {
+        const raw = parsed.prLifecycle;
+        const prLifecycle = {};
+        if (typeof raw.enabled === 'boolean')
+            prLifecycle.enabled = raw.enabled;
+        if (typeof raw.localReviewer === 'string' && raw.localReviewer !== '')
+            prLifecycle.localReviewer = raw.localReviewer;
+        if (typeof raw.requireLocalReview === 'boolean')
+            prLifecycle.requireLocalReview = raw.requireLocalReview;
+        if (typeof raw.requireCopilotReview === 'boolean')
+            prLifecycle.requireCopilotReview = raw.requireCopilotReview;
+        if (typeof raw.requireCleanCodeScanning === 'boolean')
+            prLifecycle.requireCleanCodeScanning = raw.requireCleanCodeScanning;
+        if (Object.keys(prLifecycle).length > 0)
+            config.prLifecycle = prLifecycle;
+    }
     return config;
 }
 /** Read and parse one layer's `gdlc/config.yml`. A missing file, an
@@ -257,5 +273,35 @@ export function isRepoAllowed(config, owner, repo) {
  * independently (dependency-free, so it can't import this module). */
 export function isPackEnabled(config, pack) {
     return config.packs?.[pack] === true;
+}
+const DEFAULT_LOCAL_REVIEWER = '/code-review:code-review --fix';
+/** Applies defaults to the raw `prLifecycle` section (issue #185/#186).
+ * `enabled` defaults to `false` -- an absent or malformed section means the
+ * feature is off, matching every other opt-in surface in this codebase
+ * (`packs`, `skipMutationConfirm`): a repo that has never heard of this
+ * feature does not suddenly get new hook prompts. Once `enabled: true`, the
+ * three `require*` sub-toggles each default to `true` (enforce everything)
+ * and `localReviewer` defaults to the org's own `/code-review:code-review
+ * --fix` convention -- opting in without naming every field gets the
+ * strictest sane behavior, not a silently-partial one.
+ *
+ * Important: `localReviewer` is a value a *hook* reads and surfaces to the
+ * agent as an instruction (`permissionDecisionReason`) -- a hook can only
+ * spawn an OS process (node/bash), it cannot invoke a Claude Code slash
+ * command or skill. Nothing in this module or its callers ever executes
+ * `localReviewer` as a shell command; treating it as directly executable
+ * would silently do nothing (or run the literal string as a binary name and
+ * fail) instead of enforcing anything. See
+ * `plugins/github-pull-requests/hooks/pr-lifecycle-gate.mjs` for the
+ * consuming hook and its own doc comment on this same constraint. */
+export function resolvePrLifecycleConfig(config) {
+    const raw = config.prLifecycle ?? {};
+    return {
+        enabled: raw.enabled === true,
+        localReviewer: raw.localReviewer ?? DEFAULT_LOCAL_REVIEWER,
+        requireLocalReview: raw.requireLocalReview ?? true,
+        requireCopilotReview: raw.requireCopilotReview ?? true,
+        requireCleanCodeScanning: raw.requireCleanCodeScanning ?? true,
+    };
 }
 //# sourceMappingURL=config.js.map
