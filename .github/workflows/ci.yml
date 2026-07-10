@@ -58,3 +58,39 @@ jobs:
         uses: github/gh-aw-actions/setup@3fac1cfa7a5a375a6a5eb9839178f6dad7adb60a # v0.82.2
       - name: Lint gh-aw-generated workflows
         run: gh aw lint --dir .github/workflows
+
+  # ADR-0007 (AD-4): github-sdlc-planning's hygiene-check.mjs/
+  # hygiene-aggregate.mjs/lib is the canonical copy; github-pull-requests and
+  # github-bug-capture each ship a byte-identical copy under their own
+  # hooks/, since hook scripts in this plugin family run dependency-free (no
+  # node_modules at hook-execution time) and have no shared-package import
+  # path the way the MCP servers do. This is the load-bearing guard that
+  # keeps that duplication from silently drifting.
+  hygiene-hook-drift-check:
+    name: hygiene-hook-drift-check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Diff sibling copies against the canonical version
+        run: |
+          set -euo pipefail
+          canon=plugins/github-sdlc-planning/hooks
+          status=0
+          for f in lib/hygiene-check.mjs lib/hygiene-scratch.mjs lib/hygiene-aggregate.mjs hygiene-check.mjs hygiene-aggregate.mjs; do
+            for sibling in github-pull-requests github-bug-capture; do
+              path="plugins/$sibling/hooks/$f"
+              if [ ! -f "$path" ]; then
+                echo "::error file=$path::missing — every sibling plugin must carry a copy of $f"
+                status=1
+                continue
+              fi
+              if ! diff -u "$canon/$f" "$path"; then
+                echo "::error file=$path::drifted from $canon/$f — re-copy the canonical file verbatim"
+                status=1
+              fi
+            done
+          done
+          exit "$status"
