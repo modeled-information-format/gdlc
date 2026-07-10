@@ -71,6 +71,16 @@ describe('appendScratchEntry + readScratchEntries', () => {
 });
 
 describe('clearScratch', () => {
+  it('deletes the file so a subsequent read returns nothing -- the real write-then-clear-then-read round trip', () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'gdlc-hygiene-scratch-')), 'session.jsonl');
+    appendScratchEntry(path, { n: 1 });
+    expect(readScratchEntries(path)).toEqual([{ n: 1 }]);
+
+    clearScratch(path);
+
+    expect(readScratchEntries(path)).toEqual([]);
+  });
+
   it('is a silent no-op when the file does not exist', () => {
     expect(() => clearScratch('/nonexistent/path.jsonl')).not.toThrow();
   });

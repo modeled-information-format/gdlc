@@ -27,7 +27,7 @@
  * recommends Todo, In Progress, or Done; recommending any of those would
  * re-introduce the exact duplicated-automation risk ADR-0003 killed.
  */
-import { readFileSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
 
 // ---------------------------------------------------------------------------
 // Touch extraction: normalize the three tool-agnostic surfaces (a plugin's
@@ -48,6 +48,15 @@ function mcpAction(toolName) {
 
 const PR_CREATE_ACTIONS = new Set(['create_pull_request']);
 const ISSUE_CREATE_ACTIONS = new Set(['create_issue']);
+// KNOWN GAP (filed as a tracked follow-up issue, not fixed here -- it needs
+// a real design decision, not a mechanical patch): 'set_field_value' names
+// the tool this check most wants to police (a direct Status-field change),
+// but that tool's own input/output only ever carries `itemId`/`fieldId`,
+// never `owner`/`repo`/`number` -- extractTouch (a synchronous, dependency-
+// free function by design) cannot resolve an issue's identity from an
+// itemId without an async GraphQL round trip. checkLifecycleComment is
+// therefore structurally unreachable for `set_field_value` touches today;
+// see ADR-0007's Audit section for the full writeup.
 const STATUS_MUTATE_ACTIONS = new Set(['set_field_value', 'update_issue']);
 // The generic github MCP server's own comment tool -- NOT issue_write,
 // which is a create/update tool (method: 'create'|'update') with no
@@ -304,12 +313,50 @@ export async function checkStatusProgression(touch, runGraphQL) {
 // transition, anywhere earlier in this turn's transcript.
 // ---------------------------------------------------------------------------
 
+const TRANSCRIPT_TAIL_BYTES = 262144; // 256 KiB
+
+/** Read only the last `TRANSCRIPT_TAIL_BYTES` of a transcript file rather
+ * than the whole thing. This check runs on every qualifying touch, not
+ * once per session, and a session transcript can grow arbitrarily large --
+ * unlike github-bug-capture's diagnostic-capture.mjs, which layers a
+ * high-water-mark on top of its own tail read to guard against
+ * self-matching its own prior output (issue #146), this check has no such
+ * self-matching risk, so a plain bounded tail read is sufficient. Same
+ * "informational only" tradeoff diagnostic-capture.mjs already accepts: a
+ * comment posted earlier than this window may be missed, degrading to a
+ * slightly noisier reminder, never a crash or a wrongly-suppressed
+ * unrelated finding. Matches the `(path, encoding) => string` shape of
+ * `node:fs`'s `readFileSync` so it's a drop-in default for `readFn` below,
+ * including in tests, whose small fixture files are entirely within one
+ * tail window regardless. */
+function readTranscriptTail(path) {
+  let fd;
+  try {
+    fd = openSync(path, 'r');
+    const size = fstatSync(fd).size;
+    const length = Math.min(size, TRANSCRIPT_TAIL_BYTES);
+    const position = Math.max(0, size - TRANSCRIPT_TAIL_BYTES);
+    const buffer = Buffer.alloc(length);
+    readSync(fd, buffer, 0, length, position);
+    return buffer.toString('utf8');
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        // already closed or never opened; nothing to clean up
+      }
+    }
+  }
+}
+
 /** Best-effort: scans the JSONL transcript for an `add_issue_comment`
  * (or generic-MCP `issue_write`, or a `gh issue comment` / `gh pr comment`
- * Bash call) referencing the same owner/repo/number anywhere in the file.
- * An unreadable/missing transcript is itself a silent no-op for this check
- * specifically -- it never suppresses the other two checks (NFR-5). */
-export function scanTranscriptForComment(transcriptPath, ref, readFn = readFileSync) {
+ * Bash call) referencing the same owner/repo/number anywhere in the
+ * (tail-bounded) file. An unreadable/missing transcript is itself a
+ * silent no-op for this check specifically -- it never suppresses the
+ * other two checks (NFR-5). */
+export function scanTranscriptForComment(transcriptPath, ref, readFn = readTranscriptTail) {
   if (!transcriptPath || !ref || typeof ref.owner !== 'string' || typeof ref.repo !== 'string') {
     return { resolved: false };
   }

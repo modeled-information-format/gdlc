@@ -81,7 +81,9 @@ async function main() {
   const findings = await runHygieneChecks(touch, {
     runGraphQL,
     transcriptPath: input.transcript_path,
-    readFn: readFileSync,
+    // No readFn override: lib/hygiene-check.mjs's own default
+    // (readTranscriptTail) bounds the read to a fixed tail window rather
+    // than loading the whole, potentially large, session transcript.
   });
 
   if (input.session_id) {

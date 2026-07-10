@@ -322,8 +322,11 @@ can be active simultaneously without conflict.
    only `github-sdlc-planning`'s own tool names).
 3. **No new blocking failure mode.** Every check fails open; a hook bug, a
    `gh` auth failure, or a rate limit degrades to silence, never to a
-   broken tool call, by construction (`Promise.allSettled` plus a
-   top-level `.catch(() => emitEmpty())` in both entrypoints).
+   broken tool call, by construction (`Promise.allSettled` inside
+   `runHygieneChecks`, plus a top-level error handler in each entrypoint --
+   `hygiene-check.mjs`'s `main().catch(() => emitEmpty())` and
+   `hygiene-aggregate.mjs`'s `try { main(); } catch { emitEmpty(); }`,
+   the latter wrapping a plain synchronous `main` rather than an async one).
 
 ### Negative
 
@@ -354,9 +357,13 @@ three tool-agnostic surfaces, measured by: `hooks/hygiene-check.mjs` and
 `hooks/hygiene-aggregate.mjs` (and their `lib/` modules) contain no
 `process.exit` call and no `decision: "block"` output anywhere; the
 `hygiene-hook-drift-check` CI job fails a PR that lets a sibling copy
-diverge from the canonical version; and `mcp-server/test/unit/hygiene-check-hook.test.ts`
-plus `hygiene-scratch-aggregate.test.ts` cover every check's resolved,
-no-gap, and fail-open paths independently.
+diverge from the canonical version; and `mcp-server/test/unit/hygiene-check-hook.test.ts`,
+`hygiene-scratch-aggregate.test.ts`, and `hygiene-entrypoints.test.ts`
+(the last spawning the entrypoint scripts directly, the same contract
+Claude Code itself uses) cover every check's resolved, no-gap, and
+fail-open paths, including the entrypoints' own crash-safety on malformed
+stdin -- see the 2026-07-09 Audit entries below for the two local-review
+rounds that found and closed the gaps this coverage now guards.
 
 ## Related Decisions
 
@@ -411,6 +418,31 @@ open objections to the advisory-only contract, the tri-matcher design, or
 the copy-and-register distribution model.
 
 **Action Required:** None for this ADR.
+
+### 2026-07-09
+
+**Status:** Compliant (with one filed follow-up)
+
+**Findings:**
+
+| Finding | Files | Lines | Assessment |
+| --- | --- | --- | --- |
+| Round 1: `hygiene-aggregate.mjs`'s bare `main()` call could crash with a non-zero exit on a null-shaped stdin payload or a malformed scratch entry, contradicting this ADR's own AD-1 claim; the `gh` CLI surface only recognized `gh pr create`, leaving `checkLifecycleComment`/`checkSubIssueLinkage` unreachable from `gh issue create`/`edit`/`close`, contradicting the surface-agnostic decision driver; a digit in a title/body could be mis-captured as the target issue number; `checkLifecycleComment` was called eagerly rather than deferred, risking silently discarding the other two checks' findings on a synchronous throw | plugins/*/hooks/hygiene-aggregate.mjs, plugins/*/hooks/lib/hygiene-check.mjs | - | fixed |
+| Round 2: `checkSubIssueLinkage` fired on a close, contradicting its own documented "skips a close" behavior; the MCP branch only handled a flat-object `tool_output`, missing the MCP content-array wrapper shape a sibling hook (`validate-mif.mjs`) already handles for the same tool family; `mcp__github__issue_write` was miscategorized as a comment action, which is not this tool's actual semantics (`method: 'create'\|'update'`) | plugins/*/hooks/lib/hygiene-check.mjs | - | fixed |
+| Round 3: `scanTranscriptForComment` read the entire session transcript unbounded on every qualifying touch, rather than a bounded tail window the way `diagnostic-capture.mjs` already does for the same class of file; this ADR's own Audit/Decision-Outcome text had not been updated after rounds 1-2 landed | plugins/*/hooks/lib/hygiene-check.mjs, this file | - | fixed |
+| Round 3: `checkLifecycleComment` cannot resolve an issue/PR's identity for a `set_field_value` touch, since that tool's own input/output only ever carries `itemId`/`fieldId`, never `owner`/`repo`/`number` -- the check is structurally unreachable for the single most direct way an agent changes a board Status field | plugins/github-sdlc-planning/hooks/lib/hygiene-check.mjs | - | filed as a follow-up issue (requires a design decision -- resolving `itemId` to issue coordinates needs an async GraphQL round trip inside what is currently a synchronous, dependency-free `extractTouch`), not fixed in this PR |
+
+**Summary:** Three independent local-review rounds ran against the
+implementing branch before the PR opened, per this workspace's mandatory
+pre-PR review convention. Every finding that was a mechanical, in-scope
+fix landed in the same branch (regression-tested, including one test
+verified to fail against the pre-fix code and pass against the fix). The
+one finding requiring a real architecture decision (`set_field_value`
+touches carrying no issue identity) is filed as a tracked follow-up issue
+rather than decided unilaterally.
+
+**Action Required:** Track and resolve the filed follow-up issue for the
+`set_field_value` identity gap.
 
 [adr-0003]: adr-0003-board-status-hygiene.md
 [adr-0004]: adr-0004-project-config-surface.md

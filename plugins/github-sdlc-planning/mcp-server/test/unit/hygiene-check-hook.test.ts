@@ -256,6 +256,27 @@ describe('scanTranscriptForComment', () => {
     expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 1 })).toEqual({ resolved: true, found: true });
   });
 
+  it('reads only a bounded tail window, not the whole transcript -- a match past that window is not found', () => {
+    // Real behavior test for the default readFn (readTranscriptTail), not
+    // an injected stub: proves the 256 KiB bound is actually enforced, not
+    // just documented. A match placed well beyond the tail window (padded
+    // with ~400 KiB of filler lines first) must NOT be found; the same
+    // match placed at the very end of a similarly large file MUST be found.
+    const filler = Array.from({ length: 6000 }, () => ({ tool_name: 'Bash', tool_input: { command: 'echo padding-line-to-grow-the-transcript-file' } }));
+
+    const beyondWindow = tmpTranscriptWith([
+      { tool_name: 'mcp__github__add_issue_comment', tool_input: { owner: 'acme', repo: 'widgets', issue_number: 1, body: 'hi' } },
+      ...filler,
+    ]);
+    expect(scanTranscriptForComment(beyondWindow, { owner: 'acme', repo: 'widgets', number: 1 })).toEqual({ resolved: true, found: false });
+
+    const withinWindow = tmpTranscriptWith([
+      ...filler,
+      { tool_name: 'mcp__github__add_issue_comment', tool_input: { owner: 'acme', repo: 'widgets', issue_number: 1, body: 'hi' } },
+    ]);
+    expect(scanTranscriptForComment(withinWindow, { owner: 'acme', repo: 'widgets', number: 1 })).toEqual({ resolved: true, found: true });
+  });
+
   it('does not find a comment for a different issue', () => {
     const path = tmpTranscriptWith([
       { tool_name: 'mcp__github__add_issue_comment', tool_input: { owner: 'acme', repo: 'widgets', issue_number: 99, body: 'hi' } },
@@ -350,6 +371,12 @@ describe('checkSubIssueLinkage', () => {
     const runGraphQL = async () => {
       throw new Error('boom');
     };
+    const result = await checkSubIssueLinkage({ action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 }, runGraphQL);
+    expect(result).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('fails open on an ambiguous response -- a non-numeric totalCount is never treated as zero', async () => {
+    const runGraphQL = async () => ({ repository: { issue: { body: '<!-- mif-type: Epic -->', subIssues: {} } } });
     const result = await checkSubIssueLinkage({ action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 }, runGraphQL);
     expect(result).toEqual({ resolved: true, findings: [] });
   });
