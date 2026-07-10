@@ -3,9 +3,12 @@
 // consolidates this turn's hygiene-check.mjs scratch entries into ONE
 // reminder (AD-3, NFR-6). Advisory only, same non-blocking contract as
 // hygiene-check.mjs: plain exit 0, hookSpecificOutput.additionalContext or
-// nothing, never decision: "block". Canonical copy (github-sdlc-planning);
-// sibling plugins ship byte-identical copies, kept in sync by a build-time
-// drift check (AD-4).
+// nothing, never decision: "block". Canonical source of truth:
+// plugins/github-sdlc-planning/hooks/hygiene-aggregate.mjs -- github-pull-requests
+// and github-bug-capture each ship a byte-identical copy at the same
+// relative path (including this copy, if you're reading it from one of
+// those plugins right now), kept in sync by a build-time drift check
+// (AD-4, .github/workflows/ci.yml's hygiene-hook-drift-check job).
 import { readFileSync } from 'node:fs';
 import { readScratchEntries, scratchFilePath, clearScratch } from './lib/hygiene-scratch.mjs';
 import { buildConsolidatedContext } from './lib/hygiene-aggregate.mjs';

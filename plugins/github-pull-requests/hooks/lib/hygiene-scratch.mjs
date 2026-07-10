@@ -8,9 +8,12 @@
  *
  * Every function here is dependency-injected for the actual filesystem
  * call (same shape as hooks/lib/in-progress.mjs's `runGraphQL` injection),
- * so tests never touch the real filesystem. All I/O failures are silent
- * no-ops by design -- a hook must never break the tool call it observes,
- * and a scratch-file problem is never more important than that.
+ * so tests can stub I/O when a test specifically needs to (e.g. simulating
+ * a write failure); tests are free to exercise the real filesystem via
+ * temp files too, and mostly do, since these are cheap, local operations.
+ * All I/O failures are silent no-ops by design -- a hook must never break
+ * the tool call it observes, and a scratch-file problem is never more
+ * important than that.
  */
 import { existsSync, mkdirSync, readFileSync, appendFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';

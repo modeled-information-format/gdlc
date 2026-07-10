@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -54,6 +56,37 @@ describe('hygiene-check.mjs entrypoint', () => {
     const parsed = JSON.parse(result.text);
     expect(parsed.decision).toBeUndefined();
     expect(Object.keys(parsed).every((k) => k === 'hookSpecificOutput')).toBe(true);
+  });
+
+  it('does not shell out to git for an unrelated Bash command (Copilot review finding on PR #173) -- only a gh issue|pr command pays for the owner/repo fallback lookup', () => {
+    // A fake `git` on PATH that records whether it was invoked at all,
+    // shadowing the real one. Exits 1 (as a real `git remote get-url`
+    // would outside a repo) so behavior is identical either way -- this
+    // test only ever asserts on the marker file, never on the hook's
+    // output shape (already covered by the other tests in this file).
+    const fakeBinDir = mkdtempSync(path.join(tmpdir(), 'gdlc-fake-git-bin-'));
+    const markerFile = path.join(fakeBinDir, 'git-was-invoked');
+    const fakeGitPath = path.join(fakeBinDir, 'git');
+    writeFileSync(fakeGitPath, `#!/bin/sh\ntouch "${markerFile}"\nexit 1\n`);
+    chmodSync(fakeGitPath, 0o755);
+
+    try {
+      execFileSync('node', [path.join(hooksDir, 'hygiene-check.mjs')], {
+        input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'ls -la' }, cwd: '/tmp' }),
+        encoding: 'utf8',
+        env: { ...process.env, PATH: `${fakeBinDir}:${process.env.PATH ?? ''}` },
+      });
+      expect(existsSync(markerFile)).toBe(false);
+
+      execFileSync('node', [path.join(hooksDir, 'hygiene-check.mjs')], {
+        input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'gh issue view 42' }, cwd: '/tmp' }),
+        encoding: 'utf8',
+        env: { ...process.env, PATH: `${fakeBinDir}:${process.env.PATH ?? ''}` },
+      });
+      expect(existsSync(markerFile)).toBe(true);
+    } finally {
+      rmSync(fakeBinDir, { recursive: true, force: true });
+    }
   });
 });
 

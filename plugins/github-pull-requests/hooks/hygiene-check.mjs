@@ -7,12 +7,15 @@
 // hookSpecificOutput.additionalContext on a plain exit 0, or nothing at
 // all, and NEVER decision: "block" or a non-zero exit, under any
 // circumstance including an unexpected internal error (see the top-level
-// catch below). This is the canonical copy (github-sdlc-planning); sibling
-// plugins ship byte-identical copies, kept in sync by a build-time drift
-// check (AD-4).
+// catch below). Canonical source of truth:
+// plugins/github-sdlc-planning/hooks/hygiene-check.mjs -- github-pull-requests
+// and github-bug-capture each ship a byte-identical copy at the same
+// relative path (including this copy, if you're reading it from one of
+// those plugins right now), kept in sync by a build-time drift check
+// (AD-4, .github/workflows/ci.yml's hygiene-hook-drift-check job).
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { extractTouch, runHygieneChecks, buildAdditionalContext } from './lib/hygiene-check.mjs';
+import { extractTouch, runHygieneChecks, buildAdditionalContext, GH_ISSUE_OR_PR_RE } from './lib/hygiene-check.mjs';
 import { scratchFilePath, appendScratchEntry } from './lib/hygiene-scratch.mjs';
 
 function readStdin() {
@@ -69,8 +72,15 @@ async function main() {
   const input = readStdin();
   const cwd = input.cwd ?? process.cwd();
 
+  // This hook is registered on the broad `Bash` matcher (hooks.json), so it
+  // runs for every single Bash tool call, not just `gh issue|pr` ones. The
+  // git-remote shell-out below is real overhead; gate it behind the same
+  // cheap, pure regex test extractTouch's own Bash branch uses, so an
+  // unrelated command (`ls`, `npm test`, ...) never pays for it.
   let fallbackOwnerRepo = null;
-  if (input.tool_name === 'Bash') fallbackOwnerRepo = fallbackOwnerRepoFromCwd(cwd);
+  if (input.tool_name === 'Bash' && GH_ISSUE_OR_PR_RE.test(String(input.tool_input?.command ?? ''))) {
+    fallbackOwnerRepo = fallbackOwnerRepoFromCwd(cwd);
+  }
 
   const touch = extractTouch(input, fallbackOwnerRepo);
   if (!touch) {

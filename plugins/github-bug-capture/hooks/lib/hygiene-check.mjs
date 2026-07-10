@@ -2,11 +2,15 @@
  * Ticket-hygiene reinforcement hook: the testable core (ADR-0007,
  * docs/decisions/adr-0007-ticket-hygiene-reinforcement-hooks.md).
  *
- * This is the canonical copy (github-sdlc-planning). Sibling plugins
- * (github-pull-requests, github-bug-capture) ship byte-identical copies of
- * this file and its two callers (../hygiene-check.mjs, ../hygiene-aggregate.mjs)
- * -- a build-time drift check (.github/workflows) fails a PR if any copy
- * diverges from this one. Dependency-free by design (no node_modules at
+ * Canonical source of truth: plugins/github-sdlc-planning/hooks/lib/hygiene-check.mjs.
+ * github-pull-requests and github-bug-capture each ship a byte-identical
+ * copy of this file and its two callers (../hygiene-check.mjs,
+ * ../hygiene-aggregate.mjs) at the same relative path under their own
+ * hooks/ -- including this copy, if you're reading it from one of those
+ * plugins right now. A build-time drift check
+ * (.github/workflows/ci.yml's hygiene-hook-drift-check job) fails a PR if
+ * any copy diverges from the canonical source above. Dependency-free by
+ * design (no node_modules at
  * hook-execution time), same spirit as hooks/lib/in-progress.mjs and
  * github-bug-capture's hooks/lib/diagnostic-capture.mjs.
  *
@@ -92,7 +96,12 @@ function extractClosedIssueNumbers(text) {
   return [...numbers];
 }
 
-const GH_ISSUE_OR_PR_RE = /^\s*gh\s+(issue|pr)\s+(view|edit|close|comment|create|list)\b/;
+// Exported so the entrypoint can cheaply pre-check a Bash command before
+// deciding whether it's worth shelling out to `git remote get-url origin`
+// for the owner/repo fallback -- this hook runs on every Bash tool call
+// (the matcher is unscoped), so that shell-out must not happen for the
+// common case of an unrelated command (`ls`, `npm test`, ...).
+export const GH_ISSUE_OR_PR_RE = /^\s*gh\s+(issue|pr)\s+(view|edit|close|comment|create|list)\b/;
 
 /** Parse the closing-keyword issue numbers out of a `gh pr create` Bash
  * invocation's `--body`/`--body-file`/`--fill` flags. `--body-file`/`--fill`
@@ -350,9 +359,11 @@ function readTranscriptTail(path) {
   }
 }
 
-/** Best-effort: scans the JSONL transcript for an `add_issue_comment`
- * (or generic-MCP `issue_write`, or a `gh issue comment` / `gh pr comment`
- * Bash call) referencing the same owner/repo/number anywhere in the
+/** Best-effort: scans the JSONL transcript for an `add_issue_comment` call
+ * (plugin-scoped or the generic github MCP server's own comment tool --
+ * NOT `issue_write`, which has no comment-posting semantics, see
+ * COMMENT_ACTIONS above) or a `gh issue comment` / `gh pr comment` Bash
+ * call, referencing the same owner/repo/number anywhere in the
  * (tail-bounded) file. An unreadable/missing transcript is itself a
  * silent no-op for this check specifically -- it never suppresses the
  * other two checks (NFR-5). */
