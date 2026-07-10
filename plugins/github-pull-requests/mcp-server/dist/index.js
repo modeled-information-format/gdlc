@@ -39027,6 +39027,143 @@ async function addPullRequestToProject(input, deps = {}) {
   return { itemId: data.addProjectV2ItemById.item.id };
 }
 
+// ../../github-sdlc-planning/mcp-server/dist/config.js
+var import_yaml = __toESM(require_dist2(), 1);
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join, resolve as resolvePath } from "node:path";
+var CONFIG_RELPATH = ["gdlc", "config.yml"];
+function resolveConfigPath(root) {
+  return join(root, ...CONFIG_RELPATH);
+}
+function resolveGlobalConfigRoot(env = process.env) {
+  return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== "" ? env.XDG_CONFIG_HOME : join(homedir(), ".config");
+}
+function findProjectConfigRoot(startDir, existsFn = existsSync, ceiling = homedir()) {
+  const ceilingResolved = resolvePath(ceiling);
+  let dir = resolvePath(startDir);
+  for (; ; ) {
+    if (dir === ceilingResolved)
+      return null;
+    if (existsFn(resolveConfigPath(join(dir, ".config"))))
+      return dir;
+    const parent = dirname(dir);
+    if (parent === dir)
+      return null;
+    dir = parent;
+  }
+}
+function isPlainObject3(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function normalizeStringArray(value) {
+  if (!Array.isArray(value))
+    return void 0;
+  return value.map((v) => typeof v === "string" ? v : String(v));
+}
+function normalizeConfig(parsed) {
+  if (!isPlainObject3(parsed))
+    return {};
+  const config2 = {};
+  if (isPlainObject3(parsed.targeting)) {
+    const allowRepos = normalizeStringArray(parsed.targeting.allowRepos);
+    const allowOrgs = normalizeStringArray(parsed.targeting.allowOrgs);
+    if (allowRepos !== void 0 || allowOrgs !== void 0) {
+      config2.targeting = { ...allowRepos !== void 0 && { allowRepos }, ...allowOrgs !== void 0 && { allowOrgs } };
+    }
+  }
+  if (isPlainObject3(parsed.destination) && typeof parsed.destination.repo === "string") {
+    config2.destination = { repo: parsed.destination.repo };
+  }
+  if (isPlainObject3(parsed.board)) {
+    const { projectOwnerLogin, projectNumber, projectOwnerType } = parsed.board;
+    const board = {};
+    if (typeof projectOwnerLogin === "string" && projectOwnerLogin !== "")
+      board.projectOwnerLogin = projectOwnerLogin;
+    if (typeof projectNumber === "number" || typeof projectNumber === "string") {
+      const parsedNumber = Number(projectNumber);
+      if (Number.isInteger(parsedNumber) && parsedNumber > 0)
+        board.projectNumber = parsedNumber;
+    }
+    if (projectOwnerType === "organization" || projectOwnerType === "user")
+      board.projectOwnerType = projectOwnerType;
+    if (Object.keys(board).length > 0)
+      config2.board = board;
+  }
+  if (isPlainObject3(parsed.packs)) {
+    const packs = {};
+    for (const [key, value] of Object.entries(parsed.packs)) {
+      if (typeof value === "boolean")
+        packs[key] = value;
+    }
+    if (Object.keys(packs).length > 0)
+      config2.packs = packs;
+  }
+  if (isPlainObject3(parsed.prLifecycle)) {
+    const raw = parsed.prLifecycle;
+    const prLifecycle = {};
+    if (typeof raw.enabled === "boolean")
+      prLifecycle.enabled = raw.enabled;
+    if (typeof raw.localReviewer === "string" && raw.localReviewer.trim() !== "")
+      prLifecycle.localReviewer = raw.localReviewer.trim();
+    if (typeof raw.requireLocalReview === "boolean")
+      prLifecycle.requireLocalReview = raw.requireLocalReview;
+    if (typeof raw.requireCopilotReview === "boolean")
+      prLifecycle.requireCopilotReview = raw.requireCopilotReview;
+    if (typeof raw.requireCleanCodeScanning === "boolean")
+      prLifecycle.requireCleanCodeScanning = raw.requireCleanCodeScanning;
+    if (typeof raw.gateNewWorkOnUnresolvedThreads === "boolean")
+      prLifecycle.gateNewWorkOnUnresolvedThreads = raw.gateNewWorkOnUnresolvedThreads;
+    if (Object.keys(prLifecycle).length > 0)
+      config2.prLifecycle = prLifecycle;
+  }
+  return config2;
+}
+function loadConfigFile(path) {
+  let text;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch {
+    return {};
+  }
+  try {
+    return normalizeConfig((0, import_yaml.parse)(text));
+  } catch {
+    return {};
+  }
+}
+function mergeConfigs(global, project) {
+  return { ...global, ...project };
+}
+function resolveProjectConfigPath(startDir = process.cwd(), existsFn = existsSync, env = process.env) {
+  const root = findProjectConfigRoot(startDir, existsFn);
+  if (root === null)
+    return null;
+  const path = resolveConfigPath(join(root, ".config"));
+  return path === resolveConfigPath(resolveGlobalConfigRoot(env)) ? null : path;
+}
+function loadGdlcConfig(projectRoot = process.cwd(), env = process.env, existsFn = existsSync) {
+  const global = loadConfigFile(resolveConfigPath(resolveGlobalConfigRoot(env)));
+  const projectPath = resolveProjectConfigPath(projectRoot, existsFn, env);
+  const project = projectPath === null ? {} : loadConfigFile(projectPath);
+  return mergeConfigs(global, project);
+}
+var DEFAULT_LOCAL_REVIEWER = "/code-review:code-review --fix";
+function resolvePrLifecycleConfig(config2) {
+  const raw = config2.prLifecycle ?? {};
+  return {
+    enabled: raw.enabled === true,
+    localReviewer: raw.localReviewer ?? DEFAULT_LOCAL_REVIEWER,
+    requireLocalReview: raw.requireLocalReview ?? true,
+    requireCopilotReview: raw.requireCopilotReview ?? true,
+    requireCleanCodeScanning: raw.requireCleanCodeScanning ?? true,
+    gateNewWorkOnUnresolvedThreads: raw.gateNewWorkOnUnresolvedThreads ?? true
+  };
+}
+
+// ../../github-sdlc-planning/mcp-server/dist/project-profile.js
+var DEFAULT_PROJECT_PROFILE_TTL_MS = 60 * 60 * 1e3;
+
 // ../../github-sdlc-planning/mcp-server/dist/tools/projects.js
 var UPDATE_FIELD_VALUE_MUTATION = `
   mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: ProjectV2FieldValue!) {
@@ -39056,10 +39193,11 @@ async function setFieldValue(input, deps = {}) {
   return { itemId: input.itemId };
 }
 var GET_PROJECT_ITEMS_QUERY = `
-  query($projectId: ID!) {
+  query($projectId: ID!, $after: String) {
     node(id: $projectId) {
       ... on ProjectV2 {
-        items(first: 100) {
+        items(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
           nodes {
             id
             content {
@@ -39081,10 +39219,23 @@ var GET_PROJECT_ITEMS_QUERY = `
     }
   }
 `;
+var MAX_PAGES = 1e3;
+async function fetchAllProjectItemNodes(projectId, deps) {
+  const allNodes = [];
+  let after = null;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const data = await githubGraphQL2(GET_PROJECT_ITEMS_QUERY, { projectId, after }, {}, deps);
+    const items = data.node?.items;
+    allNodes.push(...items?.nodes ?? []);
+    if (!items?.pageInfo.hasNextPage)
+      return allNodes;
+    after = items.pageInfo.endCursor;
+  }
+  throw new Error(`fetchAllProjectItemNodes: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);
+}
 async function getProjectItems(input, deps = {}) {
   const projectId = await resolveProjectNodeId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? "organization", deps);
-  const data = await githubGraphQL2(GET_PROJECT_ITEMS_QUERY, { projectId }, {}, deps);
-  const nodes = data.node?.items?.nodes ?? [];
+  const nodes = await fetchAllProjectItemNodes(projectId, deps);
   return {
     items: nodes.map((n) => ({
       id: n.id,
@@ -39171,137 +39322,6 @@ async function syncLinkedIssuesProjectField(input, deps = {}) {
     synced.push({ issueNumber, itemId: item.id });
   }
   return { synced, notFoundOnBoard, skippedCrossRepo };
-}
-
-// ../../github-sdlc-planning/mcp-server/dist/config.js
-var import_yaml = __toESM(require_dist2(), 1);
-import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join, resolve as resolvePath } from "node:path";
-var CONFIG_RELPATH = ["gdlc", "config.yml"];
-function resolveConfigPath(root) {
-  return join(root, ...CONFIG_RELPATH);
-}
-function resolveGlobalConfigRoot(env = process.env) {
-  return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== "" ? env.XDG_CONFIG_HOME : join(homedir(), ".config");
-}
-function findProjectConfigRoot(startDir, existsFn = existsSync, ceiling = homedir()) {
-  const ceilingResolved = resolvePath(ceiling);
-  let dir = resolvePath(startDir);
-  for (; ; ) {
-    if (dir === ceilingResolved)
-      return null;
-    if (existsFn(resolveConfigPath(join(dir, ".config"))))
-      return dir;
-    const parent = dirname(dir);
-    if (parent === dir)
-      return null;
-    dir = parent;
-  }
-}
-function isPlainObject3(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function normalizeStringArray(value) {
-  if (!Array.isArray(value))
-    return void 0;
-  return value.map((v) => typeof v === "string" ? v : String(v));
-}
-function normalizeConfig(parsed) {
-  if (!isPlainObject3(parsed))
-    return {};
-  const config2 = {};
-  if (isPlainObject3(parsed.targeting)) {
-    const allowRepos = normalizeStringArray(parsed.targeting.allowRepos);
-    const allowOrgs = normalizeStringArray(parsed.targeting.allowOrgs);
-    if (allowRepos !== void 0 || allowOrgs !== void 0) {
-      config2.targeting = { ...allowRepos !== void 0 && { allowRepos }, ...allowOrgs !== void 0 && { allowOrgs } };
-    }
-  }
-  if (isPlainObject3(parsed.destination) && typeof parsed.destination.repo === "string") {
-    config2.destination = { repo: parsed.destination.repo };
-  }
-  if (isPlainObject3(parsed.board)) {
-    const { projectOwnerLogin, projectNumber, projectOwnerType } = parsed.board;
-    const board = {};
-    if (typeof projectOwnerLogin === "string" && projectOwnerLogin !== "")
-      board.projectOwnerLogin = projectOwnerLogin;
-    if (typeof projectNumber === "number" || typeof projectNumber === "string") {
-      const parsedNumber = Number(projectNumber);
-      if (Number.isInteger(parsedNumber) && parsedNumber > 0)
-        board.projectNumber = parsedNumber;
-    }
-    if (projectOwnerType === "organization" || projectOwnerType === "user")
-      board.projectOwnerType = projectOwnerType;
-    if (Object.keys(board).length > 0)
-      config2.board = board;
-  }
-  if (isPlainObject3(parsed.packs)) {
-    const packs = {};
-    for (const [key, value] of Object.entries(parsed.packs)) {
-      if (typeof value === "boolean")
-        packs[key] = value;
-    }
-    if (Object.keys(packs).length > 0)
-      config2.packs = packs;
-  }
-  if (isPlainObject3(parsed.prLifecycle)) {
-    const raw = parsed.prLifecycle;
-    const prLifecycle = {};
-    if (typeof raw.enabled === "boolean")
-      prLifecycle.enabled = raw.enabled;
-    if (typeof raw.localReviewer === "string" && raw.localReviewer.trim() !== "")
-      prLifecycle.localReviewer = raw.localReviewer.trim();
-    if (typeof raw.requireLocalReview === "boolean")
-      prLifecycle.requireLocalReview = raw.requireLocalReview;
-    if (typeof raw.requireCopilotReview === "boolean")
-      prLifecycle.requireCopilotReview = raw.requireCopilotReview;
-    if (typeof raw.requireCleanCodeScanning === "boolean")
-      prLifecycle.requireCleanCodeScanning = raw.requireCleanCodeScanning;
-    if (Object.keys(prLifecycle).length > 0)
-      config2.prLifecycle = prLifecycle;
-  }
-  return config2;
-}
-function loadConfigFile(path) {
-  let text;
-  try {
-    text = readFileSync(path, "utf8");
-  } catch {
-    return {};
-  }
-  try {
-    return normalizeConfig((0, import_yaml.parse)(text));
-  } catch {
-    return {};
-  }
-}
-function mergeConfigs(global, project) {
-  return { ...global, ...project };
-}
-function resolveProjectConfigPath(startDir = process.cwd(), existsFn = existsSync, env = process.env) {
-  const root = findProjectConfigRoot(startDir, existsFn);
-  if (root === null)
-    return null;
-  const path = resolveConfigPath(join(root, ".config"));
-  return path === resolveConfigPath(resolveGlobalConfigRoot(env)) ? null : path;
-}
-function loadGdlcConfig(projectRoot = process.cwd(), env = process.env, existsFn = existsSync) {
-  const global = loadConfigFile(resolveConfigPath(resolveGlobalConfigRoot(env)));
-  const projectPath = resolveProjectConfigPath(projectRoot, existsFn, env);
-  const project = projectPath === null ? {} : loadConfigFile(projectPath);
-  return mergeConfigs(global, project);
-}
-var DEFAULT_LOCAL_REVIEWER = "/code-review:code-review --fix";
-function resolvePrLifecycleConfig(config2) {
-  const raw = config2.prLifecycle ?? {};
-  return {
-    enabled: raw.enabled === true,
-    localReviewer: raw.localReviewer ?? DEFAULT_LOCAL_REVIEWER,
-    requireLocalReview: raw.requireLocalReview ?? true,
-    requireCopilotReview: raw.requireCopilotReview ?? true,
-    requireCleanCodeScanning: raw.requireCleanCodeScanning ?? true
-  };
 }
 
 // src/tools/pr-readiness.ts
