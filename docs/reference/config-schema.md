@@ -53,8 +53,9 @@ board:
 packs:
   hooks: true                # optional; enhancement-pack opt-in toggles
   triage-skills: true         # (github-bug-capture: hooks, triage-skills,
-  mcp-integration: false      # mcp-integration, gh-aw today). Keyed by
-  gh-aw: false                # pack name -> boolean; unset = disabled.
+  mcp-integration: false      # mcp-integration, gh-aw; github-sdlc-planning:
+  gh-aw: false                # skipMutationConfirm). Keyed by pack name ->
+  skipMutationConfirm: false  # boolean; unset = disabled (fail-closed).
 ```
 
 `targeting` and `destination` are new (issue #78's capture-scope and
@@ -124,14 +125,16 @@ ADR-0002 reserves for owned business logic like PR-issue linkage. Issue
 The one exception is each plugin's **hooks** layer, which is deliberately
 dependency-free (no `node_modules` available at hook-execution time) and
 cannot import an npm-backed module: `github-sdlc-planning`'s
-`hooks/lib/in-progress.mjs` and `github-bug-capture`'s `hooks/lib/settings.mjs`
-each keep their own minimal, dependency-free reader (`board:` and `packs:`
-respectively) for `.config/gdlc/config.yml`'s plain-YAML sections, rather
-than sharing code with the MCP-server loader or with each other. Both
-`board:` readers are kept behaviorally identical on purpose (issue #83's
-review caught and fixed a real divergence between them) — see *Verified
-end-to-end* below. `settings.mjs`'s `packs:` reader (ADR-0006) mirrors the
-same parsing/resolution pattern `in-progress.mjs` proved out for `board:`.
+`hooks/lib/in-progress.mjs` (`board:`) and `hooks/lib/settings.mjs`
+(`packs:`, added for issue #183's `skipMutationConfirm` toggle), and
+`github-bug-capture`'s own `hooks/lib/settings.mjs` (`packs:`), each keep
+their own minimal, dependency-free reader for `.config/gdlc/config.yml`'s
+plain-YAML sections, rather than sharing code with the MCP-server loader or
+with each other. Both `board:` readers are kept behaviorally identical on
+purpose (issue #83's review caught and fixed a real divergence between
+them) — see *Verified end-to-end* below. Both `settings.mjs` `packs:`
+readers (ADR-0006) mirror the same parsing/resolution pattern
+`in-progress.mjs` proved out for `board:`.
 
 ## Verified end-to-end (issue #84)
 

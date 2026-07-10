@@ -11,24 +11,41 @@
  * here too, but every one of them goes through a caller-supplied
  * `runGraphQL` function, the only piece that ever shells out to `gh`, so
  * this module never touches child_process and tests never shell out.
+ *
+ * The dependency-free `.config/gdlc/config.yml` path-resolution helpers
+ * below (`resolveGdlcConfigPath` through `extractScalarValue`) are exported
+ * for, and imported by, this same plugin's own `hooks/lib/settings.mjs`
+ * (issue #183's `packs:` reader) -- one implementation shared within the
+ * github-sdlc-planning plugin boundary, not duplicated a second time the
+ * way it deliberately IS across the github-bug-capture plugin boundary.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { mcpAction } from './mcp-tool-name.mjs';
 
-const GDLC_CONFIG_RELPATH = join('gdlc', 'config.yml');
+// Exported (not just this module's own board: reader): issue #183's
+// hooks/lib/settings.mjs, the packs: reader for the same plugin's
+// confirm-mutation.mjs, needs the identical dependency-free path-resolution
+// and upward-search logic. Both files live in this same hooks/lib/ within
+// one plugin/npm-package boundary -- unlike github-bug-capture's own,
+// deliberately separate settings.mjs (a different plugin, re-implemented on
+// purpose per docs/reference/config-schema.md), duplicating these helpers a
+// second time *within* github-sdlc-planning would just be two copies of the
+// same bug waiting to independently drift, the exact failure issue #83's
+// review already caught once for the `board:` reader.
+export const GDLC_CONFIG_RELPATH = join('gdlc', 'config.yml');
 
 /** Same relative suffix as the mcp-server's config.ts (issue #82) -- this
  * hook can't import that module (dependency-free by design, no
  * node_modules at hook-execution time), so it re-implements just enough
  * of the resolution rule and the `board:` section shape to migrate off
  * the legacy carrier below. */
-function resolveGdlcConfigPath(root) {
+export function resolveGdlcConfigPath(root) {
   return join(root, GDLC_CONFIG_RELPATH);
 }
 
-function resolveGlobalGdlcConfigRoot(env = process.env) {
+export function resolveGlobalGdlcConfigRoot(env = process.env) {
   return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== '' ? env.XDG_CONFIG_HOME : join(homedir(), '.config');
 }
 
@@ -48,7 +65,7 @@ function resolveGlobalGdlcConfigRoot(env = process.env) {
  * config.ts#findProjectConfigRoot for the full reasoning). Returns `null` if
  * nothing is found by the time the ceiling or the filesystem root is
  * reached. */
-function findGdlcProjectRoot(startDir, existsFn = existsSync, ceiling = homedir()) {
+export function findGdlcProjectRoot(startDir, existsFn = existsSync, ceiling = homedir()) {
   const ceilingResolved = resolvePath(ceiling);
   let dir = resolvePath(startDir);
   for (;;) {
@@ -69,7 +86,7 @@ function findGdlcProjectRoot(startDir, existsFn = existsSync, ceiling = homedir(
  * `~/.config/gdlc/config.yml`), since a *present* project section always
  * wins over the global one below. Excluding an exact path match closes
  * this for both the default and customized cases. */
-function resolveGdlcProjectConfigPath(startDir, existsFn, env) {
+export function resolveGdlcProjectConfigPath(startDir, existsFn, env) {
   const root = findGdlcProjectRoot(startDir, existsFn);
   if (root === null) return null;
   const path = resolveGdlcConfigPath(join(root, '.config'));
@@ -83,7 +100,7 @@ function resolveGdlcProjectConfigPath(startDir, existsFn, env) {
  * Without this, an inline comment on a `board:` line (e.g.
  * `projectOwnerLogin: acme  # our org`) would be captured as part of the
  * value and passed to GitHub verbatim, silently failing to resolve. */
-function extractScalarValue(raw) {
+export function extractScalarValue(raw) {
   const trimmed = raw.trim();
   const quote = trimmed[0];
   if (quote === '"' || quote === "'") {

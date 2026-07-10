@@ -82,7 +82,10 @@ ADR-0001 as the pattern the rest of the marketplace follows too:
      context, the Claude Code equivalent of calling `get_session_context`
      manually), `validate-mif.mjs` (MIF frontmatter conformance),
      `confirm-mutation.mjs` (a confirmation prompt before certain board
-     mutations), and `set-in-progress.mjs` (see ADR-0003 below).
+     mutations — its `ask` outranks any settings.json `permissions.allow`
+     entry, so the only opt-out is the `skipMutationConfirm` pack in
+     `.config/gdlc/config.yml`, read by its own `hooks/lib/settings.mjs`),
+     and `set-in-progress.mjs` (see ADR-0003 below).
 
 A host with no hooks support is not degraded to "broken" — it is degraded to
 "do the equivalent thing via an explicit tool call," which is exactly what
@@ -110,6 +113,8 @@ Tool call: {create_issue,update_issue,add_sub_issue,add_item_to_project,
            install); every matcher/tool-identity check below matches both
 ├─ PreToolUse
 │    └─ confirm-mutation.mjs
+│         ├─ short-circuits to a no-op if the `skipMutationConfirm` pack is
+│         │  enabled (`.config/gdlc/config.yml`, project then global layer)
 │         └─ describes the target from tool_input alone (never resolves
 │            config itself); labels an omitted, config-defaulted field
 │            "(config default)", or "(invalid ...)" if the caller gave
