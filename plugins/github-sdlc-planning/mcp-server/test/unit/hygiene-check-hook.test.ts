@@ -28,7 +28,7 @@ describe('extractTouch', () => {
 
   it('recognizes a gh issue command and extracts the issue number', () => {
     const touch = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh issue view 42' } }, { owner: 'acme', repo: 'widgets' });
-    expect(touch).toEqual({ surface: 'gh-cli', action: 'gh_command', owner: 'acme', repo: 'widgets', number: 42, closesIssues: [] });
+    expect(touch).toEqual({ surface: 'gh-cli', action: 'gh_command', owner: 'acme', repo: 'widgets', number: 42, closing: false, closesIssues: [] });
   });
 
   it('recognizes a gh pr create command and extracts closing-keyword issue refs from --body', () => {
@@ -54,7 +54,7 @@ describe('extractTouch', () => {
       },
       { owner: 'acme', repo: 'widgets' },
     );
-    expect(touch).toEqual({ surface: 'gh-cli', action: 'create_issue', owner: 'acme', repo: 'widgets', number: 123, closesIssues: [] });
+    expect(touch).toEqual({ surface: 'gh-cli', action: 'create_issue', owner: 'acme', repo: 'widgets', number: 123, closing: false, closesIssues: [] });
   });
 
   it('returns a null number for gh issue create when stdout carries no parseable URL', () => {
@@ -67,7 +67,7 @@ describe('extractTouch', () => {
 
   it('recognizes gh issue edit and gh pr close as update_issue with the positional number', () => {
     const edit = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh issue edit 42 --add-label bug' } }, { owner: 'acme', repo: 'widgets' });
-    expect(edit).toEqual({ surface: 'gh-cli', action: 'update_issue', owner: 'acme', repo: 'widgets', number: 42, closesIssues: [] });
+    expect(edit).toEqual({ surface: 'gh-cli', action: 'update_issue', owner: 'acme', repo: 'widgets', number: 42, closing: false, closesIssues: [] });
 
     const close = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh pr close 7' } }, { owner: 'acme', repo: 'widgets' });
     expect(close).toMatchObject({ action: 'update_issue', number: 7 });
@@ -117,6 +117,59 @@ describe('extractTouch', () => {
       null,
     );
     expect(touch.closesIssues).toEqual([{ owner: 'acme', repo: 'widgets', number: 12 }]);
+  });
+
+  it('unwraps the MCP content-array tool_output shape to read number/body, not just a flat object', () => {
+    const touch = extractTouch(
+      {
+        tool_name: 'mcp__github-sdlc-planning__create_issue',
+        tool_input: { owner: 'acme', repo: 'widgets', title: 't', body: 'b', mif: { id: 'x', type: 'Epic', namespace: 'ns' } },
+        tool_output: { content: [{ type: 'text', text: JSON.stringify({ number: 77, body: '<!-- mif-type: Epic -->' }) }] },
+      },
+      null,
+    );
+    expect(touch).toMatchObject({ action: 'create_issue', number: 77 });
+  });
+
+  it('yields a null number (never a guess) when tool_output is an unrecognized shape', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-sdlc-planning__create_issue', tool_input: { owner: 'acme', repo: 'widgets' }, tool_output: 'not json at all' },
+      null,
+    );
+    expect(touch).toMatchObject({ action: 'create_issue', number: null });
+  });
+
+  it('reclassifies the generic github MCP server\'s issue_write onto create_issue/update_issue by its method field', () => {
+    const created = extractTouch(
+      { tool_name: 'mcp__github__issue_write', tool_input: { method: 'create', owner: 'acme', repo: 'widgets' }, tool_output: { number: 5 } },
+      null,
+    );
+    expect(created).toMatchObject({ action: 'create_issue', number: 5, closing: false });
+
+    const updated = extractTouch(
+      { tool_name: 'mcp__github__issue_write', tool_input: { method: 'update', owner: 'acme', repo: 'widgets', issue_number: 6 } },
+      null,
+    );
+    expect(updated).toMatchObject({ action: 'update_issue', number: 6, closing: false });
+
+    const closed = extractTouch(
+      { tool_name: 'mcp__github__issue_write', tool_input: { method: 'update', owner: 'acme', repo: 'widgets', issue_number: 6, state: 'closed' } },
+      null,
+    );
+    expect(closed).toMatchObject({ action: 'update_issue', number: 6, closing: true });
+  });
+
+  it('is never miscategorized as a comment action -- issue_write has no comment-posting semantics', () => {
+    // Confirms the fix for the finding that issue_write was previously in
+    // COMMENT_ACTIONS: an issue_write touch on an Epic with zero sub-issues
+    // must still be recognized as create_issue/update_issue, not silently
+    // treated as "this looked like a comment, nothing to check."
+    const touch = extractTouch(
+      { tool_name: 'mcp__github__issue_write', tool_input: { method: 'update', owner: 'acme', repo: 'widgets', issue_number: 1 } },
+      null,
+    );
+    expect(touch.action).not.toBe('add_issue_comment');
+    expect(touch.action).toBe('update_issue');
   });
 });
 
@@ -300,6 +353,19 @@ describe('checkSubIssueLinkage', () => {
     const result = await checkSubIssueLinkage({ action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 }, runGraphQL);
     expect(result).toEqual({ resolved: true, findings: [] });
   });
+
+  it('skips a close -- closing an empty Epic/Story is a different problem than not-yet-linked', async () => {
+    const runGraphQL = async () => ({ repository: { issue: { body: '<!-- mif-type: Epic -->', subIssues: { totalCount: 0 } } } });
+    const result = await checkSubIssueLinkage({ action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1, closing: true }, runGraphQL);
+    expect(result.findings).toEqual([]);
+  });
+
+  it('skips a gh-cli-surfaced close identically to an MCP-surfaced one', async () => {
+    const ghCliClose = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh issue close 1' } }, { owner: 'acme', repo: 'widgets' });
+    const runGraphQL = async () => ({ repository: { issue: { body: '<!-- mif-type: Epic -->', subIssues: { totalCount: 0 } } } });
+    const result = await checkSubIssueLinkage(ghCliClose, runGraphQL);
+    expect(result.findings).toEqual([]);
+  });
 });
 
 describe('runHygieneChecks', () => {
@@ -320,6 +386,40 @@ describe('runHygieneChecks', () => {
     await expect(
       runHygieneChecks(touch, { runGraphQL: throwingRunGraphQL, transcriptPath: undefined, readFn: undefined }),
     ).resolves.toBeInstanceOf(Array);
+  });
+
+  it('never rejects even when the FIRST synchronous read of touch.action throws (regression for the eager-evaluation fix)', async () => {
+    // Execution order inside runHygieneChecks's array literal is left to
+    // right: checkStatusProgression only ever reads touch.closesIssues, so
+    // it never trips this trap. With the fix, checkLifecycleComment's own
+    // call is deferred into a microtask (`Promise.resolve().then(() =>
+    // ...)`), so the FIRST synchronous read of touch.action during array
+    // construction is checkSubIssueLinkage's -- an `async function`, whose
+    // synchronous throw is auto-wrapped into a rejected settled result, not
+    // a raw exception. Before the fix, `Promise.resolve(checkLifecycleComment(...))`
+    // called that plain, non-async function directly while the array was
+    // still being built, so this exact same first-read throw was a raw
+    // synchronous exception that aborted the whole array literal before
+    // Promise.allSettled ever ran, rejecting runHygieneChecks entirely.
+    let firstAccessSeen = false;
+    const throwsOnFirstActionRead = new Proxy(
+      { owner: 'acme', repo: 'widgets', number: 1, closesIssues: [] },
+      {
+        get(target, prop) {
+          if (prop === 'action' && !firstAccessSeen) {
+            firstAccessSeen = true;
+            throw new Error('synchronous property-access boom');
+          }
+          return Reflect.get(target, prop);
+        },
+      },
+    );
+    const runGraphQL = async () => ({});
+
+    await expect(
+      runHygieneChecks(throwsOnFirstActionRead, { runGraphQL, transcriptPath: undefined, readFn: undefined }),
+    ).resolves.toBeInstanceOf(Array);
+    expect(firstAccessSeen).toBe(true);
   });
 });
 

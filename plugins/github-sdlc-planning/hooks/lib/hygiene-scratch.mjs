@@ -14,7 +14,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, appendFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 const SCRATCH_DIR_NAME = 'gdlc-hygiene-scratch';
 
@@ -41,7 +41,7 @@ export function appendScratchEntry(path, entry, fns = {}) {
   const exists = fns.existsSync ?? existsSync;
   const append = fns.appendFileSync ?? appendFileSync;
   try {
-    const dir = path.slice(0, path.lastIndexOf('/'));
+    const dir = dirname(path);
     if (dir && !exists(dir)) mkdir(dir, { recursive: true });
     append(path, `${JSON.stringify(entry)}\n`, 'utf8');
   } catch {

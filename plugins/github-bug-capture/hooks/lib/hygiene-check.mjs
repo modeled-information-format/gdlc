@@ -49,7 +49,23 @@ function mcpAction(toolName) {
 const PR_CREATE_ACTIONS = new Set(['create_pull_request']);
 const ISSUE_CREATE_ACTIONS = new Set(['create_issue']);
 const STATUS_MUTATE_ACTIONS = new Set(['set_field_value', 'update_issue']);
-const COMMENT_ACTIONS = new Set(['add_issue_comment', 'issue_write']);
+// The generic github MCP server's own comment tool -- NOT issue_write,
+// which is a create/update tool (method: 'create'|'update') with no
+// comment-posting semantics at all; see normalizeMcpAction below for how
+// issue_write is folded into ISSUE_CREATE_ACTIONS/STATUS_MUTATE_ACTIONS
+// instead of miscategorized here.
+const COMMENT_ACTIONS = new Set(['add_issue_comment']);
+
+/** `mcp__github__issue_write`'s action name alone doesn't distinguish a
+ * create from an update to an existing issue -- its own `method` field
+ * does. Remaps it onto the same `create_issue`/`update_issue` action
+ * names the plugin-scoped tools already use, so every check downstream
+ * triggers identically regardless of which MCP surface performed the
+ * touch, instead of silently never triggering for this tool at all. */
+function normalizeMcpAction(action, toolInput) {
+  if (action !== 'issue_write') return action;
+  return toolInput?.method === 'create' ? 'create_issue' : 'update_issue';
+}
 
 /** `Closes #N` / `Fixes #N` / `Resolves #N` (any case, singular or plural
  * keyword) referencing a same-repo issue -- the same closing-keyword set
@@ -97,6 +113,35 @@ function extractOutputText(toolOutput) {
   return parts.join('\n');
 }
 
+/** An MCP tool's `tool_output` may arrive as a JSON string, an
+ * already-parsed flat object, or the MCP content-array shape
+ * (`{content:[{type:'text', text:'...'}]}`) -- same three shapes
+ * ../validate-mif.mjs's `extractBody` already handles for this exact tool
+ * family. Returns a flat object to read fields from, or `null` if none of
+ * the three shapes match. */
+function normalizeToolOutput(toolOutput) {
+  let value = toolOutput;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (value === null || typeof value !== 'object') return null;
+  if (Array.isArray(value.content)) {
+    const textPart = value.content.find((part) => typeof part?.text === 'string');
+    if (!textPart) return null;
+    try {
+      const inner = JSON.parse(textPart.text);
+      return inner !== null && typeof inner === 'object' ? inner : null;
+    } catch {
+      return null;
+    }
+  }
+  return value;
+}
+
 /** `gh issue create`/`gh pr create` print the new item's URL to stdout
  * (e.g. `https://github.com/acme/widgets/issues/123`) -- the only place
  * its number appears, since the command's own input never carries a
@@ -108,10 +153,15 @@ function extractNumberFromGhUrl(text, pathSegment) {
 }
 
 /** Normalize one PostToolUse hook invocation into `{ surface, action,
- * owner, repo, number, closesIssues }`, or `null` if this call touches
- * nothing this hook tracks. `owner`/`repo` fall back to the repo this hook
- * itself runs in when a tool call's own input doesn't carry them (the
- * common case for `gh` CLI calls run from a repo checkout). */
+ * owner, repo, number, closing, closesIssues }`, or `null` if this call
+ * touches nothing this hook tracks. `owner`/`repo` fall back to the repo
+ * this hook itself runs in when a tool call's own input doesn't carry
+ * them (the common case for `gh` CLI calls run from a repo checkout).
+ * `closing` is `true` only for a call that closes an existing issue/PR --
+ * checkSubIssueLinkage skips those (closing an empty Epic/Story is a
+ * different problem than not-yet-linked, see that check's own docstring);
+ * checkLifecycleComment makes no such distinction, since a close is
+ * itself a transition worth a comment like any other. */
 export function extractTouch(input, fallbackOwnerRepo) {
   const toolName = input?.tool_name;
   const toolInput = input?.tool_input;
@@ -129,12 +179,12 @@ export function extractTouch(input, fallbackOwnerRepo) {
     if (subcommand === 'create') {
       if (kind === 'pr') {
         const closesIssues = extractClosedIssuesFromGhCommand(command).map((number) => ({ owner, repo, number }));
-        return { surface: 'gh-cli', action: 'create_pull_request', owner, repo, number: extractNumberFromGhUrl(outputText, 'pull'), closesIssues };
+        return { surface: 'gh-cli', action: 'create_pull_request', owner, repo, number: extractNumberFromGhUrl(outputText, 'pull'), closing: false, closesIssues };
       }
       // `gh issue create`: an issue-creation touch, same action name the
       // MCP-tool path uses, so checkSubIssueLinkage/checkLifecycleComment
       // trigger identically regardless of which surface created it.
-      return { surface: 'gh-cli', action: 'create_issue', owner, repo, number: extractNumberFromGhUrl(outputText, 'issues'), closesIssues: [] };
+      return { surface: 'gh-cli', action: 'create_issue', owner, repo, number: extractNumberFromGhUrl(outputText, 'issues'), closing: false, closesIssues: [] };
     }
 
     // For every other subcommand, the target number is the first bare
@@ -146,17 +196,18 @@ export function extractTouch(input, fallbackOwnerRepo) {
     const number = numberMatch ? Number(numberMatch[1]) : null;
 
     if (subcommand === 'edit' || subcommand === 'close') {
-      return { surface: 'gh-cli', action: 'update_issue', owner, repo, number, closesIssues: [] };
+      return { surface: 'gh-cli', action: 'update_issue', owner, repo, number, closing: subcommand === 'close', closesIssues: [] };
     }
     // view/list/comment: not a check-triggering transition itself (a
     // comment command is what checkLifecycleComment's own transcript scan
     // looks FOR, not a subject of these checks) -- recognized as a touch
     // for scratch-file bookkeeping, but no check fires on it.
-    return { surface: 'gh-cli', action: 'gh_command', owner, repo, number, closesIssues: [] };
+    return { surface: 'gh-cli', action: 'gh_command', owner, repo, number, closing: false, closesIssues: [] };
   }
 
-  const action = mcpAction(toolName);
-  if (action === null) return null;
+  const rawAction = mcpAction(toolName);
+  if (rawAction === null) return null;
+  const action = normalizeMcpAction(rawAction, toolInput);
 
   const relevant =
     PR_CREATE_ACTIONS.has(action) ||
@@ -165,25 +216,27 @@ export function extractTouch(input, fallbackOwnerRepo) {
     COMMENT_ACTIONS.has(action);
   if (!relevant) return null;
 
+  const normalizedOutput = normalizeToolOutput(toolOutput);
   const owner = toolInput?.owner ?? fallbackOwnerRepo?.owner ?? null;
   const repo = toolInput?.repo ?? fallbackOwnerRepo?.repo ?? null;
+  const closing = action === 'update_issue' && toolInput?.state === 'closed';
   // A create call's own tool_input never carries the new issue/PR's number
   // (it doesn't exist yet when the call is made) -- fall back to the
   // tool's output, which returns it (create_issue: {number, ...}).
   const number =
     typeof toolInput?.number === 'number' ? toolInput.number
     : typeof toolInput?.issue_number === 'number' ? toolInput.issue_number
-    : typeof toolOutput?.number === 'number' ? toolOutput.number
-    : typeof toolOutput?.issue_number === 'number' ? toolOutput.issue_number
+    : typeof normalizedOutput?.number === 'number' ? normalizedOutput.number
+    : typeof normalizedOutput?.issue_number === 'number' ? normalizedOutput.issue_number
     : null;
 
   let closesIssues = [];
   if (PR_CREATE_ACTIONS.has(action)) {
-    const bodyText = [toolInput?.body, toolOutput?.body].filter((v) => typeof v === 'string').join('\n');
+    const bodyText = [toolInput?.body, normalizedOutput?.body].filter((v) => typeof v === 'string').join('\n');
     closesIssues = extractClosedIssueNumbers(bodyText).map((n) => ({ owner, repo, number: n }));
   }
 
-  return { surface: toolName.startsWith('mcp__github__') ? 'generic-github-mcp' : 'plugin-mcp', action, owner, repo, number, closesIssues };
+  return { surface: toolName.startsWith('mcp__github__') ? 'generic-github-mcp' : 'plugin-mcp', action, owner, repo, number, closing, closesIssues };
 }
 
 // ---------------------------------------------------------------------------
@@ -339,7 +392,7 @@ function extractMifType(body) {
  * different problem this check does not speak to). Fails open on a
  * GraphQL error or a body with no recognizable MIF type marker. */
 export async function checkSubIssueLinkage(touch, runGraphQL) {
-  const isCreateOrUpdate = touch && (ISSUE_CREATE_ACTIONS.has(touch.action) || touch.action === 'update_issue');
+  const isCreateOrUpdate = touch && !touch.closing && (ISSUE_CREATE_ACTIONS.has(touch.action) || touch.action === 'update_issue');
   if (!isCreateOrUpdate || typeof touch.owner !== 'string' || typeof touch.repo !== 'string' || typeof touch.number !== 'number') {
     return { resolved: true, findings: [] };
   }
