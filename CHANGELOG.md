@@ -5,6 +5,48 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-07-10
+
+### Added
+
+- `github-sdlc-planning`: new `get_project_status_profile` MCP tool and an
+  XDG-conformant (`$XDG_CONFIG_HOME/gdlc/`) project-profile + user-prefs
+  cache (`project-profile.ts`), so a board's real Status-field schema is
+  discovered and cached once instead of assumed (Epic #198, Story #199).
+- `github-sdlc-planning`'s `get_project_items`/`sync_linked_issues_project_field`:
+  cursor-based pagination (`hasNextPage`/`endCursor`) — the prior
+  `items(first: 100)` silently dropped items past the first page on any
+  board over 100 items, causing false-negative `notFoundOnBoard` results
+  (Story #200).
+- `github-pull-requests`: new `review-thread-gate.mjs` PreToolUse hook that
+  blocks new branch/worktree creation while a PR opened this session has
+  unresolved review threads (Story #202), and `track-opened-prs.mjs` /
+  `session-prs.mjs` to track which PRs a session has opened.
+- `github-pull-requests`: PR-body closing-keyword validation — GitHub only
+  auto-closes the first issue in a comma-separated `Closes #A, #B, #C` list;
+  the hygiene hook now detects this and cross-checks post-merge that every
+  referenced issue actually closed (Story #201).
+- `hygiene-check.mjs` (canonical copy in `github-sdlc-planning`, propagated
+  to `github-pull-requests`/`github-bug-capture`): now also checks
+  `add_sub_issue`, `request_review`, and `sync_linked_issues_project_field`
+  actions, previously matched by the hook's registration regex but silently
+  no-op'd (Story #203).
+- `set-in-progress.mjs`: now also flips a Todo/unset board item to In
+  Progress on the first `Write`/`Edit`/`MultiEdit` touch in a session, not
+  only on `add_sub_issue`/`update_issue` — closing an observed ~63 minute
+  lag between work starting and the board reflecting it (Story #204).
+- New `gateNewWorkOnUnresolvedThreads` config toggle (`prLifecycle` section),
+  default `true`.
+
+### Fixed
+
+- Local review (3 passes, 2 Copilot rounds) across Epic #198 caught and
+  fixed real bugs before this shipped: a Windows-broken hand-rolled
+  `dirname` implementation, an unsafe `items?.pageInfo.hasNextPage`
+  optional-chaining gap that could throw on a malformed GraphQL response,
+  and a `yaml`-transitive-dependency violation of a module's stated
+  dependency-free design. All have regression tests.
+
 ## [0.8.0] - 2026-07-10
 
 ### Added

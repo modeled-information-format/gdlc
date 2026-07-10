@@ -38958,7 +38958,7 @@ function withRequiredBoardCoordinates(fn) {
 }
 
 // src/index.ts
-var server = new McpServer({ name: "github-bug-capture", version: "0.8.0" });
+var server = new McpServer({ name: "github-bug-capture", version: "0.9.0" });
 function toolResult(data) {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }

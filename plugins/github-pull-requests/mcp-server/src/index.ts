@@ -12,7 +12,7 @@ import { syncLinkedIssuesProjectField } from './tools/sync-linked-issues-project
 import { checkPrReadiness } from './tools/pr-readiness.js';
 import { isPrError } from './errors.js';
 
-const server = new McpServer({ name: 'github-pull-requests', version: '0.8.0' });
+const server = new McpServer({ name: 'github-pull-requests', version: '0.9.0' });
 
 function toolResult(data: unknown): { content: Array<{ type: 'text'; text: string }> } {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
