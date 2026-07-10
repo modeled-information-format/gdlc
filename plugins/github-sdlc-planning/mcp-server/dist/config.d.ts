@@ -15,6 +15,20 @@ export interface BoardConfig {
     projectNumber?: number;
     projectOwnerType?: ProjectOwnerType;
 }
+/** Issue #185/#186: PR-lifecycle enforcement opt-in, section-cascaded the
+ * same as `board`/`packs`. Every field is optional at the config layer --
+ * `resolvePrLifecycleConfig` is where defaults get applied, not here, so
+ * `normalizeConfig` stays a pure "what did the file actually say" reader. */
+export interface PrLifecycleConfig {
+    enabled?: boolean;
+    /** Command template shown to the agent as the local-review gate, e.g.
+     * `/code-review:code-review --fix`. Never executed by a hook -- see
+     * `resolvePrLifecycleConfig`'s doc comment for why. */
+    localReviewer?: string;
+    requireLocalReview?: boolean;
+    requireCopilotReview?: boolean;
+    requireCleanCodeScanning?: boolean;
+}
 export interface GdlcConfig {
     targeting?: {
         allowRepos?: string[];
@@ -29,6 +43,7 @@ export interface GdlcConfig {
      * github-bug-capture today). Supersedes the legacy `packs:` map in
      * `.claude/github-bug-capture.local.md`. */
     packs?: Record<string, boolean>;
+    prLifecycle?: PrLifecycleConfig;
 }
 /** Same relative suffix under either root -- the one path rule both layers
  * share (ADR-0004's primary decision driver #2). */
@@ -138,3 +153,30 @@ export declare function isRepoAllowed(config: GdlcConfig, owner: string, repo: s
  * contract `github-bug-capture`'s hooks-layer reader implements
  * independently (dependency-free, so it can't import this module). */
 export declare function isPackEnabled(config: GdlcConfig, pack: string): boolean;
+export interface ResolvedPrLifecycleConfig {
+    enabled: boolean;
+    localReviewer: string;
+    requireLocalReview: boolean;
+    requireCopilotReview: boolean;
+    requireCleanCodeScanning: boolean;
+}
+/** Applies defaults to the raw `prLifecycle` section (issue #185/#186).
+ * `enabled` defaults to `false` -- an absent or malformed section means the
+ * feature is off, matching every other opt-in surface in this codebase
+ * (`packs`, `skipMutationConfirm`): a repo that has never heard of this
+ * feature does not suddenly get new hook prompts. Once `enabled: true`, the
+ * three `require*` sub-toggles each default to `true` (enforce everything)
+ * and `localReviewer` defaults to the org's own `/code-review:code-review
+ * --fix` convention -- opting in without naming every field gets the
+ * strictest sane behavior, not a silently-partial one.
+ *
+ * Important: `localReviewer` is a value a *hook* reads and surfaces to the
+ * agent as an instruction (`permissionDecisionReason`) -- a hook can only
+ * spawn an OS process (node/bash), it cannot invoke a Claude Code slash
+ * command or skill. Nothing in this module or its callers ever executes
+ * `localReviewer` as a shell command; treating it as directly executable
+ * would silently do nothing (or run the literal string as a binary name and
+ * fail) instead of enforcing anything. See
+ * `plugins/github-pull-requests/hooks/pr-lifecycle-gate.mjs` for the
+ * consuming hook and its own doc comment on this same constraint. */
+export declare function resolvePrLifecycleConfig(config: GdlcConfig): ResolvedPrLifecycleConfig;

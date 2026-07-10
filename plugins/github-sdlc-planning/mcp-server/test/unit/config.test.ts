@@ -14,6 +14,7 @@ import {
   resolveDestinationRepo,
   isRepoAllowed,
   isPackEnabled,
+  resolvePrLifecycleConfig,
 } from '../../src/config.js';
 
 function tmpDir(): string {
@@ -452,5 +453,117 @@ describe('isPackEnabled', () => {
   it('ADR-0006: is true only when the pack is explicitly true', () => {
     expect(isPackEnabled({ packs: { hooks: true, 'gh-aw': false } }, 'hooks')).toBe(true);
     expect(isPackEnabled({ packs: { hooks: true, 'gh-aw': false } }, 'gh-aw')).toBe(false);
+  });
+});
+
+describe('loadConfigFile: prLifecycle section', () => {
+  it('reads a well-formed prLifecycle section', () => {
+    const root = tmpDir();
+    writeConfig(
+      root,
+      [
+        'prLifecycle:',
+        '  enabled: true',
+        '  localReviewer: "/code-review:code-review --fix"',
+        '  requireLocalReview: true',
+        '  requireCopilotReview: false',
+        '  requireCleanCodeScanning: true',
+        '',
+      ].join('\n'),
+    );
+    expect(loadConfigFile(resolveConfigPath(root))).toEqual({
+      prLifecycle: {
+        enabled: true,
+        localReviewer: '/code-review:code-review --fix',
+        requireLocalReview: true,
+        requireCopilotReview: false,
+        requireCleanCodeScanning: true,
+      },
+    });
+  });
+
+  it('drops non-boolean/non-string entries rather than throwing', () => {
+    const root = tmpDir();
+    writeConfig(root, ['prLifecycle:', '  enabled: "yes"', '  requireLocalReview: true', ''].join('\n'));
+    expect(loadConfigFile(resolveConfigPath(root))).toEqual({ prLifecycle: { requireLocalReview: true } });
+  });
+
+  it('drops an empty-string localReviewer, same as a missing one', () => {
+    const root = tmpDir();
+    writeConfig(root, ['prLifecycle:', '  localReviewer: ""', '  enabled: true', ''].join('\n'));
+    expect(loadConfigFile(resolveConfigPath(root))).toEqual({ prLifecycle: { enabled: true } });
+  });
+
+  // Copilot review finding: a quoted whitespace-only localReviewer must
+  // fail closed the same way an empty string does, and match the
+  // hooks-layer reader's (pr-lifecycle-config.mjs) trimmed behavior.
+  it('drops a whitespace-only localReviewer, and trims a value with leading/trailing whitespace', () => {
+    const root = tmpDir();
+    writeConfig(root, ['prLifecycle:', '  localReviewer: "   "', '  enabled: true', ''].join('\n'));
+    expect(loadConfigFile(resolveConfigPath(root))).toEqual({ prLifecycle: { enabled: true } });
+
+    const root2 = tmpDir();
+    writeConfig(root2, ['prLifecycle:', '  localReviewer: "  /my-org:review  "', ''].join('\n'));
+    expect(loadConfigFile(resolveConfigPath(root2))).toEqual({ prLifecycle: { localReviewer: '/my-org:review' } });
+  });
+
+  it('omits prLifecycle entirely when every entry is malformed', () => {
+    const root = tmpDir();
+    writeConfig(root, ['prLifecycle:', '  enabled: "yes"', ''].join('\n'));
+    expect(loadConfigFile(resolveConfigPath(root))).toEqual({});
+  });
+});
+
+describe('mergeConfigs: prLifecycle section', () => {
+  it('takes project prLifecycle wholly over global when both define it', () => {
+    const global = { prLifecycle: { enabled: true, requireCopilotReview: false } };
+    const project = { prLifecycle: { enabled: false } };
+    expect(mergeConfigs(global, project)).toEqual({ prLifecycle: { enabled: false } });
+  });
+});
+
+describe('resolvePrLifecycleConfig', () => {
+  it('is fail-closed (enabled: false) when no prLifecycle section is configured, matching every other opt-in surface', () => {
+    expect(resolvePrLifecycleConfig({})).toEqual({
+      enabled: false,
+      localReviewer: '/code-review:code-review --fix',
+      requireLocalReview: true,
+      requireCopilotReview: true,
+      requireCleanCodeScanning: true,
+    });
+  });
+
+  it('is fail-closed when enabled is present but not literally true', () => {
+    expect(resolvePrLifecycleConfig({ prLifecycle: {} }).enabled).toBe(false);
+  });
+
+  it('defaults every require* toggle and localReviewer to the strictest behavior once enabled', () => {
+    expect(resolvePrLifecycleConfig({ prLifecycle: { enabled: true } })).toEqual({
+      enabled: true,
+      localReviewer: '/code-review:code-review --fix',
+      requireLocalReview: true,
+      requireCopilotReview: true,
+      requireCleanCodeScanning: true,
+    });
+  });
+
+  it('respects explicit overrides for every field', () => {
+    expect(
+      resolvePrLifecycleConfig({
+        prLifecycle: {
+          enabled: true,
+          localReviewer: '/my-org:review',
+          requireLocalReview: false,
+          requireCopilotReview: false,
+          requireCleanCodeScanning: false,
+        },
+      }),
+    ).toEqual({
+      enabled: true,
+      localReviewer: '/my-org:review',
+      requireLocalReview: false,
+      requireCopilotReview: false,
+      requireCleanCodeScanning: false,
+    });
   });
 });

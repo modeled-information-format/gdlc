@@ -39103,6 +39103,16 @@ function normalizeConfig(parsed) {
     }
     if (Object.keys(packs).length > 0) config2.packs = packs;
   }
+  if (isPlainObject3(parsed.prLifecycle)) {
+    const raw = parsed.prLifecycle;
+    const prLifecycle = {};
+    if (typeof raw.enabled === "boolean") prLifecycle.enabled = raw.enabled;
+    if (typeof raw.localReviewer === "string" && raw.localReviewer.trim() !== "") prLifecycle.localReviewer = raw.localReviewer.trim();
+    if (typeof raw.requireLocalReview === "boolean") prLifecycle.requireLocalReview = raw.requireLocalReview;
+    if (typeof raw.requireCopilotReview === "boolean") prLifecycle.requireCopilotReview = raw.requireCopilotReview;
+    if (typeof raw.requireCleanCodeScanning === "boolean") prLifecycle.requireCleanCodeScanning = raw.requireCleanCodeScanning;
+    if (Object.keys(prLifecycle).length > 0) config2.prLifecycle = prLifecycle;
+  }
   return config2;
 }
 function loadConfigFile(path) {

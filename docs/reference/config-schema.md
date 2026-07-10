@@ -56,6 +56,12 @@ packs:
   mcp-integration: false      # mcp-integration, gh-aw; github-sdlc-planning:
   gh-aw: false                # skipMutationConfirm). Keyed by pack name ->
   skipMutationConfirm: false  # boolean; unset = disabled (fail-closed).
+prLifecycle:
+  enabled: false                                     # optional; default false (fail-closed)
+  localReviewer: "/code-review:code-review --fix"     # optional; default shown
+  requireLocalReview: true                            # optional; default true once enabled
+  requireCopilotReview: true                          # optional; default true once enabled
+  requireCleanCodeScanning: true                      # optional; default true once enabled
 ```
 
 `targeting` and `destination` are new (issue #78's capture-scope and
@@ -65,17 +71,40 @@ posting-destination requirements; no prior carrier existed for them).
 supersedes `github-bug-capture`'s `packs:` map formerly shipped in
 `.claude/github-bug-capture.local.md` ([ADR-0006](../decisions/adr-0006-eliminate-markdown-config-carriers.md)):
 after that ADR, no `.claude/<plugin>.local.md` config carrier remains
-anywhere in the plugin suite.
+anywhere in the plugin suite. `prLifecycle` (issue #185) is the newest
+section — see *PR-lifecycle enforcement* below.
 
 ## Cascade: project overrides global, section-wise
 
 The loader merges **per top-level section** (`targeting`, `destination`,
-`board`, `packs`), not per leaf key and not deep-merged arrays: if the project file
+`board`, `packs`, `prLifecycle`), not per leaf key and not deep-merged arrays: if the project file
 defines a section, that section's value from the project file is used
 whole; otherwise the global file's value for that section is used;
 otherwise the section is absent. This matches the epic's "closer-to-project
 wins" direction without an ambiguous array-concatenation rule for
 `allowRepos`/`allowOrgs`.
+
+## PR-lifecycle enforcement (issue #185)
+
+`prLifecycle` gates the PR lifecycle `github-pull-requests`' hooks enforce
+around `create_pull_request`: a local-review reminder before the tool runs,
+a Copilot-review reminder after, and (via the `check_pr_readiness`
+tool/CLI script) a single settled/not-settled verdict combining checks,
+review state, review-thread resolution, and code-scanning alerts.
+Fail-closed like every other opt-in section here: an absent or
+`enabled: false` section means none of this runs, so an existing repo
+that has never heard of this feature sees no new prompts. `resolvePrLifecycleConfig`
+(`plugins/github-sdlc-planning/mcp-server/src/config.ts`) is where the
+`require*` sub-toggle and `localReviewer` defaults get applied — the raw
+`GdlcConfig.prLifecycle` type leaves every field optional.
+
+**`localReviewer` is read, never executed.** A hook can only spawn an OS
+process (`node`/`bash`) — it cannot invoke a Claude Code slash command or
+skill. `localReviewer`'s default, `/code-review:code-review --fix`, is a
+slash command; the pre-PR hook surfaces it as an instruction
+(`permissionDecisionReason`) the agent must act on, the same
+legible-confirmation pattern `github-sdlc-planning`'s `confirm-mutation.mjs`
+already uses, not a command the hook process runs itself.
 
 ## History: the two retired markdown carriers
 

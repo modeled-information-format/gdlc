@@ -129,6 +129,20 @@ Only after explicit confirmation (or `--execute`).
      only closes same-repo issues.
    - Set every linked Task's/Story's Status → In Review with a comment,
      again only if it isn't already there.
+   - Once Copilot review is requested, do not report the PR "ready" or watch
+     it with a hand-written Monitor bash loop (`gh pr checks` + ad hoc `jq`)
+     — issue #185/#188 exists precisely because those improvised checks
+     either watched only one signal (CI status, missing unresolved review
+     threads) or never reliably triggered at all. If `github-pull-requests`
+     is available, call its `check_pr_readiness` MCP tool (or run its
+     `scripts/pr-readiness.ts` CLI script — `npm run pr-readiness -- <owner>
+     <repo> <pullNumber>` from that plugin's `mcp-server/` — in a Monitor
+     poll loop) instead: it returns one settled/not-settled verdict already
+     combining checks, review state, review-thread resolution, and
+     code-scanning alerts, and is unit-tested against exactly the three
+     scenarios a hand-rolled check tends to get wrong (pending, green-but-
+     unresolved-threads, and actually settled). Only report a PR ready once
+     that tool reports `settled: true`.
 4. Do not merge without explicit user approval. Once merged:
    - Call `sync_linked_issues_project_field` to stamp whatever board field
      this team tracks post-merge (a "Shipped in" iteration, a release

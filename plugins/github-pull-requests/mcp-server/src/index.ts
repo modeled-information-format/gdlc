@@ -9,6 +9,7 @@ import { createPullRequest } from './tools/create-pull-request.js';
 import { classifyPullRequest, PR_TYPES, PR_RISKS } from './tools/classify-pull-request.js';
 import { addPullRequestToProject } from './tools/pr-projects.js';
 import { syncLinkedIssuesProjectField } from './tools/sync-linked-issues-project-field.js';
+import { checkPrReadiness } from './tools/pr-readiness.js';
 import { isPrError } from './errors.js';
 
 const server = new McpServer({ name: 'github-pull-requests', version: '0.7.2' });
@@ -150,6 +151,17 @@ server.registerTool(
     },
   },
   wrap(syncLinkedIssuesProjectField),
+);
+
+server.registerTool(
+  'check_pr_readiness',
+  {
+    title: 'Check PR readiness',
+    description:
+      'Single settled/not-settled verdict for a pull request: status checks (pending/failing block), review state (at least one non-pending review required), review-thread resolution (any unresolved thread blocks), and GitHub Advanced Security code-scanning alerts (any open alert blocks). Replaces ad hoc hand-written status-polling scripts -- call this repeatedly (e.g. from a Monitor loop) instead of re-deriving the check yourself.',
+    inputSchema: pullRequestRefSchema,
+  },
+  wrap(checkPrReadiness),
 );
 
 async function main(): Promise<void> {

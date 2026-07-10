@@ -48,8 +48,25 @@
     },
     "packs": {
       "type": "object",
-      "description": "Enhancement-pack opt-in toggles (github-bug-capture: hooks, triage-skills, mcp-integration, gh-aw today). Supersedes the legacy packs: map in .claude/github-bug-capture.local.md (ADR-0006). additionalProperties is deliberately open so a plugin can add a new pack name without a schema change; each value must still be a boolean.",
+      "description": "Enhancement-pack opt-in toggles (github-bug-capture: hooks, triage-skills, mcp-integration, gh-aw; github-sdlc-planning: skipMutationConfirm today). Supersedes the legacy packs: map in .claude/github-bug-capture.local.md (ADR-0006). additionalProperties is deliberately open so a plugin can add a new pack name without a schema change; each value must still be a boolean.",
       "additionalProperties": { "type": "boolean" }
+    },
+    "prLifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "PR-lifecycle enforcement opt-in (issue #185): local review before opening a PR, a Copilot review request on open, and a settled check (checks + review + review-thread + code-scanning resolution) before a PR is reported ready. Fail-closed: absent or enabled: false means off, matching every other opt-in surface in this schema (packs, skipMutationConfirm).",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "localReviewer": {
+          "type": "string",
+          "minLength": 1,
+          "default": "/code-review:code-review --fix",
+          "description": "Command template surfaced to the agent as the local-review gate. Never executed by a hook directly -- a hook can only spawn an OS process, not invoke a Claude Code slash command/skill; this is read and shown as an instruction, not run."
+        },
+        "requireLocalReview": { "type": "boolean", "default": true },
+        "requireCopilotReview": { "type": "boolean", "default": true },
+        "requireCleanCodeScanning": { "type": "boolean", "default": true }
+      }
     }
   }
 }
