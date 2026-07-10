@@ -102,7 +102,7 @@ Returns `{ parentNodeId, childNodeId, replacedParent }`.
 
 ## list_sub_issues
 
-List a parent issue's sub-issues with a completion summary.
+List `parentNumber`'s sub-issues with a completion summary.
 
 | Parameter | Type | Required |
 | --- | --- | --- |

@@ -39507,7 +39507,7 @@ server.registerTool(
   "list_sub_issues",
   {
     title: "List sub-issues",
-    description: "List a parent issue's sub-issues with completion summary.",
+    description: "List `parentNumber`'s sub-issues with completion summary.",
     inputSchema: { owner: external_exports.string(), repo: external_exports.string(), parentNumber: external_exports.number().int() }
   },
   wrap(listSubIssues)
