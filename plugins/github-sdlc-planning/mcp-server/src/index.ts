@@ -13,7 +13,7 @@ import { formatMifIssueBody, parseMifIssueBody, MIF_ISSUE_TYPES, type MifIssueTy
 import { isPlanningError } from './errors.js';
 import { withRequiredBoardCoordinates, withOptionalBoardCoordinates, withIssueDestination } from './tool-defaults.js';
 
-const server = new McpServer({ name: 'github-sdlc-planning', version: '0.7.1' });
+const server = new McpServer({ name: 'github-sdlc-planning', version: '0.7.2' });
 
 function toolResult(data: unknown): { content: Array<{ type: 'text'; text: string }> } {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };

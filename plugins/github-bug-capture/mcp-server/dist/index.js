@@ -38864,22 +38864,6 @@ function normalizeConfig(parsed) {
     if (Object.keys(packs).length > 0)
       config2.packs = packs;
   }
-  if (isPlainObject3(parsed.prLifecycle)) {
-    const raw = parsed.prLifecycle;
-    const prLifecycle = {};
-    if (typeof raw.enabled === "boolean")
-      prLifecycle.enabled = raw.enabled;
-    if (typeof raw.localReviewer === "string" && raw.localReviewer !== "")
-      prLifecycle.localReviewer = raw.localReviewer;
-    if (typeof raw.requireLocalReview === "boolean")
-      prLifecycle.requireLocalReview = raw.requireLocalReview;
-    if (typeof raw.requireCopilotReview === "boolean")
-      prLifecycle.requireCopilotReview = raw.requireCopilotReview;
-    if (typeof raw.requireCleanCodeScanning === "boolean")
-      prLifecycle.requireCleanCodeScanning = raw.requireCleanCodeScanning;
-    if (Object.keys(prLifecycle).length > 0)
-      config2.prLifecycle = prLifecycle;
-  }
   return config2;
 }
 function loadConfigFile(path) {
@@ -38950,7 +38934,7 @@ function withRequiredBoardCoordinates(fn) {
 }
 
 // src/index.ts
-var server = new McpServer({ name: "github-bug-capture", version: "0.7.1" });
+var server = new McpServer({ name: "github-bug-capture", version: "0.7.2" });
 function toolResult(data) {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }
