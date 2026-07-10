@@ -67,7 +67,6 @@ function extractClosedIssueNumbers(text) {
   return [...numbers];
 }
 
-const GH_PR_CREATE_RE = /^\s*gh\s+pr\s+create\b/;
 const GH_ISSUE_OR_PR_RE = /^\s*gh\s+(issue|pr)\s+(view|edit|close|comment|create|list)\b/;
 
 /** Parse the closing-keyword issue numbers out of a `gh pr create` Bash
@@ -83,6 +82,31 @@ function extractClosedIssuesFromGhCommand(command) {
   return extractClosedIssueNumbers(raw);
 }
 
+/** A Bash tool_output may arrive as a plain string or an object carrying
+ * stdout/stderr/output fields -- same shape github-bug-capture's
+ * diagnostic-capture.mjs already handles. */
+function extractOutputText(toolOutput) {
+  if (toolOutput == null) return '';
+  if (typeof toolOutput === 'string') return toolOutput;
+  if (typeof toolOutput !== 'object') return '';
+  const parts = [];
+  for (const key of ['output', 'stdout', 'stderr']) {
+    const value = toolOutput[key];
+    if (typeof value === 'string') parts.push(value);
+  }
+  return parts.join('\n');
+}
+
+/** `gh issue create`/`gh pr create` print the new item's URL to stdout
+ * (e.g. `https://github.com/acme/widgets/issues/123`) -- the only place
+ * its number appears, since the command's own input never carries a
+ * not-yet-assigned number. Returns `null` if the output doesn't contain a
+ * recognizable URL for `pathSegment` (`issues` or `pull`), never a guess. */
+function extractNumberFromGhUrl(text, pathSegment) {
+  const match = new RegExp(`/${pathSegment}/(\\d+)\\b`).exec(text);
+  return match ? Number(match[1]) : null;
+}
+
 /** Normalize one PostToolUse hook invocation into `{ surface, action,
  * owner, repo, number, closesIssues }`, or `null` if this call touches
  * nothing this hook tracks. `owner`/`repo` fall back to the repo this hook
@@ -95,21 +119,40 @@ export function extractTouch(input, fallbackOwnerRepo) {
 
   if (toolName === 'Bash') {
     const command = typeof toolInput?.command === 'string' ? toolInput.command : '';
-    if (!GH_ISSUE_OR_PR_RE.test(command)) return null;
-    const isPrCreate = GH_PR_CREATE_RE.test(command);
-    const numberMatch = /\s#?(\d+)\b/.exec(command.replace(GH_ISSUE_OR_PR_RE, ''));
-    return {
-      surface: 'gh-cli',
-      action: isPrCreate ? 'create_pull_request' : 'gh_command',
-      owner: fallbackOwnerRepo?.owner ?? null,
-      repo: fallbackOwnerRepo?.repo ?? null,
-      number: numberMatch ? Number(numberMatch[1]) : null,
-      closesIssues: isPrCreate ? extractClosedIssuesFromGhCommand(command).map((number) => ({
-        owner: fallbackOwnerRepo?.owner ?? null,
-        repo: fallbackOwnerRepo?.repo ?? null,
-        number,
-      })) : [],
-    };
+    const match = GH_ISSUE_OR_PR_RE.exec(command);
+    if (!match) return null;
+    const [, kind, subcommand] = match;
+    const owner = fallbackOwnerRepo?.owner ?? null;
+    const repo = fallbackOwnerRepo?.repo ?? null;
+    const outputText = extractOutputText(toolOutput);
+
+    if (subcommand === 'create') {
+      if (kind === 'pr') {
+        const closesIssues = extractClosedIssuesFromGhCommand(command).map((number) => ({ owner, repo, number }));
+        return { surface: 'gh-cli', action: 'create_pull_request', owner, repo, number: extractNumberFromGhUrl(outputText, 'pull'), closesIssues };
+      }
+      // `gh issue create`: an issue-creation touch, same action name the
+      // MCP-tool path uses, so checkSubIssueLinkage/checkLifecycleComment
+      // trigger identically regardless of which surface created it.
+      return { surface: 'gh-cli', action: 'create_issue', owner, repo, number: extractNumberFromGhUrl(outputText, 'issues'), closesIssues: [] };
+    }
+
+    // For every other subcommand, the target number is the first bare
+    // number immediately following it (`gh issue edit 42 ...`), never a
+    // number found anywhere later in the command (a title/body containing
+    // a digit must never be mistaken for the target number).
+    const rest = command.slice(match[0].length);
+    const numberMatch = /^\s*#?(\d+)\b/.exec(rest);
+    const number = numberMatch ? Number(numberMatch[1]) : null;
+
+    if (subcommand === 'edit' || subcommand === 'close') {
+      return { surface: 'gh-cli', action: 'update_issue', owner, repo, number, closesIssues: [] };
+    }
+    // view/list/comment: not a check-triggering transition itself (a
+    // comment command is what checkLifecycleComment's own transcript scan
+    // looks FOR, not a subject of these checks) -- recognized as a touch
+    // for scratch-file bookkeeping, but no check fires on it.
+    return { surface: 'gh-cli', action: 'gh_command', owner, repo, number, closesIssues: [] };
   }
 
   const action = mcpAction(toolName);
@@ -327,7 +370,13 @@ export async function runHygieneChecks(touch, { runGraphQL, transcriptPath, read
   const findings = [];
   const results = await Promise.allSettled([
     checkStatusProgression(touch, runGraphQL),
-    Promise.resolve(checkLifecycleComment(touch, transcriptPath, readFn)),
+    // Deferred via .then() rather than called inline: checkLifecycleComment
+    // is synchronous, and calling it directly here would evaluate (and any
+    // throw from it would propagate) while this array literal is still
+    // being constructed -- before Promise.allSettled ever runs -- which
+    // would reject runHygieneChecks itself and silently discard the other
+    // two checks' findings too, not just this one's (NFR-5).
+    Promise.resolve().then(() => checkLifecycleComment(touch, transcriptPath, readFn)),
     checkSubIssueLinkage(touch, runGraphQL),
   ]);
   for (const result of results) {

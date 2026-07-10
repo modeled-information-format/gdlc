@@ -12,7 +12,12 @@ import { buildConsolidatedContext } from './lib/hygiene-aggregate.mjs';
 
 function readStdin() {
   try {
-    return JSON.parse(readFileSync(0, 'utf8'));
+    const parsed = JSON.parse(readFileSync(0, 'utf8'));
+    // JSON.parse succeeds on `null`/an array/a bare primitive just as
+    // readily as on an object; only a plain object is a valid hook
+    // envelope, so anything else falls back to `{}` the same way a parse
+    // failure already does.
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};
   }
@@ -49,4 +54,12 @@ function main() {
   emitEmpty();
 }
 
-main();
+// Top-level catch, matching hygiene-check.mjs: the non-blocking contract
+// must hold even on an unanticipated throw anywhere above (e.g. a
+// malformed scratch-file entry reaching buildConsolidatedContext) -- a
+// hook must never break the tool call it observes.
+try {
+  main();
+} catch {
+  emitEmpty();
+}

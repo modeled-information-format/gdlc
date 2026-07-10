@@ -21,7 +21,14 @@ export function buildConsolidatedContext(entries) {
   const findings = [];
   const seen = new Set();
   for (const entry of entries) {
-    for (const finding of entry?.findings ?? []) {
+    // entry.findings crosses a process boundary via the scratch file
+    // (hygiene-scratch.mjs); a malformed or version-skewed entry (a
+    // non-array findings field) must be skipped, never thrown on -- this
+    // aggregator is a backstop, and a backstop that itself crashes is
+    // worse than one that silently ignores one bad entry.
+    const entryFindings = entry?.findings;
+    if (!Array.isArray(entryFindings)) continue;
+    for (const finding of entryFindings) {
       if (typeof finding !== 'string' || seen.has(finding)) continue;
       seen.add(finding);
       findings.push(finding);

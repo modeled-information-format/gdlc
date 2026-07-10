@@ -45,6 +45,52 @@ describe('extractTouch', () => {
     );
   });
 
+  it('recognizes a gh issue create command as create_issue, extracting the new number from stdout', () => {
+    const touch = extractTouch(
+      {
+        tool_name: 'Bash',
+        tool_input: { command: 'gh issue create --title "Epic X" --body "stuff"' },
+        tool_output: { stdout: 'https://github.com/acme/widgets/issues/123\n' },
+      },
+      { owner: 'acme', repo: 'widgets' },
+    );
+    expect(touch).toEqual({ surface: 'gh-cli', action: 'create_issue', owner: 'acme', repo: 'widgets', number: 123, closesIssues: [] });
+  });
+
+  it('returns a null number for gh issue create when stdout carries no parseable URL', () => {
+    const touch = extractTouch(
+      { tool_name: 'Bash', tool_input: { command: 'gh issue create --title "x" --body "y"' }, tool_output: {} },
+      { owner: 'acme', repo: 'widgets' },
+    );
+    expect(touch).toMatchObject({ action: 'create_issue', number: null });
+  });
+
+  it('recognizes gh issue edit and gh pr close as update_issue with the positional number', () => {
+    const edit = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh issue edit 42 --add-label bug' } }, { owner: 'acme', repo: 'widgets' });
+    expect(edit).toEqual({ surface: 'gh-cli', action: 'update_issue', owner: 'acme', repo: 'widgets', number: 42, closesIssues: [] });
+
+    const close = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh pr close 7' } }, { owner: 'acme', repo: 'widgets' });
+    expect(close).toMatchObject({ action: 'update_issue', number: 7 });
+  });
+
+  it('does not mistake a digit in the title/body for the positional target number on edit/close', () => {
+    const touch = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh issue edit 5 --body "deploy to 2 servers"' } }, { owner: 'acme', repo: 'widgets' });
+    expect(touch).toMatchObject({ number: 5 });
+  });
+
+  it('does not mistake a digit in the title/body for the PR number on gh pr create -- the number comes from stdout, not the command text', () => {
+    const touch = extractTouch(
+      {
+        tool_name: 'Bash',
+        tool_input: { command: 'gh pr create --title "Deploy 2 servers" --body "Closes #10"' },
+        tool_output: { stdout: 'https://github.com/acme/widgets/pull/99\n' },
+      },
+      { owner: 'acme', repo: 'widgets' },
+    );
+    expect(touch).toMatchObject({ action: 'create_pull_request', number: 99 });
+    expect(touch.closesIssues).toEqual([{ owner: 'acme', repo: 'widgets', number: 10 }]);
+  });
+
   it('recognizes the plugin-scoped create_issue MCP tool and falls back to tool_output for the new number', () => {
     const touch = extractTouch(
       {
@@ -197,12 +243,35 @@ describe('checkLifecycleComment', () => {
     const result = checkLifecycleComment({ action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 }, '/nonexistent/x.jsonl');
     expect(result).toEqual({ resolved: true, findings: [] });
   });
+
+  it('fires identically for a gh-cli-surfaced update_issue touch (gh issue edit) as for the MCP-tool surface', () => {
+    const ghCliTouch = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh issue edit 1 --add-label bug' } }, { owner: 'acme', repo: 'widgets' });
+    const path = tmpTranscriptWith([]);
+    const result = checkLifecycleComment(ghCliTouch, path);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toContain('acme/widgets#1');
+  });
 });
 
 describe('checkSubIssueLinkage', () => {
   it('flags an Epic with zero sub-issues', async () => {
     const runGraphQL = async () => ({ repository: { issue: { body: '<!-- mif-type: Epic -->', subIssues: { totalCount: 0 } } } });
     const result = await checkSubIssueLinkage({ action: 'create_issue', owner: 'acme', repo: 'widgets', number: 1 }, runGraphQL);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toContain('Epic has no sub-issues');
+  });
+
+  it('fires identically for a gh-cli-surfaced create_issue touch as for the MCP-tool surface (no surface-specific gap)', async () => {
+    const ghCliTouch = extractTouch(
+      {
+        tool_name: 'Bash',
+        tool_input: { command: 'gh issue create --title "Epic X" --body "<!-- mif-type: Epic -->"' },
+        tool_output: { stdout: 'https://github.com/acme/widgets/issues/1\n' },
+      },
+      { owner: 'acme', repo: 'widgets' },
+    );
+    const runGraphQL = async () => ({ repository: { issue: { body: '<!-- mif-type: Epic -->', subIssues: { totalCount: 0 } } } });
+    const result = await checkSubIssueLinkage(ghCliTouch, runGraphQL);
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0]).toContain('Epic has no sub-issues');
   });
