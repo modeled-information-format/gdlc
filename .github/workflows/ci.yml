@@ -113,7 +113,11 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Every version-bearing location must agree, per plugin
         run: |
-          set -euo pipefail
+          # No `set -e`: a single malformed JSON file or an unmatched
+          # src/index.ts regex must degrade to a clear per-plugin ::error::,
+          # not abort the whole job mid-loop (which would silently skip
+          # every plugin after the one that tripped it).
+          set -uo pipefail
           status=0
           for dir in plugins/*/; do
             name="$(basename "$dir")"
@@ -121,24 +125,42 @@ jobs:
             pkg="${dir}mcp-server/package.json"
             lock="${dir}mcp-server/package-lock.json"
             idx="${dir}mcp-server/src/index.ts"
-            for f in "$pj" "$pkg" "$lock" "$idx"; do
+            dist="${dir}mcp-server/dist/index.js"
+            missing=0
+            for f in "$pj" "$pkg" "$lock" "$idx" "$dist"; do
               if [ ! -f "$f" ]; then
                 echo "::error file=$f::missing — every plugin must carry this file"
-                status=1
+                missing=1
               fi
             done
-            [ -f "$pj" ] && [ -f "$pkg" ] && [ -f "$lock" ] && [ -f "$idx" ] || continue
+            if [ "$missing" -eq 1 ]; then
+              status=1
+              continue
+            fi
 
-            v_plugin="$(jq -r '.version' "$pj")"
-            v_pkg="$(jq -r '.version' "$pkg")"
-            v_lock_top="$(jq -r '.version' "$lock")"
-            v_lock_self="$(jq -r '.packages[""].version' "$lock")"
-            v_idx="$(grep -oE "version: '[^']*'" "$idx" | head -1 | sed -E "s/version: '([^']*)'/\1/")"
-            v_mp="$(jq -r --arg n "$name" '.plugins[] | select(.name == $n) | .version' .claude-plugin/marketplace.json)"
+            v_plugin="$(jq -r '.version // "<missing>"' "$pj" 2>/dev/null || echo '<unparseable>')"
+            v_pkg="$(jq -r '.version // "<missing>"' "$pkg" 2>/dev/null || echo '<unparseable>')"
+            v_lock_top="$(jq -r '.version // "<missing>"' "$lock" 2>/dev/null || echo '<unparseable>')"
+            v_lock_self="$(jq -r '.packages[""].version // "<missing>"' "$lock" 2>/dev/null || echo '<unparseable>')"
+            # Anchored to the `new McpServer(` line itself, not just any
+            # `version:` occurrence — dist/index.js in particular bundles
+            # vendored deps with their own unrelated `version:` literals
+            # (e.g. zod's `${def.version}`) that a bare grep would match
+            # first.
+            v_idx="$(grep -oE "new McpServer\([^)]*version: '[^']*'" "$idx" 2>/dev/null | head -1 | grep -oE "version: '[^']*'" | sed -E "s/version: '([^']*)'/\1/")"
+            v_idx="${v_idx:-<none found>}"
+            # dist/index.js is the esbuild bundle Claude Code actually loads
+            # (.mcp.json points at dist/, never src/) — quotes are
+            # normalized to double quotes by the bundler, unlike the
+            # single-quoted source. Checking src/index.ts alone would pass
+            # even if a contributor bumped the source but forgot to rebuild.
+            v_dist="$(grep -oE 'new McpServer\([^)]*version: "[^"]*"' "$dist" 2>/dev/null | head -1 | grep -oE 'version: "[^"]*"' | sed -E 's/version: "([^"]*)"/\1/')"
+            v_dist="${v_dist:-<none found>}"
+            v_mp="$(jq -r --arg n "$name" '(.plugins[] | select(.name == $n) | .version) // "<no entry>"' .claude-plugin/marketplace.json 2>/dev/null || echo '<unparseable>')"
 
-            uniq_count="$(printf '%s\n' "$v_plugin" "$v_pkg" "$v_lock_top" "$v_lock_self" "$v_idx" "$v_mp" | sort -u | wc -l)"
+            uniq_count="$(printf '%s\n' "$v_plugin" "$v_pkg" "$v_lock_top" "$v_lock_self" "$v_idx" "$v_dist" "$v_mp" | sort -u | wc -l)"
             if [ "$uniq_count" -ne 1 ]; then
-              echo "::error::${name} version mismatch — plugin.json=${v_plugin} package.json=${v_pkg} package-lock.json(top)=${v_lock_top} package-lock.json(self)=${v_lock_self} src/index.ts=${v_idx:-<none found>} marketplace.json=${v_mp:-<no entry>}"
+              echo "::error::${name} version mismatch — plugin.json=${v_plugin} package.json=${v_pkg} package-lock.json(top)=${v_lock_top} package-lock.json(self)=${v_lock_self} src/index.ts=${v_idx} dist/index.js=${v_dist} marketplace.json=${v_mp}"
               status=1
             else
               echo "${name}: OK (${v_plugin})"
