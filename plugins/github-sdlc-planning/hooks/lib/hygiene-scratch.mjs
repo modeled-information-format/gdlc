@@ -16,10 +16,29 @@
  * important than that.
  */
 import { existsSync, mkdirSync, readFileSync, appendFileSync, unlinkSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const SCRATCH_DIR_NAME = 'gdlc-hygiene-scratch';
+
+/** A short, stable identifier derived from where THIS COPY of the file
+ * physically resides on disk. AD-6/the project-level registration doc
+ * says a plugin-shipped copy and a project-level (or another plugin's)
+ * copy "can be active at once without conflict" -- true only if each
+ * instance's scratch file is actually distinct. Sibling plugins ship a
+ * byte-identical copy of this file at a different path
+ * (plugins/github-sdlc-planning/hooks/lib/ vs
+ * plugins/github-pull-requests/hooks/lib/ vs a project's own
+ * .claude/hooks/lib/), so `import.meta.url` naturally differs per copy
+ * even though the code is identical -- giving every installation its own
+ * namespace for free, with no parameter threading needed through the two
+ * entrypoints. Without this, two copies active in the same session (the
+ * common case: this repo itself runs all three plugins together) would
+ * write into, and race to clear, the exact same file for a shared
+ * `mcp__github__.*`/`Bash` touch, corrupting the aggregator's touch count. */
+const INSTANCE_NAMESPACE = createHash('sha256').update(dirname(fileURLToPath(import.meta.url))).digest('hex').slice(0, 12);
 
 /** Session IDs are expected to be opaque identifiers, but this sanitizes
  * defensively before using one as a filename component -- never trust
@@ -31,7 +50,7 @@ export function sanitizeSessionId(sessionId) {
 }
 
 export function scratchFilePath(sessionId, baseDir = tmpdir()) {
-  return join(baseDir, SCRATCH_DIR_NAME, `${sanitizeSessionId(sessionId)}.jsonl`);
+  return join(baseDir, SCRATCH_DIR_NAME, `${sanitizeSessionId(sessionId)}-${INSTANCE_NAMESPACE}.jsonl`);
 }
 
 /** Append one touch record (touch + findings) to this session's scratch

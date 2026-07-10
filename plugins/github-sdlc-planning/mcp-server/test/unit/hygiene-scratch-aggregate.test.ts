@@ -24,9 +24,20 @@ describe('sanitizeSessionId', () => {
 });
 
 describe('scratchFilePath', () => {
-  it('scopes the path under a gdlc-hygiene-scratch directory keyed by session id', () => {
+  it('scopes the path under a gdlc-hygiene-scratch directory keyed by session id, namespaced per physical copy', () => {
     const path = scratchFilePath('sess-1', '/tmp/base');
-    expect(path).toBe('/tmp/base/gdlc-hygiene-scratch/sess-1.jsonl');
+    expect(path).toMatch(/^\/tmp\/base\/gdlc-hygiene-scratch\/sess-1-[0-9a-f]{12}\.jsonl$/);
+  });
+
+  it('is deterministic for the same copy -- calling it twice yields the identical path', () => {
+    expect(scratchFilePath('sess-1', '/tmp/base')).toBe(scratchFilePath('sess-1', '/tmp/base'));
+  });
+
+  it('yields a DIFFERENT path for the same session id across two different physical copies of this file (Copilot review finding on PR #173) -- otherwise two plugins active in the same session, or a plugin copy plus a project-level registration, collide on one shared scratch file', async () => {
+    const siblingModule = await import('../../../../github-pull-requests/hooks/lib/hygiene-scratch.mjs');
+    const canonicalPath = scratchFilePath('shared-session-id', '/tmp/base');
+    const siblingPath = siblingModule.scratchFilePath('shared-session-id', '/tmp/base');
+    expect(siblingPath).not.toBe(canonicalPath);
   });
 });
 

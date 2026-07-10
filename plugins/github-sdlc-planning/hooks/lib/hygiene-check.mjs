@@ -170,6 +170,28 @@ function extractNumberFromGhUrl(text, pathSegment) {
   return match ? Number(match[1]) : null;
 }
 
+const GH_REPO_FLAG_RE = /(?:^|\s)(?:-R|--repo)(?:=|\s+)(?:"([^"]+)"|'([^']*)'|(\S+))/;
+
+/** An explicit `-R owner/repo` / `--repo owner/repo` flag on a `gh`
+ * command always overrides the cwd-derived fallback -- ignoring it would
+ * silently attribute the touch to whatever repo the hook process happens
+ * to be running in, which is wrong whenever the command targets a
+ * different repo than the checkout it's run from, and could produce a
+ * false lifecycle-comment reminder against the wrong repo (violating the
+ * "never warn falsely" contract). Returns `undefined` when the flag isn't
+ * present at all (caller should use the cwd fallback), `null` when it's
+ * present but its value doesn't parse as `owner/repo` (never guess -- the
+ * cwd fallback is not a safe substitute for an explicit-but-broken flag),
+ * or `{owner, repo}` when it parses cleanly. */
+function parseGhRepoFlag(command) {
+  const match = GH_REPO_FLAG_RE.exec(command);
+  if (!match) return undefined;
+  const raw = match[1] ?? match[2] ?? match[3] ?? '';
+  const parts = raw.split('/');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  return { owner: parts[0], repo: parts[1] };
+}
+
 /** Normalize one PostToolUse hook invocation into `{ surface, action,
  * owner, repo, number, closing, closesIssues }`, or `null` if this call
  * touches nothing this hook tracks. `owner`/`repo` fall back to the repo
@@ -190,8 +212,13 @@ export function extractTouch(input, fallbackOwnerRepo) {
     const match = GH_ISSUE_OR_PR_RE.exec(command);
     if (!match) return null;
     const [, kind, subcommand] = match;
-    const owner = fallbackOwnerRepo?.owner ?? null;
-    const repo = fallbackOwnerRepo?.repo ?? null;
+    const repoFlag = parseGhRepoFlag(command);
+    // repoFlag === undefined: no -R/--repo flag at all, use the cwd
+    // fallback. repoFlag === null: the flag was present but unparseable,
+    // never fall back to (possibly wrong) cwd-derived coordinates for an
+    // explicitly-targeted command. Otherwise: the flag's own value wins.
+    const owner = repoFlag === undefined ? (fallbackOwnerRepo?.owner ?? null) : (repoFlag?.owner ?? null);
+    const repo = repoFlag === undefined ? (fallbackOwnerRepo?.repo ?? null) : (repoFlag?.repo ?? null);
     const outputText = extractOutputText(toolOutput);
 
     if (subcommand === 'create') {

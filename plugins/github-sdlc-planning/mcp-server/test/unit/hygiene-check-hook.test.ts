@@ -91,6 +91,47 @@ describe('extractTouch', () => {
     expect(touch.closesIssues).toEqual([{ owner: 'acme', repo: 'widgets', number: 10 }]);
   });
 
+  it('honors an explicit -R owner/repo flag over the cwd fallback (Copilot review finding on PR #173)', () => {
+    const touch = extractTouch(
+      { tool_name: 'Bash', tool_input: { command: 'gh issue edit 5 -R other-owner/other-repo --add-label bug' } },
+      { owner: 'acme', repo: 'widgets' },
+    );
+    expect(touch).toMatchObject({ owner: 'other-owner', repo: 'other-repo', number: 5 });
+  });
+
+  it('honors --repo=owner/repo the same as -R', () => {
+    const touch = extractTouch(
+      { tool_name: 'Bash', tool_input: { command: 'gh issue view 5 --repo=other-owner/other-repo' } },
+      { owner: 'acme', repo: 'widgets' },
+    );
+    expect(touch).toMatchObject({ owner: 'other-owner', repo: 'other-repo' });
+  });
+
+  it('falls back to the cwd-derived owner/repo when no -R/--repo flag is present', () => {
+    const touch = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh issue view 5' } }, { owner: 'acme', repo: 'widgets' });
+    expect(touch).toMatchObject({ owner: 'acme', repo: 'widgets' });
+  });
+
+  it('never falls back to the (possibly wrong) cwd-derived owner/repo when -R/--repo is present but unparseable', () => {
+    const touch = extractTouch(
+      { tool_name: 'Bash', tool_input: { command: 'gh issue view 5 -R not-a-valid-repo-spec' } },
+      { owner: 'acme', repo: 'widgets' },
+    );
+    expect(touch).toMatchObject({ owner: null, repo: null });
+  });
+
+  it('honors -R for gh issue create too, so the created issue is attributed to the targeted repo, not the cwd', () => {
+    const touch = extractTouch(
+      {
+        tool_name: 'Bash',
+        tool_input: { command: 'gh issue create -R other-owner/other-repo --title "x" --body "y"' },
+        tool_output: { stdout: 'https://github.com/other-owner/other-repo/issues/7\n' },
+      },
+      { owner: 'acme', repo: 'widgets' },
+    );
+    expect(touch).toMatchObject({ action: 'create_issue', owner: 'other-owner', repo: 'other-repo', number: 7 });
+  });
+
   it('recognizes the plugin-scoped create_issue MCP tool and falls back to tool_output for the new number', () => {
     const touch = extractTouch(
       {
