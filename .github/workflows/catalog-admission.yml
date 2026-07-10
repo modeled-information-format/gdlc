@@ -164,7 +164,7 @@ jobs:
             if resolve_pin "${slug}" "${man}" "${sha}"; then
               echo "  OK   ${name}: ${slug}@${sha:0:12} contains ${man}"
             else
-              echo "::error::${name}: pinned sha ${sha} in ${slug} has no ${man} — the pin does not resolve to a plugin (after 3 attempts)"
+              echo "::error::${name}: failed to resolve ${man} at pinned sha ${sha} in ${slug} (after 3 attempts)"
               fail=1
             fi
           done < entries.tsv

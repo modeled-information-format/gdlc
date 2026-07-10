@@ -40,7 +40,6 @@ fail=0
 
 # Case 1: succeeds on the first attempt (no retry needed).
 counter_file=$(install_stub 0)
-PATH="${STUB_DIR}:${PATH}"
 if PATH="${STUB_DIR}:${PATH}" resolve_pin "acme/widgets" ".claude-plugin/plugin.json" "deadbeef"; then
   calls=$(cat "${counter_file}")
   if [ "${calls}" -ne 1 ]; then
