@@ -540,18 +540,21 @@ describe('runHygieneChecks', () => {
   });
 
   it('never rejects even when the FIRST synchronous read of touch.action throws (regression for the eager-evaluation fix)', async () => {
-    // Execution order inside runHygieneChecks's array literal is left to
-    // right: checkStatusProgression only ever reads touch.closesIssues, so
-    // it never trips this trap. With the fix, checkLifecycleComment's own
-    // call is deferred into a microtask (`Promise.resolve().then(() =>
-    // ...)`), so the FIRST synchronous read of touch.action during array
-    // construction is checkSubIssueLinkage's -- an `async function`, whose
-    // synchronous throw is auto-wrapped into a rejected settled result, not
-    // a raw exception. Before the fix, `Promise.resolve(checkLifecycleComment(...))`
-    // called that plain, non-async function directly while the array was
-    // still being built, so this exact same first-read throw was a raw
-    // synchronous exception that aborted the whole array literal before
-    // Promise.allSettled ever ran, rejecting runHygieneChecks entirely.
+    // checkStatusProgression, checkLifecycleComment, and checkSubIssueLinkage
+    // are all `async function`s now (checkLifecycleComment became one as
+    // part of issue #172's fix), and every one of them is called directly
+    // (no `.then()` deferral wrapper) while runHygieneChecks's array literal
+    // is built. Whichever of them reads `touch.action` first, a synchronous
+    // throw during that read is caught by the implicit async-function
+    // promise-wrapping and converted into a rejected settled result, never a
+    // raw exception -- so array construction always completes and
+    // Promise.allSettled always runs. Before the original eager-evaluation
+    // fix, `Promise.resolve(checkLifecycleComment(...))` called a plain,
+    // non-async function directly, so its synchronous throw WAS a raw
+    // exception that aborted the whole array literal before
+    // Promise.allSettled ever ran, rejecting runHygieneChecks entirely; this
+    // test still guards against that class of regression regardless of
+    // which check happens to touch `.action` first.
     let firstAccessSeen = false;
     const throwsOnFirstActionRead = new Proxy(
       { owner: 'acme', repo: 'widgets', number: 1, closesIssues: [] },

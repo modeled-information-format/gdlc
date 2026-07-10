@@ -561,14 +561,13 @@ export async function runHygieneChecks(touch, { runGraphQL, transcriptPath, read
   const findings = [];
   const results = await Promise.allSettled([
     checkStatusProgression(touch, runGraphQL),
-    // Deferred via .then() rather than called inline: even though
-    // checkLifecycleComment is itself async now (issue #172's fix), a
-    // synchronous property-access throw on `touch` before its first
-    // `await` would otherwise still evaluate while this array literal is
-    // being constructed -- before Promise.allSettled ever runs -- which
-    // would reject runHygieneChecks itself and silently discard the other
-    // two checks' findings too, not just this one's (NFR-5).
-    Promise.resolve().then(() => checkLifecycleComment(touch, transcriptPath, readFn, runGraphQL)),
+    // checkLifecycleComment is async (issue #172's fix), so -- same as its
+    // two siblings here -- any throw inside it, synchronous or not, is
+    // caught by the implicit async-function promise wrapping and never
+    // propagates during this array literal's construction; a no-op
+    // .then()-deferral wrapper isn't needed to keep the three calls
+    // isolated under Promise.allSettled (NFR-5).
+    checkLifecycleComment(touch, transcriptPath, readFn, runGraphQL),
     checkSubIssueLinkage(touch, runGraphQL),
   ]);
   for (const result of results) {
