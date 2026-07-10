@@ -5,6 +5,36 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-07-10
+
+### Added
+
+- New `prLifecycle` config section (`.config/gdlc/config.yml`): `enabled`,
+  `localReviewer`, `requireLocalReview`, `requireCopilotReview`,
+  `requireCleanCodeScanning`. Fail-closed, off by default.
+- Two new `github-pull-requests` hooks: `pr-lifecycle-gate.mjs` (PreToolUse
+  on `create_pull_request`, asks naming the configured local-review command)
+  and `pr-lifecycle-reminder.mjs` (PostToolUse, reminds to request Copilot
+  review). Neither can invoke the review command itself — a hook can only
+  spawn an OS process, not a slash command/skill.
+- New `check_pr_readiness` MCP tool and CLI script (`npm run pr-readiness`)
+  on `github-pull-requests`: a single settled/not-settled verdict combining
+  status checks, review state, review-thread resolution, and code-scanning
+  alerts, meant to be called by name from a Monitor loop instead of
+  hand-rolled `gh api`/`jq` polling (Epic #185; Stories #186-#189).
+
+### Fixed
+
+- `check_pr_readiness`'s local review (3 passes) caught and fixed 5 real
+  bugs before this shipped: the hooks-layer `prLifecycle` reader disagreeing
+  with `config.ts`'s resolver on a present-but-malformed config section; two
+  GitHub check-conclusion misclassifications (`ACTION_REQUIRED`/
+  `STARTUP_FAILURE` counted as passing, `EXPECTED` counted as passing
+  instead of pending); a blanket error-swallow on the code-scanning fetch
+  that would have silently reported zero alerts on an auth failure; and a
+  `requireCleanCodeScanning` toggle that was defined and documented but
+  never wired into `check_pr_readiness`. All five now have regression tests.
+
 ## [0.7.2] - 2026-07-10
 
 ### Fixed

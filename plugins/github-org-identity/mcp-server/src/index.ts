@@ -14,7 +14,7 @@ import {
 } from './tools/roles.js';
 import { isOrgIdentityError } from './errors.js';
 
-const server = new McpServer({ name: 'github-org-identity', version: '0.7.2' });
+const server = new McpServer({ name: 'github-org-identity', version: '0.8.0' });
 
 function toolResult(data: unknown): { content: Array<{ type: 'text'; text: string }> } {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
