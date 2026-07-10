@@ -5,6 +5,32 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-07-10
+
+### Added
+
+- New ticket-hygiene reinforcement hooks ([ADR-0007](docs/decisions/adr-0007-ticket-hygiene-reinforcement-hooks.md)),
+  shipped as byte-identical copies across `github-sdlc-planning`,
+  `github-pull-requests`, and `github-bug-capture`: advisory-only
+  PostToolUse/Stop hooks that nudge Status progression (the `In Review`
+  gap left open by [ADR-0003](docs/decisions/adr-0003-board-status-hygiene.md)),
+  a missing lifecycle comment, and unlinked sub-issues. Coverage spans
+  three call surfaces uniformly — a plugin's own MCP tools, the generic
+  `github` MCP server, and raw `gh` CLI invocations — and never blocks or
+  exits non-zero. A new `hygiene-hook-drift-check` CI job guards the three
+  copies against drift (Epic #156, PR #173).
+
+### Fixed
+
+- `checkLifecycleComment` (the ADR-0007 hygiene hook) can now resolve
+  issue identity for a `set_field_value` touch — a Projects v2 Status
+  change, the single most direct way an agent moves a board item — which
+  previously went unchecked because that tool's own input/output carries
+  only `itemId`/`fieldId`, never `owner`/`repo`/`number`. Resolves the
+  `itemId` to real issue coordinates via a new async GraphQL round trip,
+  failing open (no finding) on any ambiguity, the same as every other
+  unresolvable case in this hook (issue #172, fixed by PR #174).
+
 ## [0.6.0] - 2026-07-09
 
 ### Added
