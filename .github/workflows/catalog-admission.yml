@@ -109,6 +109,13 @@ jobs:
           print("catalog-admission OK: %d external entr(y/ies) SHA-pinned, name not reserved, cross-marketplace deps allowlisted" % n)
           PY
 
+      # Regression test for issue #179: proves resolve_pin() actually
+      # retries (rather than syntax-checking it, which actionlint/shellcheck
+      # already do) against a stubbed `gh` before the real step below trusts
+      # it against the live GitHub API.
+      - name: Test resolve_pin retry behavior
+        run: bash scripts/test-resolve-pin-retry.sh
+
       # Hardening: a 40-char sha is not enough — the pin must resolve to a
       # real plugin. For every external entry, fetch the plugin manifest AT
       # the pinned commit; a pin without a .claude-plugin/plugin.json is
@@ -140,13 +147,24 @@ jobs:
               man = (path + "/" if path else "") + ".claude-plugin/plugin.json"
               print("%s\t%s\t%s\t%s" % (name, slug, man, sha))
           PY
+          # A single gh api call has no retry: one transient GitHub API
+          # error (rate limit, hiccup) fails the whole admission gate even
+          # though the pinned content is genuinely present (issue #179 —
+          # reproduced with marketplace.json byte-identical to a passing
+          # main run, and a manual re-query of the exact failing sha/path
+          # succeeding immediately after). resolve_pin() retries each entry
+          # up to 3 attempts total (the initial attempt plus 2 retries) with
+          # a short backoff before treating it as a real resolution failure
+          # -- shared with scripts/test-resolve-pin-retry.sh so the retry
+          # behavior itself is unit-tested, not just this step's syntax.
+          source scripts/lib/resolve-pin.sh
           fail=0
           while IFS=$'\t' read -r name slug man sha; do
             [ -z "${name}" ] && continue
-            if gh api "repos/${slug}/contents/${man}?ref=${sha}" --jq '.name' >/dev/null 2>&1; then
+            if resolve_pin "${slug}" "${man}" "${sha}"; then
               echo "  OK   ${name}: ${slug}@${sha:0:12} contains ${man}"
             else
-              echo "::error::${name}: pinned sha ${sha} in ${slug} has no ${man} — the pin does not resolve to a plugin"
+              echo "::error::${name}: pinned sha ${sha} in ${slug} has no ${man} — the pin does not resolve to a plugin (after 3 attempts)"
               fail=1
             fi
           done < entries.tsv
