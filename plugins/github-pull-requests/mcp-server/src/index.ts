@@ -11,7 +11,7 @@ import { addPullRequestToProject } from './tools/pr-projects.js';
 import { syncLinkedIssuesProjectField } from './tools/sync-linked-issues-project-field.js';
 import { isPrError } from './errors.js';
 
-const server = new McpServer({ name: 'github-pull-requests', version: '0.6.0' });
+const server = new McpServer({ name: 'github-pull-requests', version: '0.7.2' });
 
 function toolResult(data: unknown): { content: Array<{ type: 'text'; text: string }> } {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
