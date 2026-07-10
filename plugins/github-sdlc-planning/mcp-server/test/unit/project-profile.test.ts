@@ -263,3 +263,42 @@ describe('user prefs', () => {
     expect(readFileSync(path, 'utf8')).toBe(before);
   });
 });
+
+describe('Copilot review finding: writeJsonAtomic directory creation', () => {
+  it('creates a deeply nested parent directory correctly (node:path dirname, not the removed hand-rolled version)', () => {
+    const env = tmpEnv();
+    // A path with several nested segments -- the removed dirnamePortable
+    // and the real node:path dirname agree on POSIX paths like this one;
+    // this is a regression guard that removing the hand-rolled function
+    // didn't break the common case, not a Windows-specific test (see the
+    // next test for why a real backslash-path assertion can't run here).
+    writeProjectProfile('acme', 1, STATUS_FIELD, env);
+    const path = projectProfilePath('acme', 1, env);
+    expect(existsSync(path)).toBe(true);
+  });
+
+  it('documents why node:path dirname (not a hardcoded "/" search) is the correct fix for Windows paths', async () => {
+    // The removed dirnamePortable only ever searched for "/", so on a
+    // Windows path (backslash-separated) it always returned "." --
+    // writeJsonAtomic's mkdir call never created the real parent
+    // directory. This test can't exercise that failure through the
+    // module's own runtime path.dirname on this (POSIX) CI runner --
+    // node:path resolves to the POSIX implementation here, which also
+    // doesn't split on backslash. It instead documents the fix's actual
+    // guarantee directly against node:path's own win32 implementation,
+    // which is what a real Windows runtime's node:path resolves to.
+    const { win32 } = await import('node:path');
+    expect(win32.dirname('C:\\Users\\dev\\AppData\\gdlc\\projects\\acme\\1.json')).toBe('C:\\Users\\dev\\AppData\\gdlc\\projects\\acme');
+  });
+});
+
+describe('Copilot review finding: dependency-free import chain', () => {
+  it('project-profile.ts does not import from config.ts (which pulls in the yaml package)', async () => {
+    const { readFileSync: read } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const sourcePath = fileURLToPath(new URL('../../src/project-profile.ts', import.meta.url));
+    const source = read(sourcePath, 'utf8');
+    expect(source).not.toContain("from './config.js'");
+    expect(source).not.toContain("from './config'");
+  });
+});

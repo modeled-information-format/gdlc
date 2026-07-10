@@ -218,7 +218,11 @@ interface RawProjectItemNode {
 interface GetProjectItemsResponse {
   node: {
     items?: {
-      pageInfo: { hasNextPage: boolean; endCursor: string | null };
+      // Optional (not required): the query always requests it, but a
+      // malformed/unexpected real-world response is exactly the case
+      // fetchAllProjectItemNodes's own defensive check below exists to
+      // catch -- typing it as always-present would defeat that check.
+      pageInfo?: { hasNextPage: boolean; endCursor: string | null };
       nodes: RawProjectItemNode[];
     };
   } | null;
@@ -255,7 +259,18 @@ async function fetchAllProjectItemNodes(projectId: string, deps: GithubClientDep
     );
     const items = data.node?.items;
     allNodes.push(...(items?.nodes ?? []));
-    if (!items?.pageInfo.hasNextPage) return allNodes;
+    if (items === undefined) return allNodes; // no `items` at all: project not found / no access, nothing to paginate
+    // Copilot review finding: `items` can be present with `pageInfo`
+    // missing/undefined on a malformed or unexpected GraphQL response --
+    // `items.pageInfo.hasNextPage` would throw a confusing TypeError in
+    // that case. Since this function's whole purpose is to never silently
+    // truncate, a missing `pageInfo` on a page that DID return items is
+    // treated as a malformed response and throws a clear, named error
+    // rather than either crashing opaquely or guessing "no next page."
+    if (items.pageInfo === undefined) {
+      throw new Error(`fetchAllProjectItemNodes: malformed response -- items present but pageInfo missing (projectId=${projectId})`);
+    }
+    if (!items.pageInfo.hasNextPage) return allNodes;
     after = items.pageInfo.endCursor;
   }
   throw new Error(`fetchAllProjectItemNodes: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);

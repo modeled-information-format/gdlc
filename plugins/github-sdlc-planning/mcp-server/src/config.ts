@@ -2,6 +2,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { parse } from 'yaml';
+import { resolveGlobalConfigRoot } from './xdg.js';
+
+export { resolveGlobalConfigRoot };
 
 /** gdlc's layered global/project config (epic #78, ADR-0004, issues #80-82).
  * Both layers share this shape and one path-joining rule:
@@ -64,10 +67,6 @@ const CONFIG_RELPATH = ['gdlc', 'config.yml'] as const;
  * share (ADR-0004's primary decision driver #2). */
 export function resolveConfigPath(root: string): string {
   return join(root, ...CONFIG_RELPATH);
-}
-
-export function resolveGlobalConfigRoot(env: NodeJS.ProcessEnv = process.env): string {
-  return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== '' ? env.XDG_CONFIG_HOME : join(homedir(), '.config');
 }
 
 /** Issue #106 / ADR-0005: search upward from `startDir` toward the

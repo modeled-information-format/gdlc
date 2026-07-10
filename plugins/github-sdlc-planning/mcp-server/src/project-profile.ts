@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
-import { resolveGlobalConfigRoot } from './config.js';
+import { dirname, join } from 'node:path';
+import { resolveGlobalConfigRoot } from './xdg.js';
 
 /**
  * XDG-config durable project-profile layer (gdlc#199/#200-and-friends'
@@ -12,11 +12,17 @@ import { resolveGlobalConfigRoot } from './config.js';
  * `gdlc/config.yml` layered config (user-authored settings): this module
  * caches values discovered at runtime via GraphQL, never hand-written.
  *
- * Deliberately dependency-free (only `node:fs`/`node:os`/`node:path`/
- * `node:crypto` builtins, imports only `config.ts`'s `resolveGlobalConfigRoot`
- * which is itself dependency-free) so this file can be imported two ways
- * without creating a new cross-plugin dependency the hygiene-hook
- * drift-check doesn't expect:
+ * Deliberately dependency-free (only `node:fs`/`node:path`/`node:crypto`
+ * builtins, plus `xdg.ts`'s `resolveGlobalConfigRoot`, which is itself
+ * `node:os`/`node:path` builtins only) so this file can be imported two
+ * ways without creating a new cross-plugin dependency the hygiene-hook
+ * drift-check doesn't expect. Copilot review finding: an earlier revision
+ * imported `resolveGlobalConfigRoot` from `config.ts` instead, which
+ * unconditionally imports the `yaml` package at module scope for its own
+ * needs -- loading this module the second way below (bare-node, no
+ * node_modules) would have transitively tried to load `yaml` and crashed,
+ * exactly what "dependency-free" was supposed to rule out. `xdg.ts` holds
+ * only the one function actually needed here, with no such coupling:
  *   - directly from this plugin's own `src/*.ts` (this module compiles
  *     alongside them, e.g. `tools/projects.ts`);
  *   - from a bare-node hook script via this package's built
@@ -134,18 +140,15 @@ const defaultFsDeps: Required<FsDeps> = {
  * same filesystem (POSIX and NTFS both), so a concurrent reader only ever
  * sees the fully-old or fully-new file, never a torn write. */
 function writeJsonAtomic(path: string, data: unknown, fns: Required<FsDeps>): void {
-  fns.mkdirFn(dirnamePortable(path));
+  // Copilot review finding: the hand-rolled dirname helper this replaced
+  // only searched for `/`, so on Windows paths (`\`-separated) it always
+  // returned `.` -- the cache directory was never created and
+  // writeJsonAtomic's temp-file write failed. `node:path`'s `dirname`
+  // (imported at module scope) handles the platform's real separator.
+  fns.mkdirFn(dirname(path));
   const tmpPath = `${path}.tmp-${process.pid}-${randomUUID()}`;
   fns.writeFn(tmpPath, `${JSON.stringify(data, null, 2)}\n`);
   fns.renameFn(tmpPath, path);
-}
-
-/** `node:path`'s `dirname` without importing it solely for this one call
- * would be a false economy -- imported at module scope like everything
- * else here; named to make the single call site below self-explanatory. */
-function dirnamePortable(path: string): string {
-  const idx = path.lastIndexOf('/');
-  return idx === -1 ? '.' : path.slice(0, idx);
 }
 
 function readJson<T>(path: string, fns: Required<FsDeps>): T | null {

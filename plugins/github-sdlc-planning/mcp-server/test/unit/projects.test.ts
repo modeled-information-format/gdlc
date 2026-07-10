@@ -244,6 +244,26 @@ describe('getProjectItems', () => {
     // rather than looping past it.
     expect(calls).toBe(1000);
   });
+
+  it('Copilot review finding: throws a clear error rather than a confusing TypeError when pageInfo is missing on a present items page', async () => {
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      // Malformed/unexpected response: items present, pageInfo absent.
+      return { node: { items: { nodes: [{ id: 'PVTI_1', content: null, fieldValues: { nodes: [] } }] } } };
+    });
+
+    await expect(getProjectItems({ projectOwnerLogin: 'acme', projectNumber: 4 })).rejects.toThrow(/malformed response.*pageInfo missing/);
+  });
+
+  it('does not throw when node.items itself is entirely absent (project not found / no access)', async () => {
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      return { node: {} };
+    });
+
+    const result = await getProjectItems({ projectOwnerLogin: 'acme', projectNumber: 4 });
+    expect(result.items).toEqual([]);
+  });
 });
 
 describe('getProjectStatusProfile', () => {

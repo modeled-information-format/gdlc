@@ -117,7 +117,19 @@ async function fetchAllProjectItemNodes(projectId, deps) {
         const data = await githubGraphQL(GET_PROJECT_ITEMS_QUERY, { projectId, after }, {}, deps);
         const items = data.node?.items;
         allNodes.push(...(items?.nodes ?? []));
-        if (!items?.pageInfo.hasNextPage)
+        if (items === undefined)
+            return allNodes; // no `items` at all: project not found / no access, nothing to paginate
+        // Copilot review finding: `items` can be present with `pageInfo`
+        // missing/undefined on a malformed or unexpected GraphQL response --
+        // `items.pageInfo.hasNextPage` would throw a confusing TypeError in
+        // that case. Since this function's whole purpose is to never silently
+        // truncate, a missing `pageInfo` on a page that DID return items is
+        // treated as a malformed response and throws a clear, named error
+        // rather than either crashing opaquely or guessing "no next page."
+        if (items.pageInfo === undefined) {
+            throw new Error(`fetchAllProjectItemNodes: malformed response -- items present but pageInfo missing (projectId=${projectId})`);
+        }
+        if (!items.pageInfo.hasNextPage)
             return allNodes;
         after = items.pageInfo.endCursor;
     }

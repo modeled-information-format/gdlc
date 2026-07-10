@@ -38795,22 +38795,28 @@ async function closeAsDuplicate(input, deps = {}) {
 // ../../github-sdlc-planning/mcp-server/dist/config.js
 var import_yaml = __toESM(require_dist2(), 1);
 import { existsSync, readFileSync } from "node:fs";
+import { homedir as homedir2 } from "node:os";
+import { dirname, join as join2, resolve as resolvePath } from "node:path";
+
+// ../../github-sdlc-planning/mcp-server/dist/xdg.js
 import { homedir } from "node:os";
-import { dirname, join, resolve as resolvePath } from "node:path";
-var CONFIG_RELPATH = ["gdlc", "config.yml"];
-function resolveConfigPath(root) {
-  return join(root, ...CONFIG_RELPATH);
-}
+import { join } from "node:path";
 function resolveGlobalConfigRoot(env = process.env) {
   return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== "" ? env.XDG_CONFIG_HOME : join(homedir(), ".config");
 }
-function findProjectConfigRoot(startDir, existsFn = existsSync, ceiling = homedir()) {
+
+// ../../github-sdlc-planning/mcp-server/dist/config.js
+var CONFIG_RELPATH = ["gdlc", "config.yml"];
+function resolveConfigPath(root) {
+  return join2(root, ...CONFIG_RELPATH);
+}
+function findProjectConfigRoot(startDir, existsFn = existsSync, ceiling = homedir2()) {
   const ceilingResolved = resolvePath(ceiling);
   let dir = resolvePath(startDir);
   for (; ; ) {
     if (dir === ceilingResolved)
       return null;
-    if (existsFn(resolveConfigPath(join(dir, ".config"))))
+    if (existsFn(resolveConfigPath(join2(dir, ".config"))))
       return dir;
     const parent = dirname(dir);
     if (parent === dir)
@@ -38904,7 +38910,7 @@ function resolveProjectConfigPath(startDir = process.cwd(), existsFn = existsSyn
   const root = findProjectConfigRoot(startDir, existsFn);
   if (root === null)
     return null;
-  const path = resolveConfigPath(join(root, ".config"));
+  const path = resolveConfigPath(join2(root, ".config"));
   return path === resolveConfigPath(resolveGlobalConfigRoot(env)) ? null : path;
 }
 function loadGdlcConfig(projectRoot = process.cwd(), env = process.env, existsFn = existsSync) {

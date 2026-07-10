@@ -7,11 +7,17 @@
  * `gdlc/config.yml` layered config (user-authored settings): this module
  * caches values discovered at runtime via GraphQL, never hand-written.
  *
- * Deliberately dependency-free (only `node:fs`/`node:os`/`node:path`/
- * `node:crypto` builtins, imports only `config.ts`'s `resolveGlobalConfigRoot`
- * which is itself dependency-free) so this file can be imported two ways
- * without creating a new cross-plugin dependency the hygiene-hook
- * drift-check doesn't expect:
+ * Deliberately dependency-free (only `node:fs`/`node:path`/`node:crypto`
+ * builtins, plus `xdg.ts`'s `resolveGlobalConfigRoot`, which is itself
+ * `node:os`/`node:path` builtins only) so this file can be imported two
+ * ways without creating a new cross-plugin dependency the hygiene-hook
+ * drift-check doesn't expect. Copilot review finding: an earlier revision
+ * imported `resolveGlobalConfigRoot` from `config.ts` instead, which
+ * unconditionally imports the `yaml` package at module scope for its own
+ * needs -- loading this module the second way below (bare-node, no
+ * node_modules) would have transitively tried to load `yaml` and crashed,
+ * exactly what "dependency-free" was supposed to rule out. `xdg.ts` holds
+ * only the one function actually needed here, with no such coupling:
  *   - directly from this plugin's own `src/*.ts` (this module compiles
  *     alongside them, e.g. `tools/projects.ts`);
  *   - from a bare-node hook script via this package's built

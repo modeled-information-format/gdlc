@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
-import { resolveGlobalConfigRoot } from './config.js';
+import { dirname, join } from 'node:path';
+import { resolveGlobalConfigRoot } from './xdg.js';
 /** The 5-stage lifecycle CLAUDE.md documents (Backlog/Ready/In Progress/
  * In Review/Done) -- kept here as the one place that enumerates it for this
  * cache, so `computeMissingLifecycleStages` and any future reconciliation
@@ -59,17 +59,15 @@ const defaultFsDeps = {
  * same filesystem (POSIX and NTFS both), so a concurrent reader only ever
  * sees the fully-old or fully-new file, never a torn write. */
 function writeJsonAtomic(path, data, fns) {
-    fns.mkdirFn(dirnamePortable(path));
+    // Copilot review finding: the hand-rolled dirname helper this replaced
+    // only searched for `/`, so on Windows paths (`\`-separated) it always
+    // returned `.` -- the cache directory was never created and
+    // writeJsonAtomic's temp-file write failed. `node:path`'s `dirname`
+    // (imported at module scope) handles the platform's real separator.
+    fns.mkdirFn(dirname(path));
     const tmpPath = `${path}.tmp-${process.pid}-${randomUUID()}`;
     fns.writeFn(tmpPath, `${JSON.stringify(data, null, 2)}\n`);
     fns.renameFn(tmpPath, path);
-}
-/** `node:path`'s `dirname` without importing it solely for this one call
- * would be a false economy -- imported at module scope like everything
- * else here; named to make the single call site below self-explanatory. */
-function dirnamePortable(path) {
-    const idx = path.lastIndexOf('/');
-    return idx === -1 ? '.' : path.slice(0, idx);
 }
 function readJson(path, fns) {
     if (!fns.existsFn(path))
