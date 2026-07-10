@@ -308,7 +308,25 @@ describe('createLiveReadinessDeps: CheckRun/StatusContext classification', () =>
     const deps = createLiveReadinessDeps();
     const alerts = await deps.fetchCodeScanningAlerts({ owner: 'acme', repo: 'widgets', pullNumber: 1 });
     expect(alerts).toEqual([{ state: 'open' }, { state: 'dismissed' }]);
-    expect(capturedUrl).toContain('ref=refs/heads/feature-branch');
+    // Parse and decode rather than substring-matching the raw URL -- this
+    // assertion must hold whether or not `ref` is URL-encoded (Copilot
+    // review finding: an encoded ref is correct behavior, not a test
+    // failure).
+    expect(new URL(capturedUrl).searchParams.get('ref')).toBe('refs/heads/feature-branch');
+  });
+
+  it('URL-encodes a head ref containing characters significant in a query string (Copilot review finding)', async () => {
+    let capturedUrl = '';
+    mockGraphQL(() => ({ repository: { pullRequest: { ...GRAPHQL_FIELDS, headRefName: 'fix/issue#42 & more' } } }));
+    server.use(
+      http.get('https://api.github.com/repos/acme/widgets/code-scanning/alerts', ({ request }) => {
+        capturedUrl = request.url;
+        return HttpResponse.json([]);
+      }),
+    );
+    const deps = createLiveReadinessDeps();
+    await deps.fetchCodeScanningAlerts({ owner: 'acme', repo: 'widgets', pullNumber: 1 });
+    expect(new URL(capturedUrl).searchParams.get('ref')).toBe('refs/heads/fix/issue#42 & more');
   });
 
   it('treats a 404 (Advanced Security / code scanning not enabled on this repo) as zero alerts, not a thrown error', async () => {

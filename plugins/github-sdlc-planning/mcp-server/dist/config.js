@@ -123,8 +123,13 @@ function normalizeConfig(parsed) {
         const prLifecycle = {};
         if (typeof raw.enabled === 'boolean')
             prLifecycle.enabled = raw.enabled;
-        if (typeof raw.localReviewer === 'string' && raw.localReviewer !== '')
-            prLifecycle.localReviewer = raw.localReviewer;
+        // Copilot review finding: trim before validating, matching the
+        // hooks-layer reader's extractScalarValue().trim() -- otherwise
+        // localReviewer: "   " is accepted here (present, non-empty) but
+        // dropped by the hooks reader (trims to '', treated as absent), the two
+        // independent readers silently disagreeing about the same file.
+        if (typeof raw.localReviewer === 'string' && raw.localReviewer.trim() !== '')
+            prLifecycle.localReviewer = raw.localReviewer.trim();
         if (typeof raw.requireLocalReview === 'boolean')
             prLifecycle.requireLocalReview = raw.requireLocalReview;
         if (typeof raw.requireCopilotReview === 'boolean')

@@ -89,4 +89,20 @@ describe('pr-lifecycle-reminder.mjs', () => {
     expect(result.hookSpecificOutput?.hookEventName).toBe('PostToolUse');
     expect(result.hookSpecificOutput?.additionalContext).toContain('Copilot');
   });
+
+  // Copilot review finding: an earlier revision fired regardless of whether
+  // create_pull_request itself succeeded.
+  it('is a no-op when create_pull_request failed (tool_output.isError), even with the toggle enabled', () => {
+    const { root, env } = withPrLifecycleConfig('prLifecycle:\n  enabled: true\n');
+    const failedInput = { ...PR_INPUT, tool_output: { isError: true, content: [{ type: 'text', text: '{"error":"github_api_error"}' }] } };
+    const result = runHook('pr-lifecycle-reminder.mjs', failedInput, { cwd: root, env });
+    expect(result.hookSpecificOutput).toBeUndefined();
+  });
+
+  it('still reminds when tool_output is a successful JSON string (no isError field)', () => {
+    const { root, env } = withPrLifecycleConfig('prLifecycle:\n  enabled: true\n');
+    const successInput = { ...PR_INPUT, tool_output: JSON.stringify({ number: 42, url: 'https://github.com/acme/widgets/pull/42' }) };
+    const result = runHook('pr-lifecycle-reminder.mjs', successInput, { cwd: root, env });
+    expect(result.hookSpecificOutput?.additionalContext).toContain('Copilot');
+  });
 });

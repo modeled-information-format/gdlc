@@ -92,8 +92,13 @@ export function parsePrLifecycleSection(text) {
         const value = extractScalarValue(m[2]);
         if (BOOLEAN_KEYS.has(m[1])) {
           if (value === 'true' || value === 'false') raw[m[1]] = value === 'true';
-        } else if (m[1] === 'localReviewer' && value !== '') {
-          raw.localReviewer = value;
+        } else if (m[1] === 'localReviewer') {
+          // Copilot review finding: trim before storing, matching
+          // config.ts's normalizeConfig -- a quoted whitespace-only value
+          // (`localReviewer: "   "`) must fail closed the same way here as
+          // it does there, not be kept as a literal blank-looking command.
+          const trimmedValue = value.trim();
+          if (trimmedValue !== '') raw.localReviewer = trimmedValue;
         }
         continue;
       }

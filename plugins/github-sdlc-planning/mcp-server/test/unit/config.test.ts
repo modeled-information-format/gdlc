@@ -494,6 +494,19 @@ describe('loadConfigFile: prLifecycle section', () => {
     expect(loadConfigFile(resolveConfigPath(root))).toEqual({ prLifecycle: { enabled: true } });
   });
 
+  // Copilot review finding: a quoted whitespace-only localReviewer must
+  // fail closed the same way an empty string does, and match the
+  // hooks-layer reader's (pr-lifecycle-config.mjs) trimmed behavior.
+  it('drops a whitespace-only localReviewer, and trims a value with leading/trailing whitespace', () => {
+    const root = tmpDir();
+    writeConfig(root, ['prLifecycle:', '  localReviewer: "   "', '  enabled: true', ''].join('\n'));
+    expect(loadConfigFile(resolveConfigPath(root))).toEqual({ prLifecycle: { enabled: true } });
+
+    const root2 = tmpDir();
+    writeConfig(root2, ['prLifecycle:', '  localReviewer: "  /my-org:review  "', ''].join('\n'));
+    expect(loadConfigFile(resolveConfigPath(root2))).toEqual({ prLifecycle: { localReviewer: '/my-org:review' } });
+  });
+
   it('omits prLifecycle entirely when every entry is malformed', () => {
     const root = tmpDir();
     writeConfig(root, ['prLifecycle:', '  enabled: "yes"', ''].join('\n'));

@@ -97,20 +97,29 @@ export async function assessPrReadiness(
   const pending = checks.filter((c) => c.state === 'pending').length;
   const failing = checks.filter((c) => c.state === 'failure').length;
   const passing = checks.filter((c) => c.state === 'success').length;
+  // Copilot review finding: a GraphQL `PullRequestReview` in state PENDING
+  // is a draft the querying user (i.e. this token's identity) hasn't
+  // submitted yet -- not a completed review by anyone. Counting it toward
+  // "at least one review exists" would report a PR as reviewed when no
+  // review has actually landed. Excluded from both the settled check and
+  // the returned summary, not merely ignored in the count -- a caller
+  // reading `reviews.states` should never see a review nobody has
+  // published.
+  const submittedReviews = reviews.filter((r) => r.state !== 'PENDING');
   const unresolvedThreads = threads.filter((t) => !t.isResolved).length;
   const openAlerts = alerts.filter((a) => a.state === 'open').length;
 
   const reasons: string[] = [];
   if (pending > 0) reasons.push(`${pending} check(s) still pending`);
   if (failing > 0) reasons.push(`${failing} check(s) failing`);
-  if (reviews.length === 0) reasons.push('no reviews yet');
+  if (submittedReviews.length === 0) reasons.push('no reviews yet');
   if (unresolvedThreads > 0) reasons.push(`${unresolvedThreads} unresolved review thread(s)`);
   if (requireCleanCodeScanning && openAlerts > 0) reasons.push(`${openAlerts} open code-scanning alert(s)`);
 
   return {
     settled: reasons.length === 0,
     checks: { total: checks.length, pending, failing, passing },
-    reviews: { total: reviews.length, states: reviews.map((r) => r.state) },
+    reviews: { total: submittedReviews.length, states: submittedReviews.map((r) => r.state) },
     threads: { total: threads.length, unresolved: unresolvedThreads },
     codeScanningAlerts: { total: alerts.length, open: openAlerts },
     reasons,
@@ -259,7 +268,11 @@ export function createLiveReadinessDeps(deps: GithubClientDeps = {}): PrReadines
       let alerts: RestCodeScanningAlert[];
       try {
         alerts = (await githubRest(
-          `/repos/${ref.owner}/${ref.repo}/code-scanning/alerts?ref=refs/heads/${headRefName}&per_page=100`,
+          // Copilot review finding: a branch name can contain characters
+          // (#, spaces, ...) that are significant in a query string --
+          // unencoded, they truncate/corrupt the `ref` param and either
+          // fail the request or silently query the wrong ref.
+          `/repos/${ref.owner}/${ref.repo}/code-scanning/alerts?ref=${encodeURIComponent(`refs/heads/${headRefName}`)}&per_page=100`,
           {},
           deps,
         )) as RestCodeScanningAlert[];

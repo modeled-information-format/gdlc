@@ -39107,7 +39107,7 @@ function normalizeConfig(parsed) {
     const raw = parsed.prLifecycle;
     const prLifecycle = {};
     if (typeof raw.enabled === "boolean") prLifecycle.enabled = raw.enabled;
-    if (typeof raw.localReviewer === "string" && raw.localReviewer !== "") prLifecycle.localReviewer = raw.localReviewer;
+    if (typeof raw.localReviewer === "string" && raw.localReviewer.trim() !== "") prLifecycle.localReviewer = raw.localReviewer.trim();
     if (typeof raw.requireLocalReview === "boolean") prLifecycle.requireLocalReview = raw.requireLocalReview;
     if (typeof raw.requireCopilotReview === "boolean") prLifecycle.requireCopilotReview = raw.requireCopilotReview;
     if (typeof raw.requireCleanCodeScanning === "boolean") prLifecycle.requireCleanCodeScanning = raw.requireCleanCodeScanning;
