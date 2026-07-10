@@ -8,9 +8,10 @@ import path from 'node:path';
 // sibling of mcp-server/, not inside this package. They're plain Node
 // scripts (JSON on stdin, JSON on stdout) so they're testable by spawning
 // them directly, the same contract Claude Code itself uses to invoke them.
-const hooksDir = path.resolve(fileURLToPath(import.meta.url), '../../../../hooks');
+const thisDir = path.dirname(fileURLToPath(import.meta.url));
+const hooksDir = path.resolve(thisDir, '../../../hooks');
 // Sibling plugin roots, for the cross-plugin matcher sanity check below.
-const pluginsDir = path.resolve(fileURLToPath(import.meta.url), '../../../../../');
+const pluginsDir = path.resolve(thisDir, '../../../../');
 
 function runHook(script: string, input: unknown): { hookSpecificOutput?: { hookEventName: string; additionalContext?: string; permissionDecision?: string; permissionDecisionReason?: string } } {
   const out = execFileSync('node', [path.join(hooksDir, script)], { input: JSON.stringify(input), encoding: 'utf8' });
@@ -141,27 +142,30 @@ describe('session-start.mjs', () => {
 // plugin-qualified form Claude Code actually uses for a marketplace install
 // (mcp__plugin_<marketplace>_<plugin>__<action>) -- confirmed missing on
 // every one of these three plugins' hooks.json before this fix.
-describe('hooks.json PostToolUse/PreToolUse matchers match both tool-name forms', () => {
-  const cases: Array<{ plugin: string; bareToolName: string; qualifiedToolName: string }> = [
+describe('hooks.json PostToolUse/PreToolUse matchers match both tool-name forms, but only MCP tool names', () => {
+  const cases: Array<{ plugin: string; bareToolName: string; qualifiedToolName: string; nonMcpToolName: string }> = [
     {
       plugin: 'github-sdlc-planning',
       bareToolName: 'mcp__github-sdlc-planning__update_issue',
       qualifiedToolName: 'mcp__plugin_github-sdlc-planning_github-sdlc-planning__update_issue',
+      nonMcpToolName: 'Bash: echo github-sdlc-planning__update_issue',
     },
     {
       plugin: 'github-pull-requests',
       bareToolName: 'mcp__github-pull-requests__create_pull_request',
       qualifiedToolName: 'mcp__plugin_github-pull-requests_github-pull-requests__create_pull_request',
+      nonMcpToolName: 'github-pull-requests__create_pull_request',
     },
     {
       plugin: 'github-bug-capture',
       bareToolName: 'mcp__github-bug-capture__search_similar_issues',
       qualifiedToolName: 'mcp__plugin_github-bug-capture_github-bug-capture__search_similar_issues',
+      nonMcpToolName: 'github-bug-capture__search_similar_issues',
     },
   ];
 
-  for (const { plugin, bareToolName, qualifiedToolName } of cases) {
-    it(`${plugin}'s own-plugin matcher(s) match the bare and plugin-qualified tool-name forms`, () => {
+  for (const { plugin, bareToolName, qualifiedToolName, nonMcpToolName } of cases) {
+    it(`${plugin}'s own-plugin matcher(s) match both MCP tool-name forms, and only MCP tool names`, () => {
       const hooksJsonPath = path.join(pluginsDir, plugin, 'hooks', 'hooks.json');
       const parsed = JSON.parse(readFileSync(hooksJsonPath, 'utf8'));
       const ownPluginMatchers: string[] = [];
@@ -179,6 +183,10 @@ describe('hooks.json PostToolUse/PreToolUse matchers match both tool-name forms'
         expect(re.test(qualifiedToolName), `matcher ${matcher} should match qualified form ${qualifiedToolName}`).toBe(
           true,
         );
+        expect(
+          re.test(nonMcpToolName),
+          `matcher ${matcher} should NOT match a non-MCP tool name that merely contains the plugin name: ${nonMcpToolName}`,
+        ).toBe(false);
       }
     });
   }
