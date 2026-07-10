@@ -156,7 +156,7 @@ jobs:
             # even if a contributor bumped the source but forgot to rebuild.
             v_dist="$(grep -oE 'new McpServer\([^)]*version: "[^"]*"' "$dist" 2>/dev/null | head -1 | grep -oE 'version: "[^"]*"' | sed -E 's/version: "([^"]*)"/\1/')"
             v_dist="${v_dist:-<none found>}"
-            v_mp="$(jq -r --arg n "$name" '(.plugins[] | select(.name == $n) | .version) // "<no entry>"' .claude-plugin/marketplace.json 2>/dev/null || echo '<unparseable>')"
+            v_mp="$(jq -r --arg n "$name" 'first(.plugins[] | select(.name == $n) | .version) // "<no entry>"' .claude-plugin/marketplace.json 2>/dev/null || echo '<unparseable>')"
 
             uniq_count="$(printf '%s\n' "$v_plugin" "$v_pkg" "$v_lock_top" "$v_lock_self" "$v_idx" "$v_dist" "$v_mp" | sort -u | wc -l)"
             if [ "$uniq_count" -ne 1 ]; then
