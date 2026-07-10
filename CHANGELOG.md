@@ -5,6 +5,28 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-07-10
+
+### Fixed
+
+- `.github/workflows/catalog-admission.yml`'s "Verify each external pin
+  resolves to a real plugin" step called `gh api` once per catalog entry
+  with no retry, so a single transient GitHub API error failed the whole
+  admission gate even though the pinned content was genuinely present.
+  `resolve_pin()` now retries each entry up to 3 attempts with a short
+  linear backoff (1s, then 2s), extracted into `scripts/lib/resolve-pin.sh`
+  so the retry behavior itself is unit-tested (`scripts/test-resolve-pin-retry.sh`,
+  wired in as its own CI step ahead of the real check) against a stubbed
+  `gh` (issue #179, PR #182).
+- `confirm-mutation.mjs`'s PreToolUse `ask` outranked every
+  `permissions.allow` entry with no opt-out. Adds a fail-closed
+  `skipMutationConfirm` pack toggle (default disabled), read via a new
+  `hooks/lib/settings.mjs` (issue #183, PR #184).
+- All 7 plugins' `mcp-server/src/index.ts` hardcoded `new McpServer({
+  version: '0.6.0' })`, three releases stale (never bumped through 0.7.0 or
+  0.7.1) even though the catalog, `plugin.json`, and `package.json` all
+  agreed at 0.7.1. Brought in line with this release.
+
 ## [0.7.1] - 2026-07-10
 
 ### Fixed
