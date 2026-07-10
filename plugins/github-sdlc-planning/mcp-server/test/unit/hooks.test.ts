@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 // AC-8/AC-9: the hook scripts live at the plugin root (../../hooks/), a
@@ -13,9 +14,29 @@ const hooksDir = path.resolve(thisDir, '../../../hooks');
 // Sibling plugin roots, for the cross-plugin matcher sanity check below.
 const pluginsDir = path.resolve(thisDir, '../../../../');
 
-function runHook(script: string, input: unknown): { hookSpecificOutput?: { hookEventName: string; additionalContext?: string; permissionDecision?: string; permissionDecisionReason?: string } } {
-  const out = execFileSync('node', [path.join(hooksDir, script)], { input: JSON.stringify(input), encoding: 'utf8' });
+function runHook(
+  script: string,
+  input: unknown,
+  options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): { hookSpecificOutput?: { hookEventName: string; additionalContext?: string; permissionDecision?: string; permissionDecisionReason?: string } } {
+  const out = execFileSync('node', [path.join(hooksDir, script)], {
+    input: JSON.stringify(input),
+    encoding: 'utf8',
+    cwd: options.cwd,
+    env: options.env,
+  });
   return JSON.parse(out);
+}
+
+// issue #183: writes a project-layer .config/gdlc/config.yml under `root`
+// enabling confirm-mutation.mjs's skipMutationConfirm pack, and an
+// XDG_CONFIG_HOME pointing at a directory with no global config, so the
+// hook subprocess's own upward search resolves deterministically to `root`.
+function withSkipMutationConfirmPack(root: string): NodeJS.ProcessEnv {
+  const configDir = path.join(root, '.config', 'gdlc');
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(path.join(configDir, 'config.yml'), 'packs:\n  skipMutationConfirm: true\n');
+  return { ...process.env, XDG_CONFIG_HOME: path.join(root, 'no-such-global') };
 }
 
 describe('validate-mif.mjs (AC-9)', () => {
@@ -124,6 +145,34 @@ describe('confirm-mutation.mjs', () => {
     expect(result.hookSpecificOutput?.hookEventName).toBe('PreToolUse');
     expect(result.hookSpecificOutput?.permissionDecision).toBe('ask');
     expect(result.hookSpecificOutput?.permissionDecisionReason).toContain('Ship it');
+  });
+
+  // Issue #183: a hook-returned `ask` outranks any settings.json
+  // `permissions.allow` entry, so this pack is the only real opt-out --
+  // covered end to end here (spawning the actual hook subprocess with a
+  // real config file on disk), not just at the `isPackEnabled` unit level
+  // (see pack-toggles.test.ts).
+  describe('skipMutationConfirm pack (issue #183)', () => {
+    it('short-circuits to a no-op when the project-layer pack is enabled', () => {
+      const root = mkdtempSync(path.join(tmpdir(), 'confirm-mutation-'));
+      const env = withSkipMutationConfirmPack(root);
+      const result = runHook(
+        'confirm-mutation.mjs',
+        { tool_name: 'mcp__github-sdlc-planning__set_field_value', tool_input: { itemId: 'i1', fieldId: 'f1' } },
+        { cwd: root, env },
+      );
+      expect(result.hookSpecificOutput).toBeUndefined();
+    });
+
+    it('still asks when no config enables the pack (fail closed default)', () => {
+      const root = mkdtempSync(path.join(tmpdir(), 'confirm-mutation-'));
+      const result = runHook(
+        'confirm-mutation.mjs',
+        { tool_name: 'mcp__github-sdlc-planning__set_field_value', tool_input: { itemId: 'i1', fieldId: 'f1' } },
+        { cwd: root, env: { ...process.env, XDG_CONFIG_HOME: path.join(root, 'no-such-global') } },
+      );
+      expect(result.hookSpecificOutput?.permissionDecision).toBe('ask');
+    });
   });
 });
 

@@ -77,9 +77,25 @@ behavior via an explicit tool call, never a degraded one):
 | Hook | Event / matcher | What it does |
 | --- | --- | --- |
 | `session-start.mjs` | `SessionStart` (`startup`) | Fetches the repo's open milestones via `gh api` and injects them as session context — the Claude Code equivalent of calling `get_session_context`. |
-| `confirm-mutation.mjs` | `PreToolUse`, `mcp__github-sdlc-planning__.*` | Asks for confirmation before any mutating tool call, naming exactly what will change (issue/repo/project) so the prompt is legible instead of a bare tool name. |
+| `confirm-mutation.mjs` | `PreToolUse`, `mcp__github-sdlc-planning__.*` | Asks for confirmation before any mutating tool call, naming exactly what will change (issue/repo/project) so the prompt is legible instead of a bare tool name. A hook-returned `ask` outranks any `permissions.allow` entry (Claude Code's precedence is deny > ask > allow across every source), so this cannot be silenced from `.claude/settings.json` — opt out per-project instead with the `skipMutationConfirm` pack (below). |
 | `validate-mif.mjs` | `PostToolUse`, `mcp__github-sdlc-planning__.*` (only acts on `create_issue`/`update_issue`) | Checks the created/updated issue body for a conformant MIF comment block; on failure, returns a correction instruction via `additionalContext`. Discussions are not checked — MIF frontmatter is an issue-body convention only. |
 | `set-in-progress.mjs` | `PostToolUse`, `^mcp__github-sdlc-planning__(add_sub_issue|update_issue)$` | Closes the one gap GitHub's native Projects v2 workflows leave (see [ADR-0003](../../docs/decisions/adr-0003-board-status-hygiene.md)): marking an issue In Progress before a PR exists. |
+
+### Opting out of `confirm-mutation.mjs`
+
+Set the `skipMutationConfirm` pack to `true` in `.config/gdlc/config.yml`
+(project or global layer, `hooks/lib/settings.mjs`'s reader — same
+project-then-global cascade and fail-closed defaults as every other pack):
+
+```yaml
+packs:
+  skipMutationConfirm: true
+```
+
+Fail-closed by design: unset, malformed, or `false` all mean the
+confirmation stays on. High-volume automated workflows (e.g. `epic-pipeline`
+driving many `set_field_value`/`update_issue` calls in one session) are the
+intended use case — the safety net stays on by default for everyone else.
 
 `set-in-progress.mjs` is gated on a board mapping, resolved by
 `hooks/lib/in-progress.mjs`'s `readBoardConfig` from two layers, in

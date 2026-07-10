@@ -4,8 +4,19 @@
 // permission system (which already prompts on first use of an MCP tool) — it
 // asks explicitly, with a reason naming exactly what is about to change, so
 // the prompt the user sees is legible rather than a bare tool name.
+//
+// Issue #183: a hook-returned `permissionDecision: 'ask'` outranks every
+// settings.json `permissions.allow` entry (Claude Code's precedence is
+// deny > ask > allow, evaluated across every source) -- so this hook, unlike
+// every other tool call, could never be silenced by the normal allow-list
+// path, including the "Yes, and don't ask again" persisted grant. High-volume
+// automated workflows (e.g. epic-pipeline driving dozens of set_field_value
+// calls) had no way to opt out short of editing this file. `skipMutationConfirm`
+// is that opt-out: an explicit, fail-closed pack toggle (default disabled --
+// every other user/CI keeps the safety net) in `.config/gdlc/config.yml`.
 import { readFileSync } from 'node:fs';
 import { mcpAction } from './lib/mcp-tool-name.mjs';
+import { isPackEnabled } from './lib/settings.mjs';
 
 const MUTATING_ACTIONS = new Set([
   'create_issue',
@@ -77,6 +88,10 @@ function describe(toolName, input) {
 function main() {
   const input = readStdin();
   if (!MUTATING_ACTIONS.has(mcpAction(input.tool_name))) {
+    process.stdout.write(JSON.stringify({}));
+    return;
+  }
+  if (isPackEnabled('skipMutationConfirm')) {
     process.stdout.write(JSON.stringify({}));
     return;
   }
