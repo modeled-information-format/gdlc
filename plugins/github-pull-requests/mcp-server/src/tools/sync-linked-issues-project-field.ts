@@ -17,14 +17,9 @@ export interface SyncLinkedIssuesProjectFieldInput extends PullRequestRef {
   value: FieldValueInput;
 }
 
-/** Known limitation: get_project_items' `items(first: 100)` query has no
- * pagination cursor, so a board with more than 100 items can report a
- * genuinely-linked issue as notFoundOnBoard when it's simply outside the
- * first page. Fixing this means adding cursor-based pagination to
- * get_project_items in the github-sdlc-planning package — a change shared
- * by that package's own get_project_items MCP tool and session.ts, out of
- * scope for this pass. Treat notFoundOnBoard as "not found on the first 100
- * items", not an absolute guarantee, until that's fixed. */
+/** gdlc#200 (fixed): get_project_items' `fetchAllProjectItemNodes` now loops
+ * on hasNextPage/endCursor, so notFoundOnBoard reflects the whole board, not
+ * just the first page. */
 export interface SyncLinkedIssuesProjectFieldResult {
   synced: Array<{ issueNumber: number; itemId: string }>;
   notFoundOnBoard: number[];
