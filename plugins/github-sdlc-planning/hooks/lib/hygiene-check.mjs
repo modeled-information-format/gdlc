@@ -68,6 +68,13 @@ const STATUS_MUTATE_ACTIONS = new Set(['set_field_value', 'update_issue']);
 // issue_write is folded into ISSUE_CREATE_ACTIONS/STATUS_MUTATE_ACTIONS
 // instead of miscategorized here.
 const COMMENT_ACTIONS = new Set(['add_issue_comment']);
+// gdlc#201/#210: the generic github MCP server's merge tool (no
+// plugin-scoped merge_pull_request tool exists in this marketplace as of
+// this writing -- merging goes through mcp__github__merge_pull_request or
+// `gh pr merge`, per this workspace's own CLAUDE.local.md). A merge is the
+// one moment a PR's closing-keyword references become load-bearing --
+// checkPostMergeClosingKeywords below is the only check that fires on it.
+const PR_MERGE_ACTIONS = new Set(['merge_pull_request']);
 
 /** `mcp__github__issue_write`'s action name alone doesn't distinguish a
  * create from an update to an existing issue -- its own `method` field
@@ -127,7 +134,7 @@ export function detectCommaSeparatedClosingKeywords(text) {
 // for the owner/repo fallback -- this hook runs on every Bash tool call
 // (the matcher is unscoped), so that shell-out must not happen for the
 // common case of an unrelated command (`ls`, `npm test`, ...).
-export const GH_ISSUE_OR_PR_RE = /^\s*gh\s+(issue|pr)\s+(view|edit|close|comment|create|list)\b/;
+export const GH_ISSUE_OR_PR_RE = /^\s*gh\s+(issue|pr)\s+(view|edit|close|comment|create|list|merge)\b/;
 
 /** Extracts a `gh ... create`'s `--body "..."` flag value. `--body-file`/
  * `--fill` read from a file or commit messages this hook cannot see without
@@ -277,6 +284,9 @@ export function extractTouch(input, fallbackOwnerRepo) {
     if (subcommand === 'edit' || subcommand === 'close') {
       return { surface: 'gh-cli', action: 'update_issue', owner, repo, number, closing: subcommand === 'close', closesIssues: [], droppedClosingIssues: [] };
     }
+    if (subcommand === 'merge') {
+      return { surface: 'gh-cli', action: 'merge_pull_request', owner, repo, number, closing: false, closesIssues: [], droppedClosingIssues: [] };
+    }
     // view/list/comment: not a check-triggering transition itself (a
     // comment command is what checkLifecycleComment's own transcript scan
     // looks FOR, not a subject of these checks) -- recognized as a touch
@@ -292,7 +302,8 @@ export function extractTouch(input, fallbackOwnerRepo) {
     PR_CREATE_ACTIONS.has(action) ||
     ISSUE_CREATE_ACTIONS.has(action) ||
     STATUS_MUTATE_ACTIONS.has(action) ||
-    COMMENT_ACTIONS.has(action);
+    COMMENT_ACTIONS.has(action) ||
+    PR_MERGE_ACTIONS.has(action);
   if (!relevant) return null;
 
   const normalizedOutput = normalizeToolOutput(toolOutput);
@@ -301,12 +312,18 @@ export function extractTouch(input, fallbackOwnerRepo) {
   const closing = action === 'update_issue' && toolInput?.state === 'closed';
   // A create call's own tool_input never carries the new issue/PR's number
   // (it doesn't exist yet when the call is made) -- fall back to the
-  // tool's output, which returns it (create_issue: {number, ...}).
+  // tool's output, which returns it (create_issue: {number, ...}). A merge
+  // call's PR number arrives as `pullNumber` (the generic github MCP
+  // server's own field name for merge_pull_request), never `number`/
+  // `issue_number` -- checked last so it never shadows those for any other
+  // action.
   const number =
     typeof toolInput?.number === 'number' ? toolInput.number
     : typeof toolInput?.issue_number === 'number' ? toolInput.issue_number
     : typeof normalizedOutput?.number === 'number' ? normalizedOutput.number
     : typeof normalizedOutput?.issue_number === 'number' ? normalizedOutput.issue_number
+    : typeof toolInput?.pullNumber === 'number' ? toolInput.pullNumber
+    : typeof toolInput?.pull_number === 'number' ? toolInput.pull_number
     : null;
 
   let closesIssues = [];
@@ -417,6 +434,75 @@ export function checkClosingKeywordSyntax(touch) {
       `PR body uses a comma-separated closing-keyword list -- GitHub only auto-closes the FIRST issue after the ` +
         `keyword. ${refs} will stay open after merge unless each gets its own \`Closes #N\` (one per line) or is ` +
         `closed manually.`,
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Check 1c: post-merge closing-keyword verification -- gdlc#201/#210.
+// Defense in depth for when checkClosingKeywordSyntax's pre-merge warning
+// was ignored, missed, or the PR body was edited after creation.
+// ---------------------------------------------------------------------------
+
+export const PR_MERGE_STATE_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) { merged body }
+    }
+  }
+`;
+
+export const ISSUE_STATE_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) { state }
+    }
+  }
+`;
+
+/** WHEN a PR merge touch fires, THEN re-read the PR's own body (not the
+ * touch's cached one -- the body may have changed between creation and
+ * merge) and confirm every issue it references via a closing keyword
+ * (both correctly-parsed AND comma-dropped -- see
+ * `detectCommaSeparatedClosingKeywords`) is actually `CLOSED` now. This is
+ * the defense-in-depth half of gdlc#201: `checkClosingKeywordSyntax` warns
+ * BEFORE creation, this catches the case where that warning was missed,
+ * ignored, or the body changed after the PR was opened. Fails open on any
+ * unresolvable step (PR not found, not actually merged yet, a GraphQL
+ * error) -- never a guess, matching every other check in this file. */
+export async function checkPostMergeClosingKeywords(touch, runGraphQL) {
+  if (!touch || !PR_MERGE_ACTIONS.has(touch.action) || typeof touch.owner !== 'string' || typeof touch.repo !== 'string' || typeof touch.number !== 'number') {
+    return { resolved: true, findings: [] };
+  }
+  let pr;
+  try {
+    const data = await runGraphQL(PR_MERGE_STATE_QUERY, { owner: touch.owner, repo: touch.repo, number: touch.number });
+    pr = data?.repository?.pullRequest;
+  } catch {
+    return { resolved: true, findings: [] };
+  }
+  if (!pr || pr.merged !== true) return { resolved: true, findings: [] }; // not actually merged: nothing to verify yet
+
+  const referenced = new Set([...extractClosedIssueNumbers(pr.body), ...detectCommaSeparatedClosingKeywords(pr.body)]);
+  if (referenced.size === 0) return { resolved: true, findings: [] };
+
+  const stillOpen = [];
+  for (const number of referenced) {
+    try {
+      const data = await runGraphQL(ISSUE_STATE_QUERY, { owner: touch.owner, repo: touch.repo, number });
+      const state = data?.repository?.issue?.state;
+      if (state === 'OPEN') stillOpen.push(number);
+    } catch {
+      // fail open for this ref only; other refs and other checks are unaffected
+    }
+  }
+  if (stillOpen.length === 0) return { resolved: true, findings: [] };
+  const refs = stillOpen.map((n) => `#${n}`).join(', ');
+  return {
+    resolved: true,
+    findings: [
+      `${touch.owner}/${touch.repo}#${touch.number} merged, but ${refs} (referenced via a closing keyword in its body) ` +
+        `${stillOpen.length === 1 ? 'is' : 'are'} still open -- likely the comma-separated closing-keyword gap; verify and close manually if intended.`,
     ],
   };
 }
@@ -628,7 +714,7 @@ export async function checkSubIssueLinkage(touch, runGraphQL) {
 // Assembly
 // ---------------------------------------------------------------------------
 
-/** Run all four checks independently -- one check's exception or empty
+/** Run all five checks independently -- one check's exception or empty
  * result never suppresses another's finding (NFR-5) -- and flatten into one
  * findings list. Each check function above already fails open internally;
  * this wrapper additionally guards against a check throwing outright, since
@@ -641,8 +727,9 @@ export async function runHygieneChecks(touch, { runGraphQL, transcriptPath, read
     // checkClosingKeywordSyntax is synchronous (pure text analysis, no
     // GraphQL) -- Promise.allSettled still accepts a plain value here,
     // wrapping it as an already-fulfilled promise, so it needs no special
-    // handling to sit alongside its three async siblings.
+    // handling to sit alongside its four async siblings.
     checkClosingKeywordSyntax(touch),
+    checkPostMergeClosingKeywords(touch, runGraphQL),
     // checkLifecycleComment is async (issue #172's fix), so -- same as its
     // two siblings here -- any throw inside it, synchronous or not, is
     // caught by the implicit async-function promise wrapping and never

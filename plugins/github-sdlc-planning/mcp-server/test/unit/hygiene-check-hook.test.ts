@@ -12,6 +12,7 @@ import {
   checkStatusProgression,
   detectCommaSeparatedClosingKeywords,
   checkClosingKeywordSyntax,
+  checkPostMergeClosingKeywords,
   scanTranscriptForComment,
   checkLifecycleComment,
   resolveItemIdentity,
@@ -186,6 +187,19 @@ describe('extractTouch', () => {
       null,
     );
     expect(touch.droppedClosingIssues).toEqual([]);
+  });
+
+  it('gdlc#210: recognizes the generic github MCP server\'s merge_pull_request tool, reading the PR number from pullNumber', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github__merge_pull_request', tool_input: { owner: 'acme', repo: 'widgets', pullNumber: 9 } },
+      null,
+    );
+    expect(touch).toMatchObject({ surface: 'generic-github-mcp', action: 'merge_pull_request', owner: 'acme', repo: 'widgets', number: 9 });
+  });
+
+  it('gdlc#210: recognizes gh pr merge on the gh-cli surface, with the positional number', () => {
+    const touch = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh pr merge 9 --squash' } }, { owner: 'acme', repo: 'widgets' });
+    expect(touch).toMatchObject({ surface: 'gh-cli', action: 'merge_pull_request', owner: 'acme', repo: 'widgets', number: 9 });
   });
 
   it('unwraps the MCP content-array tool_output shape to read number/body, not just a flat object', () => {
@@ -632,6 +646,75 @@ describe('checkClosingKeywordSyntax', () => {
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0]).toContain('#310, #311, #308');
     expect(result.findings[0]).toContain('only auto-closes the FIRST issue');
+  });
+});
+
+describe('checkPostMergeClosingKeywords', () => {
+  const mergeTouch = { action: 'merge_pull_request', owner: 'acme', repo: 'widgets', number: 368 };
+
+  it('returns no findings for a non-merge touch', async () => {
+    const result = await checkPostMergeClosingKeywords({ action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 }, async () => ({}));
+    expect(result).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('returns no findings for a null touch', async () => {
+    expect(await checkPostMergeClosingKeywords(null, async () => ({}))).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('fails open (no finding) when the PR query throws', async () => {
+    const result = await checkPostMergeClosingKeywords(mergeTouch, async () => {
+      throw new Error('boom');
+    });
+    expect(result).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('fails open when the PR is not actually merged yet (e.g. a failed merge attempt)', async () => {
+    const runGraphQL = async () => ({ repository: { pullRequest: { merged: false, body: 'Closes #309, #310' } } });
+    expect(await checkPostMergeClosingKeywords(mergeTouch, runGraphQL)).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('returns no findings when the merged PR body has no closing keywords at all', async () => {
+    const runGraphQL = async () => ({ repository: { pullRequest: { merged: true, body: 'just a description' } } });
+    expect(await checkPostMergeClosingKeywords(mergeTouch, runGraphQL)).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('reproduces the PR #368 pattern: flags every comma-dropped issue still open post-merge', async () => {
+    const runGraphQL = async (query, vars) => {
+      if (query.includes('pullRequest')) {
+        return { repository: { pullRequest: { merged: true, body: 'Closes #309, #310, #311, #308' } } };
+      }
+      // #309 was the one GitHub actually auto-closed; #310/#311/#308 were
+      // silently left open -- exactly what happened in session 1f3d575b
+      // before the agent caught and manually fixed it.
+      const closed = new Set([309]);
+      return { repository: { issue: { state: closed.has(vars.number) ? 'CLOSED' : 'OPEN' } } };
+    };
+    const result = await checkPostMergeClosingKeywords(mergeTouch, runGraphQL);
+    expect(result.resolved).toBe(true);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toContain('#310');
+    expect(result.findings[0]).toContain('#311');
+    expect(result.findings[0]).toContain('#308');
+    expect(result.findings[0]).not.toContain('#309');
+  });
+
+  it('returns no findings when every referenced issue is actually closed', async () => {
+    const runGraphQL = async (query) => {
+      if (query.includes('pullRequest')) return { repository: { pullRequest: { merged: true, body: 'Closes #1, #2' } } };
+      return { repository: { issue: { state: 'CLOSED' } } };
+    };
+    expect(await checkPostMergeClosingKeywords(mergeTouch, runGraphQL)).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('fails open per-issue-ref when one issue-state query throws, without losing findings for the others', async () => {
+    const runGraphQL = async (query, vars) => {
+      if (query.includes('pullRequest')) return { repository: { pullRequest: { merged: true, body: 'Closes #1, #2' } } };
+      if (vars.number === 1) throw new Error('boom');
+      return { repository: { issue: { state: 'OPEN' } } };
+    };
+    const result = await checkPostMergeClosingKeywords(mergeTouch, runGraphQL);
+    expect(result.findings[0]).toContain('#2');
+    expect(result.findings[0]).not.toContain('#1');
   });
 });
 
