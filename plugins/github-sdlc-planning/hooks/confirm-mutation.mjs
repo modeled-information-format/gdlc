@@ -5,16 +5,17 @@
 // asks explicitly, with a reason naming exactly what is about to change, so
 // the prompt the user sees is legible rather than a bare tool name.
 import { readFileSync } from 'node:fs';
+import { mcpAction } from './lib/mcp-tool-name.mjs';
 
-const MUTATING_TOOLS = new Set([
-  'mcp__github-sdlc-planning__create_issue',
-  'mcp__github-sdlc-planning__update_issue',
-  'mcp__github-sdlc-planning__add_sub_issue',
-  'mcp__github-sdlc-planning__add_item_to_project',
-  'mcp__github-sdlc-planning__set_field_value',
-  'mcp__github-sdlc-planning__create_milestone',
-  'mcp__github-sdlc-planning__assign_milestone',
-  'mcp__github-sdlc-planning__create_discussion',
+const MUTATING_ACTIONS = new Set([
+  'create_issue',
+  'update_issue',
+  'add_sub_issue',
+  'add_item_to_project',
+  'set_field_value',
+  'create_milestone',
+  'assign_milestone',
+  'create_discussion',
 ]);
 
 function readStdin() {
@@ -61,12 +62,12 @@ function describeProject(input) {
 }
 
 function describe(toolName, input) {
-  switch (toolName) {
-    case 'mcp__github-sdlc-planning__create_issue':
+  switch (mcpAction(toolName)) {
+    case 'create_issue':
       return `Create issue "${input?.title ?? '(untitled)'}" in ${describeRepo(input)}.`;
-    case 'mcp__github-sdlc-planning__add_item_to_project':
+    case 'add_item_to_project':
       return `Add issue #${input?.issueNumber ?? '?'} to ${describeProject(input)}.`;
-    case 'mcp__github-sdlc-planning__set_field_value':
+    case 'set_field_value':
       return `Set field ${input?.fieldId ?? '?'} on item ${input?.itemId ?? '?'} in ${describeProject(input)}.`;
     default:
       return `${toolName} will mutate GitHub state for ${describeRepo(input)}.`;
@@ -75,7 +76,7 @@ function describe(toolName, input) {
 
 function main() {
   const input = readStdin();
-  if (!MUTATING_TOOLS.has(input.tool_name)) {
+  if (!MUTATING_ACTIONS.has(mcpAction(input.tool_name))) {
     process.stdout.write(JSON.stringify({}));
     return;
   }

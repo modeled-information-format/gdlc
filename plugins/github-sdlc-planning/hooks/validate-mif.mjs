@@ -1,15 +1,16 @@
 #!/usr/bin/env node
-// AC-9: PostToolUse hook (matcher mcp__github-sdlc-planning__.*) — validates
-// the MIF comment block on every created/updated issue. On failure, returns
-// a correction instruction via hookSpecificOutput.additionalContext rather
-// than silently letting a non-conformant body through. Imports the same
-// isMifConformant the MCP server's own format/parse tools use (built dist,
-// not a re-implemented regex) so the check can never drift from what the
-// core actually writes.
+// AC-9: PostToolUse hook (matcher: any of this plugin's own MCP tool calls,
+// bare or plugin-qualified) — validates the MIF comment block on every
+// created/updated issue. On failure, returns a correction instruction via
+// hookSpecificOutput.additionalContext rather than silently letting a
+// non-conformant body through. Imports the same isMifConformant the MCP
+// server's own format/parse tools use (built dist, not a re-implemented
+// regex) so the check can never drift from what the core actually writes.
 import { readFileSync } from 'node:fs';
 import { isMifConformant } from '../mcp-server/dist/mif.js';
+import { mcpAction } from './lib/mcp-tool-name.mjs';
 
-const RELEVANT_TOOLS = new Set(['mcp__github-sdlc-planning__create_issue', 'mcp__github-sdlc-planning__update_issue']);
+const RELEVANT_ACTIONS = new Set(['create_issue', 'update_issue']);
 
 function readStdin() {
   try {
@@ -49,7 +50,7 @@ function extractBody(toolOutput) {
 
 function main() {
   const input = readStdin();
-  if (!RELEVANT_TOOLS.has(input.tool_name)) {
+  if (!RELEVANT_ACTIONS.has(mcpAction(input.tool_name))) {
     process.stdout.write(JSON.stringify({}));
     return;
   }

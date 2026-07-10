@@ -16,7 +16,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "mcp__github-sdlc-planning__.*",
+        "matcher": "^mcp__(plugin_.+_)?github-sdlc-planning__.*",
         "hooks": [
           {
             "type": "command",
@@ -33,7 +33,7 @@
         ]
       },
       {
-        "matcher": "^mcp__github-sdlc-planning__(add_sub_issue|update_issue)$",
+        "matcher": "^mcp__(plugin_.+_)?github-sdlc-planning__(add_sub_issue|update_issue)$",
         "hooks": [
           {
             "type": "command",
@@ -68,7 +68,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "mcp__github-sdlc-planning__.*",
+        "matcher": "^mcp__(plugin_.+_)?github-sdlc-planning__.*",
         "hooks": [
           {
             "type": "command",

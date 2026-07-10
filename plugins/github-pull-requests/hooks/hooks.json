@@ -3,7 +3,7 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "mcp__github-pull-requests__.*",
+        "matcher": "^mcp__(plugin_.+_)?github-pull-requests__.*",
         "hooks": [
           {
             "type": "command",
