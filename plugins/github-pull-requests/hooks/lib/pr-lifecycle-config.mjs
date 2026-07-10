@@ -67,7 +67,7 @@ function extractScalarValue(raw) {
   return (commentIndex === -1 ? trimmed : trimmed.slice(0, commentIndex)).trim();
 }
 
-const BOOLEAN_KEYS = new Set(['enabled', 'requireLocalReview', 'requireCopilotReview', 'requireCleanCodeScanning']);
+const BOOLEAN_KEYS = new Set(['enabled', 'requireLocalReview', 'requireCopilotReview', 'requireCleanCodeScanning', 'gateNewWorkOnUnresolvedThreads']);
 
 /** Parse a top-level `prLifecycle:` scalar map out of a plain-YAML
  * `gdlc/config.yml` document, same constrained 2-space-indent shape as
@@ -153,5 +153,6 @@ export function resolvePrLifecycle(cwd = process.cwd(), env = process.env, exist
     requireLocalReview: raw.requireLocalReview ?? true,
     requireCopilotReview: raw.requireCopilotReview ?? true,
     requireCleanCodeScanning: raw.requireCleanCodeScanning ?? true,
+    gateNewWorkOnUnresolvedThreads: raw.gateNewWorkOnUnresolvedThreads ?? true,
   };
 }

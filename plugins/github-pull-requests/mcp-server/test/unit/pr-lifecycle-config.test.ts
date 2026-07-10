@@ -97,6 +97,7 @@ describe('resolvePrLifecycle: defaults match config.ts resolvePrLifecycleConfig 
       requireLocalReview: true,
       requireCopilotReview: true,
       requireCleanCodeScanning: true,
+      gateNewWorkOnUnresolvedThreads: true,
     });
   });
 
@@ -109,6 +110,7 @@ describe('resolvePrLifecycle: defaults match config.ts resolvePrLifecycleConfig 
       requireLocalReview: true,
       requireCopilotReview: true,
       requireCleanCodeScanning: true,
+      gateNewWorkOnUnresolvedThreads: true,
     });
   });
 
@@ -123,6 +125,7 @@ describe('resolvePrLifecycle: defaults match config.ts resolvePrLifecycleConfig 
         '  requireLocalReview: false',
         '  requireCopilotReview: false',
         '  requireCleanCodeScanning: false',
+        '  gateNewWorkOnUnresolvedThreads: false',
         '',
       ].join('\n'),
     );
@@ -132,6 +135,7 @@ describe('resolvePrLifecycle: defaults match config.ts resolvePrLifecycleConfig 
       requireLocalReview: false,
       requireCopilotReview: false,
       requireCleanCodeScanning: false,
+      gateNewWorkOnUnresolvedThreads: false,
     });
   });
 });

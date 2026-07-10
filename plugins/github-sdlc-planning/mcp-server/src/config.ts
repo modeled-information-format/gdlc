@@ -36,6 +36,9 @@ export interface PrLifecycleConfig {
   requireLocalReview?: boolean;
   requireCopilotReview?: boolean;
   requireCleanCodeScanning?: boolean;
+  /** gdlc#202/#211: gate starting new branch/worktree work on any PR opened
+   * this session still having unresolved review threads. */
+  gateNewWorkOnUnresolvedThreads?: boolean;
 }
 
 export interface GdlcConfig {
@@ -188,6 +191,7 @@ function normalizeConfig(parsed: unknown): GdlcConfig {
     if (typeof raw.requireLocalReview === 'boolean') prLifecycle.requireLocalReview = raw.requireLocalReview;
     if (typeof raw.requireCopilotReview === 'boolean') prLifecycle.requireCopilotReview = raw.requireCopilotReview;
     if (typeof raw.requireCleanCodeScanning === 'boolean') prLifecycle.requireCleanCodeScanning = raw.requireCleanCodeScanning;
+    if (typeof raw.gateNewWorkOnUnresolvedThreads === 'boolean') prLifecycle.gateNewWorkOnUnresolvedThreads = raw.gateNewWorkOnUnresolvedThreads;
     if (Object.keys(prLifecycle).length > 0) config.prLifecycle = prLifecycle;
   }
 
@@ -347,6 +351,7 @@ export interface ResolvedPrLifecycleConfig {
   requireLocalReview: boolean;
   requireCopilotReview: boolean;
   requireCleanCodeScanning: boolean;
+  gateNewWorkOnUnresolvedThreads: boolean;
 }
 
 const DEFAULT_LOCAL_REVIEWER = '/code-review:code-review --fix';
@@ -378,5 +383,6 @@ export function resolvePrLifecycleConfig(config: GdlcConfig): ResolvedPrLifecycl
     requireLocalReview: raw.requireLocalReview ?? true,
     requireCopilotReview: raw.requireCopilotReview ?? true,
     requireCleanCodeScanning: raw.requireCleanCodeScanning ?? true,
+    gateNewWorkOnUnresolvedThreads: raw.gateNewWorkOnUnresolvedThreads ?? true,
   };
 }

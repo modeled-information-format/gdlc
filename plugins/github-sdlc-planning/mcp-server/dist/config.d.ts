@@ -28,6 +28,9 @@ export interface PrLifecycleConfig {
     requireLocalReview?: boolean;
     requireCopilotReview?: boolean;
     requireCleanCodeScanning?: boolean;
+    /** gdlc#202/#211: gate starting new branch/worktree work on any PR opened
+     * this session still having unresolved review threads. */
+    gateNewWorkOnUnresolvedThreads?: boolean;
 }
 export interface GdlcConfig {
     targeting?: {
@@ -159,6 +162,7 @@ export interface ResolvedPrLifecycleConfig {
     requireLocalReview: boolean;
     requireCopilotReview: boolean;
     requireCleanCodeScanning: boolean;
+    gateNewWorkOnUnresolvedThreads: boolean;
 }
 /** Applies defaults to the raw `prLifecycle` section (issue #185/#186).
  * `enabled` defaults to `false` -- an absent or malformed section means the

@@ -468,6 +468,7 @@ describe('loadConfigFile: prLifecycle section', () => {
         '  requireLocalReview: true',
         '  requireCopilotReview: false',
         '  requireCleanCodeScanning: true',
+        '  gateNewWorkOnUnresolvedThreads: false',
         '',
       ].join('\n'),
     );
@@ -478,6 +479,7 @@ describe('loadConfigFile: prLifecycle section', () => {
         requireLocalReview: true,
         requireCopilotReview: false,
         requireCleanCodeScanning: true,
+        gateNewWorkOnUnresolvedThreads: false,
       },
     });
   });
@@ -530,6 +532,7 @@ describe('resolvePrLifecycleConfig', () => {
       requireLocalReview: true,
       requireCopilotReview: true,
       requireCleanCodeScanning: true,
+      gateNewWorkOnUnresolvedThreads: true,
     });
   });
 
@@ -544,6 +547,7 @@ describe('resolvePrLifecycleConfig', () => {
       requireLocalReview: true,
       requireCopilotReview: true,
       requireCleanCodeScanning: true,
+      gateNewWorkOnUnresolvedThreads: true,
     });
   });
 
@@ -556,6 +560,7 @@ describe('resolvePrLifecycleConfig', () => {
           requireLocalReview: false,
           requireCopilotReview: false,
           requireCleanCodeScanning: false,
+          gateNewWorkOnUnresolvedThreads: false,
         },
       }),
     ).toEqual({
@@ -564,6 +569,7 @@ describe('resolvePrLifecycleConfig', () => {
       requireLocalReview: false,
       requireCopilotReview: false,
       requireCleanCodeScanning: false,
+      gateNewWorkOnUnresolvedThreads: false,
     });
   });
 });
