@@ -75,6 +75,25 @@ const COMMENT_ACTIONS = new Set(['add_issue_comment']);
 // one moment a PR's closing-keyword references become load-bearing --
 // checkPostMergeClosingKeywords below is the only check that fires on it.
 const PR_MERGE_ACTIONS = new Set(['merge_pull_request']);
+// gdlc#203/#212: three actions matched by this hook's own broad
+// registration regex (^mcp__...__.*) but previously absent from every
+// action set above, so extractTouch returned null for them and the hook
+// silently no-op'd. `add_sub_issue`'s target is the PARENT issue (its
+// `parentNumber`, not `childNumber`) -- checkSubIssueLinkage already knows
+// how to flag an Epic/Story with zero sub-issues; recognizing this action
+// lets that same check also fire right after a link is added, catching
+// the case where the call succeeded but the parent still shows zero (wrong
+// parent, a GitHub-side rejection that didn't surface as an error).
+const SUB_ISSUE_LINK_ACTIONS = new Set(['add_sub_issue']);
+// No separate `request_copilot_review` tool exists in this marketplace
+// today (Copilot review is `request_review` with `reviewers: ["Copilot"]`)
+// -- kept in the set anyway for forward-compat at zero cost, matching this
+// codebase's own precedent (STATUS_MUTATE_ACTIONS already lists actions
+// from more than one real tool). No dedicated check function fires on
+// this one: recognizing it is the whole fix, so it's scratch-logged for
+// hygiene-aggregate.mjs's end-of-turn report instead of silently invisible.
+const REVIEW_REQUEST_ACTIONS = new Set(['request_review', 'request_copilot_review']);
+const SYNC_FIELD_ACTIONS = new Set(['sync_linked_issues_project_field']);
 
 /** `mcp__github__issue_write`'s action name alone doesn't distinguish a
  * create from an update to an existing issue -- its own `method` field
@@ -303,7 +322,10 @@ export function extractTouch(input, fallbackOwnerRepo) {
     ISSUE_CREATE_ACTIONS.has(action) ||
     STATUS_MUTATE_ACTIONS.has(action) ||
     COMMENT_ACTIONS.has(action) ||
-    PR_MERGE_ACTIONS.has(action);
+    PR_MERGE_ACTIONS.has(action) ||
+    SUB_ISSUE_LINK_ACTIONS.has(action) ||
+    REVIEW_REQUEST_ACTIONS.has(action) ||
+    SYNC_FIELD_ACTIONS.has(action);
   if (!relevant) return null;
 
   const normalizedOutput = normalizeToolOutput(toolOutput);
@@ -313,12 +335,18 @@ export function extractTouch(input, fallbackOwnerRepo) {
   // A create call's own tool_input never carries the new issue/PR's number
   // (it doesn't exist yet when the call is made) -- fall back to the
   // tool's output, which returns it (create_issue: {number, ...}). A merge
-  // call's PR number arrives as `pullNumber` (the generic github MCP
-  // server's own field name for merge_pull_request), never `number`/
-  // `issue_number` -- checked last so it never shadows those for any other
-  // action.
+  // or PR-scoped-tool call's number arrives as `pullNumber` (the generic
+  // github MCP server's field name for merge_pull_request, and this
+  // marketplace's own field name for request_review/
+  // sync_linked_issues_project_field), never `number`/`issue_number` --
+  // checked last so it never shadows those for any other action.
+  // `add_sub_issue`'s own `parentNumber`/`childNumber` split is handled
+  // separately below (this touch's `number` is deliberately the PARENT,
+  // not the newly-linked child) since neither generic fallback name
+  // applies to it.
   const number =
-    typeof toolInput?.number === 'number' ? toolInput.number
+    action === 'add_sub_issue' ? (typeof toolInput?.parentNumber === 'number' ? toolInput.parentNumber : null)
+    : typeof toolInput?.number === 'number' ? toolInput.number
     : typeof toolInput?.issue_number === 'number' ? toolInput.issue_number
     : typeof normalizedOutput?.number === 'number' ? normalizedOutput.number
     : typeof normalizedOutput?.issue_number === 'number' ? normalizedOutput.issue_number
@@ -333,6 +361,17 @@ export function extractTouch(input, fallbackOwnerRepo) {
     closesIssues = extractClosedIssueNumbers(bodyText).map((n) => ({ owner, repo, number: n }));
     droppedClosingIssues = detectCommaSeparatedClosingKeywords(bodyText);
   }
+
+  // gdlc#203/#212: sync_linked_issues_project_field's own result already
+  // names exactly which linked issues it could NOT find on the board
+  // (gdlc#200's now-fixed pagination bug's most visible symptom) -- surface
+  // it if it ever recurs (a different board, a genuinely-missing item)
+  // rather than silently discarding a signal the tool call itself already
+  // computed for free.
+  const notFoundOnBoard =
+    SYNC_FIELD_ACTIONS.has(action) && Array.isArray(normalizedOutput?.notFoundOnBoard)
+      ? normalizedOutput.notFoundOnBoard.filter((n) => typeof n === 'number')
+      : [];
 
   // set_field_value's own input/output carries itemId/fieldId, not
   // owner/repo/number, since a Projects v2 item is addressed by itemId,
@@ -350,7 +389,18 @@ export function extractTouch(input, fallbackOwnerRepo) {
         : null
       : null;
 
-  return { surface: toolName.startsWith('mcp__github__') ? 'generic-github-mcp' : 'plugin-mcp', action, owner, repo, number, closing, closesIssues, droppedClosingIssues, itemId };
+  return {
+    surface: toolName.startsWith('mcp__github__') ? 'generic-github-mcp' : 'plugin-mcp',
+    action,
+    owner,
+    repo,
+    number,
+    closing,
+    closesIssues,
+    droppedClosingIssues,
+    itemId,
+    notFoundOnBoard,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -691,9 +741,17 @@ function extractMifType(body) {
  * currently has zero sub-issues. Skips any other MIF type (Task/Bug/
  * Feature are leaves) and skips a close (closing an empty Epic/Story is a
  * different problem this check does not speak to). Fails open on a
- * GraphQL error or a body with no recognizable MIF type marker. */
+ * GraphQL error or a body with no recognizable MIF type marker.
+ *
+ * gdlc#203/#212: also fires on `add_sub_issue` (touch.number is the
+ * PARENT, per extractTouch's own doc comment) -- re-checking the parent
+ * right after a link is added catches the call succeeding against the
+ * wrong parent, or a GitHub-side rejection that didn't surface as a tool
+ * error, either of which would otherwise leave the parent looking exactly
+ * like it did before the call. */
 export async function checkSubIssueLinkage(touch, runGraphQL) {
-  const isCreateOrUpdate = touch && !touch.closing && (ISSUE_CREATE_ACTIONS.has(touch.action) || touch.action === 'update_issue');
+  const isCreateOrUpdate =
+    touch && !touch.closing && (ISSUE_CREATE_ACTIONS.has(touch.action) || touch.action === 'update_issue' || SUB_ISSUE_LINK_ACTIONS.has(touch.action));
   if (!isCreateOrUpdate || typeof touch.owner !== 'string' || typeof touch.repo !== 'string' || typeof touch.number !== 'number') {
     return { resolved: true, findings: [] };
   }
@@ -711,10 +769,38 @@ export async function checkSubIssueLinkage(touch, runGraphQL) {
 }
 
 // ---------------------------------------------------------------------------
+// Check 5: sync_linked_issues_project_field's own notFoundOnBoard --
+// gdlc#203/#212. Purely synchronous: the tool call already computed this,
+// extractTouch just carries it through.
+// ---------------------------------------------------------------------------
+
+/** WHEN `sync_linked_issues_project_field` reports one or more linked
+ * issues it could not find on the board, THEN surface it loudly instead of
+ * letting the caller silently discard a signal the tool already computed.
+ * gdlc#200 fixed the pagination bug that was the most likely cause of a
+ * false `notFoundOnBoard` on this org's real board, but a genuinely-missing
+ * item (never added, wrong project) still produces this same response
+ * shape and is exactly what this check exists to catch. */
+export function checkSyncNotFoundOnBoard(touch) {
+  if (!touch || !touch.notFoundOnBoard || touch.notFoundOnBoard.length === 0) {
+    return { resolved: true, findings: [] };
+  }
+  const refs = touch.notFoundOnBoard.map((n) => `#${n}`).join(', ');
+  const where = touch.owner && touch.repo ? ` (${touch.owner}/${touch.repo}#${touch.number})` : '';
+  return {
+    resolved: true,
+    findings: [
+      `sync_linked_issues_project_field${where} could not find ${refs} on the board -- verify these issues are actually ` +
+        `on the target project, or that the board has fewer than 100+N items where N is these issues' position.`,
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Assembly
 // ---------------------------------------------------------------------------
 
-/** Run all five checks independently -- one check's exception or empty
+/** Run all six checks independently -- one check's exception or empty
  * result never suppresses another's finding (NFR-5) -- and flatten into one
  * findings list. Each check function above already fails open internally;
  * this wrapper additionally guards against a check throwing outright, since
@@ -724,11 +810,12 @@ export async function runHygieneChecks(touch, { runGraphQL, transcriptPath, read
   const findings = [];
   const results = await Promise.allSettled([
     checkStatusProgression(touch, runGraphQL),
-    // checkClosingKeywordSyntax is synchronous (pure text analysis, no
-    // GraphQL) -- Promise.allSettled still accepts a plain value here,
-    // wrapping it as an already-fulfilled promise, so it needs no special
-    // handling to sit alongside its four async siblings.
+    // checkClosingKeywordSyntax/checkSyncNotFoundOnBoard are synchronous
+    // (pure data checks, no GraphQL) -- Promise.allSettled still accepts a
+    // plain value here, wrapping it as an already-fulfilled promise, so
+    // neither needs special handling to sit alongside its async siblings.
     checkClosingKeywordSyntax(touch),
+    checkSyncNotFoundOnBoard(touch),
     checkPostMergeClosingKeywords(touch, runGraphQL),
     // checkLifecycleComment is async (issue #172's fix), so -- same as its
     // two siblings here -- any throw inside it, synchronous or not, is

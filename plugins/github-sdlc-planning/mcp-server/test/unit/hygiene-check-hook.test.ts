@@ -13,6 +13,7 @@ import {
   detectCommaSeparatedClosingKeywords,
   checkClosingKeywordSyntax,
   checkPostMergeClosingKeywords,
+  checkSyncNotFoundOnBoard,
   scanTranscriptForComment,
   checkLifecycleComment,
   resolveItemIdentity,
@@ -200,6 +201,49 @@ describe('extractTouch', () => {
   it('gdlc#210: recognizes gh pr merge on the gh-cli surface, with the positional number', () => {
     const touch = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh pr merge 9 --squash' } }, { owner: 'acme', repo: 'widgets' });
     expect(touch).toMatchObject({ surface: 'gh-cli', action: 'merge_pull_request', owner: 'acme', repo: 'widgets', number: 9 });
+  });
+
+  it('gdlc#203/#212: recognizes add_sub_issue, using parentNumber (not childNumber) as touch.number', () => {
+    const touch = extractTouch(
+      {
+        tool_name: 'mcp__github-sdlc-planning__add_sub_issue',
+        tool_input: { owner: 'acme', repo: 'widgets', parentNumber: 100, childNumber: 105 },
+      },
+      null,
+    );
+    expect(touch).toMatchObject({ action: 'add_sub_issue', owner: 'acme', repo: 'widgets', number: 100 });
+  });
+
+  it('gdlc#203/#212: recognizes request_review, using pullNumber', () => {
+    const touch = extractTouch(
+      {
+        tool_name: 'mcp__github-pull-requests__request_review',
+        tool_input: { owner: 'acme', repo: 'widgets', pullNumber: 42, reviewers: ['Copilot'] },
+      },
+      null,
+    );
+    expect(touch).toMatchObject({ action: 'request_review', owner: 'acme', repo: 'widgets', number: 42 });
+  });
+
+  it('gdlc#203/#212: recognizes sync_linked_issues_project_field and carries notFoundOnBoard through', () => {
+    const touch = extractTouch(
+      {
+        tool_name: 'mcp__github-pull-requests__sync_linked_issues_project_field',
+        tool_input: { owner: 'acme', repo: 'widgets', pullNumber: 371 },
+        tool_output: { synced: [], notFoundOnBoard: [319, 320, 321], skippedCrossRepo: [] },
+      },
+      null,
+    );
+    expect(touch).toMatchObject({ action: 'sync_linked_issues_project_field', owner: 'acme', repo: 'widgets', number: 371 });
+    expect(touch.notFoundOnBoard).toEqual([319, 320, 321]);
+  });
+
+  it('gdlc#203/#212: an action with no notFoundOnBoard in its output carries an empty array, not undefined', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-sdlc-planning__create_issue', tool_input: { owner: 'a', repo: 'b', title: 't', body: 'b', mif: { id: 'x', type: 'Task', namespace: 'ns' } } },
+      null,
+    );
+    expect(touch.notFoundOnBoard).toEqual([]);
   });
 
   it('unwraps the MCP content-array tool_output shape to read number/body, not just a flat object', () => {
@@ -532,6 +576,27 @@ describe('checkSubIssueLinkage', () => {
     expect(result.findings[0]).toContain('Epic has no sub-issues');
   });
 
+  it('gdlc#203/#212: fires on add_sub_issue, re-checking the PARENT (touch.number), catching a call that succeeded against the wrong parent', async () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-sdlc-planning__add_sub_issue', tool_input: { owner: 'acme', repo: 'widgets', parentNumber: 100, childNumber: 105 } },
+      null,
+    );
+    const runGraphQL = async () => ({ repository: { issue: { body: '<!-- mif-type: Epic -->', subIssues: { totalCount: 0 } } } });
+    const result = await checkSubIssueLinkage(touch, runGraphQL);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toContain('acme/widgets#100');
+  });
+
+  it('gdlc#203/#212: does not flag add_sub_issue when the parent now genuinely has sub-issues', async () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-sdlc-planning__add_sub_issue', tool_input: { owner: 'acme', repo: 'widgets', parentNumber: 100, childNumber: 105 } },
+      null,
+    );
+    const runGraphQL = async () => ({ repository: { issue: { body: '<!-- mif-type: Epic -->', subIssues: { totalCount: 1 } } } });
+    const result = await checkSubIssueLinkage(touch, runGraphQL);
+    expect(result.findings).toEqual([]);
+  });
+
   it('fires identically for a gh-cli-surfaced create_issue touch as for the MCP-tool surface (no surface-specific gap)', async () => {
     const ghCliTouch = extractTouch(
       {
@@ -715,6 +780,29 @@ describe('checkPostMergeClosingKeywords', () => {
     const result = await checkPostMergeClosingKeywords(mergeTouch, runGraphQL);
     expect(result.findings[0]).toContain('#2');
     expect(result.findings[0]).not.toContain('#1');
+  });
+});
+
+describe('checkSyncNotFoundOnBoard', () => {
+  it('returns no findings when notFoundOnBoard is empty', () => {
+    expect(checkSyncNotFoundOnBoard({ notFoundOnBoard: [] })).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('returns no findings for a touch missing the field entirely', () => {
+    expect(checkSyncNotFoundOnBoard({ action: 'update_issue' })).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('returns no findings for a null touch', () => {
+    expect(checkSyncNotFoundOnBoard(null)).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('surfaces every notFoundOnBoard number, reproducing the gdlc#200 symptom (issues #319-323)', () => {
+    const touch = { notFoundOnBoard: [319, 320, 321, 322, 323], owner: 'modeled-information-format', repo: 'research-harness-template', number: 371 };
+    const result = checkSyncNotFoundOnBoard(touch);
+    expect(result.resolved).toBe(true);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toContain('#319, #320, #321, #322, #323');
+    expect(result.findings[0]).toContain('modeled-information-format/research-harness-template#371');
   });
 });
 
