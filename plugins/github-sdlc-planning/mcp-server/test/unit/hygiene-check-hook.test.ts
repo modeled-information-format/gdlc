@@ -12,6 +12,7 @@ import {
   checkStatusProgression,
   scanTranscriptForComment,
   checkLifecycleComment,
+  resolveItemIdentity,
   checkSubIssueLinkage,
   runHygieneChecks,
   buildAdditionalContext,
@@ -334,37 +335,119 @@ describe('scanTranscriptForComment', () => {
 });
 
 describe('checkLifecycleComment', () => {
-  it('resolves with no findings for a non-transition action', () => {
-    const result = checkLifecycleComment({ action: 'gh_command', owner: 'acme', repo: 'widgets', number: 1 }, undefined);
+  it('resolves with no findings for a non-transition action', async () => {
+    const result = await checkLifecycleComment({ action: 'gh_command', owner: 'acme', repo: 'widgets', number: 1 }, undefined);
     expect(result).toEqual({ resolved: true, findings: [] });
   });
 
-  it('flags a transition with no comment found this turn', () => {
+  it('flags a transition with no comment found this turn', async () => {
     const path = tmpTranscriptWith([]);
-    const result = checkLifecycleComment({ action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 }, path);
+    const result = await checkLifecycleComment({ action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 }, path);
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0]).toContain('acme/widgets#1');
   });
 
-  it('does not flag a transition when a comment was found', () => {
+  it('does not flag a transition when a comment was found', async () => {
     const path = tmpTranscriptWith([
       { tool_name: 'mcp__github__add_issue_comment', tool_input: { owner: 'acme', repo: 'widgets', issue_number: 1 } },
     ]);
-    const result = checkLifecycleComment({ action: 'set_field_value', owner: 'acme', repo: 'widgets', number: 1 }, path);
+    const result = await checkLifecycleComment({ action: 'set_field_value', owner: 'acme', repo: 'widgets', number: 1 }, path);
     expect(result).toEqual({ resolved: true, findings: [] });
   });
 
-  it('is a silent no-op when the transcript cannot be read', () => {
-    const result = checkLifecycleComment({ action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 }, '/nonexistent/x.jsonl');
+  it('is a silent no-op when the transcript cannot be read', async () => {
+    const result = await checkLifecycleComment({ action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 }, '/nonexistent/x.jsonl');
     expect(result).toEqual({ resolved: true, findings: [] });
   });
 
-  it('fires identically for a gh-cli-surfaced update_issue touch (gh issue edit) as for the MCP-tool surface', () => {
+  it('fires identically for a gh-cli-surfaced update_issue touch (gh issue edit) as for the MCP-tool surface', async () => {
     const ghCliTouch = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh issue edit 1 --add-label bug' } }, { owner: 'acme', repo: 'widgets' });
     const path = tmpTranscriptWith([]);
-    const result = checkLifecycleComment(ghCliTouch, path);
+    const result = await checkLifecycleComment(ghCliTouch, path);
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0]).toContain('acme/widgets#1');
+  });
+
+  it('resolves a set_field_value touch\'s itemId to owner/repo/number via GraphQL before scanning (issue #172 fix)', async () => {
+    const path = tmpTranscriptWith([]);
+    const runGraphQL = async (_query, vars) => {
+      expect(vars).toEqual({ itemId: 'PVTI_abc123' });
+      return { node: { content: { number: 1, repository: { owner: { login: 'acme' }, name: 'widgets' } } } };
+    };
+    const touch = { action: 'set_field_value', owner: null, repo: null, number: null, itemId: 'PVTI_abc123' };
+    const result = await checkLifecycleComment(touch, path, undefined, runGraphQL);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toContain('acme/widgets#1');
+  });
+
+  it('does not flag a set_field_value touch when a comment for the resolved issue was found', async () => {
+    const path = tmpTranscriptWith([
+      { tool_name: 'mcp__github__add_issue_comment', tool_input: { owner: 'acme', repo: 'widgets', issue_number: 1 } },
+    ]);
+    const runGraphQL = async () => ({ node: { content: { number: 1, repository: { owner: { login: 'acme' }, name: 'widgets' } } } });
+    const touch = { action: 'set_field_value', owner: null, repo: null, number: null, itemId: 'PVTI_abc123' };
+    const result = await checkLifecycleComment(touch, path, undefined, runGraphQL);
+    expect(result).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('fails open (no finding, never a guess) when itemId resolution cannot determine owner/repo/number', async () => {
+    const path = tmpTranscriptWith([]);
+    const runGraphQL = async () => ({ node: { content: null } }); // e.g. a Draft Issue item
+    const touch = { action: 'set_field_value', owner: null, repo: null, number: null, itemId: 'PVTI_abc123' };
+    const result = await checkLifecycleComment(touch, path, undefined, runGraphQL);
+    expect(result).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('fails open when the itemId-resolution GraphQL call itself throws', async () => {
+    const path = tmpTranscriptWith([]);
+    const runGraphQL = async () => {
+      throw new Error('rate limited');
+    };
+    const touch = { action: 'set_field_value', owner: null, repo: null, number: null, itemId: 'PVTI_abc123' };
+    const result = await checkLifecycleComment(touch, path, undefined, runGraphQL);
+    expect(result).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('does not attempt identity resolution for a set_field_value touch with no itemId at all', async () => {
+    const path = tmpTranscriptWith([]);
+    const runGraphQL = async () => {
+      throw new Error('should never be called');
+    };
+    const touch = { action: 'set_field_value', owner: null, repo: null, number: null, itemId: null };
+    const result = await checkLifecycleComment(touch, path, undefined, runGraphQL);
+    expect(result).toEqual({ resolved: true, findings: [] });
+  });
+});
+
+describe('resolveItemIdentity', () => {
+  it('resolves an Issue-backed project item to owner/repo/number', async () => {
+    const runGraphQL = async (_query, vars) => {
+      expect(vars).toEqual({ itemId: 'PVTI_x' });
+      return { node: { content: { number: 42, repository: { owner: { login: 'acme' }, name: 'widgets' } } } };
+    };
+    expect(await resolveItemIdentity('PVTI_x', runGraphQL)).toEqual({ owner: 'acme', repo: 'widgets', number: 42 });
+  });
+
+  it('resolves a PullRequest-backed project item too', async () => {
+    const runGraphQL = async () => ({ node: { content: { number: 7, repository: { owner: { login: 'acme' }, name: 'widgets' } } } });
+    expect(await resolveItemIdentity('PVTI_x', runGraphQL)).toEqual({ owner: 'acme', repo: 'widgets', number: 7 });
+  });
+
+  it('returns null for a Draft Issue item (no linked content)', async () => {
+    const runGraphQL = async () => ({ node: { content: null } });
+    expect(await resolveItemIdentity('PVTI_x', runGraphQL)).toBeNull();
+  });
+
+  it('returns null on a malformed response', async () => {
+    const runGraphQL = async () => ({});
+    expect(await resolveItemIdentity('PVTI_x', runGraphQL)).toBeNull();
+  });
+
+  it('returns null (never throws) on a GraphQL error', async () => {
+    const runGraphQL = async () => {
+      throw new Error('boom');
+    };
+    expect(await resolveItemIdentity('PVTI_x', runGraphQL)).toBeNull();
   });
 });
 

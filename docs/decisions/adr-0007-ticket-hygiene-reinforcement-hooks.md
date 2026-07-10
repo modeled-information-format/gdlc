@@ -444,6 +444,28 @@ rather than decided unilaterally.
 **Action Required:** Track and resolve the filed follow-up issue for the
 `set_field_value` identity gap.
 
+### 2026-07-10
+
+**Status:** Compliant
+
+**Findings:**
+
+| Finding | Files | Lines | Assessment |
+| --- | --- | --- | --- |
+| Issue #172 (the `set_field_value` identity gap from the 2026-07-09 audit) resolved: `checkLifecycleComment` is now `async` and resolves a `set_field_value` touch's `itemId` to `owner`/`repo`/`number` via a new `resolveItemIdentity` GraphQL round trip (`node(id: itemId) { ... on ProjectV2Item { content { ... on Issue/PullRequest { number repository { owner { login } name } } } } }`) before scanning for a lifecycle comment, failing open (no finding) on any ambiguity -- a Draft Issue item with no linked content, a malformed response, or a GraphQL error -- the same as every other unresolvable case in this file. `extractTouch` carries the bare `itemId` through as a passthrough field for `set_field_value` touches (still synchronous and dependency-free itself); only `checkLifecycleComment` performs the resolution, and only when it actually needs to. | plugins/*/hooks/lib/hygiene-check.mjs | - | compliant |
+
+**Summary:** Of the three design options issue #172 weighed (an async
+GraphQL resolution inside `checkLifecycleComment`; a fragile scratch-file
+`itemId` lookup; permanently documenting the gap as out of scope), the
+GraphQL resolution was chosen and implemented, closing #172. Verified
+end-to-end (extraction through resolution through finding) and covered by
+new unit tests for `resolveItemIdentity` and for `checkLifecycleComment`'s
+`set_field_value` path (resolved-with-finding, resolved-no-finding,
+ambiguous-response fail-open, GraphQL-error fail-open, and no-itemId
+short-circuit).
+
+**Action Required:** None; issue #172 is resolved.
+
 [adr-0003]: adr-0003-board-status-hygiene.md
 [adr-0004]: adr-0004-project-config-surface.md
 [adr-0005]: adr-0005-project-config-cwd-resolution.md
