@@ -1,26 +1,9 @@
 {
-  "description": "Hooks-pack (issue #39, opt-in via .config/gdlc/config.yml's packs.hooks section): scans Bash tool output and the end-of-turn transcript for common test/lint/build failure signatures, and surfaces the file-bug skill as additionalContext when one is found. Always a safe no-op when the pack is disabled or no failure signature is found; never calls MCP tools itself. Also carries ADR-0007's non-blocking ticket-hygiene reminder (byte-identical copy of github-sdlc-planning's canonical hygiene-check.mjs/hygiene-aggregate.mjs/lib, kept in sync by a build-time drift check), independent of the hooks-pack toggle.",
+  "description": "ADR-0007 ticket-hygiene reminder: a non-blocking PostToolUse/Stop/SubagentStop hook covering this plugin's own MCP tools, the generic github MCP server, and raw gh CLI calls. Byte-identical copy of github-sdlc-planning's canonical hygiene-check.mjs/hygiene-aggregate.mjs/lib, kept in sync by a build-time drift check.",
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/diagnostic-capture.mjs", "post-tool-use"],
-            "timeout": 15
-          },
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/hygiene-check.mjs"],
-            "timeout": 15
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__github-bug-capture__.*",
+        "matcher": "mcp__github-pull-requests__.*",
         "hooks": [
           {
             "type": "command",
@@ -40,17 +23,22 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/hygiene-check.mjs"],
+            "timeout": 15
+          }
+        ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/diagnostic-capture.mjs", "stop"],
-            "timeout": 15
-          },
           {
             "type": "command",
             "command": "node",
