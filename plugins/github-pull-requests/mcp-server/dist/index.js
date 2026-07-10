@@ -39320,6 +39320,7 @@ async function assessPrReadiness(ref, deps, options = {}) {
   const unresolvedThreads = threads.filter((t) => !t.isResolved).length;
   const openAlerts = alerts.filter((a) => a.state === "open").length;
   const reasons = [];
+  if (checks.length === 0) reasons.push("no checks reported yet");
   if (pending > 0) reasons.push(`${pending} check(s) still pending`);
   if (failing > 0) reasons.push(`${failing} check(s) failing`);
   if (submittedReviews.length === 0) reasons.push("no reviews yet");

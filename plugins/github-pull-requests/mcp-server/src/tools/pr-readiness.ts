@@ -110,6 +110,15 @@ export async function assessPrReadiness(
   const openAlerts = alerts.filter((a) => a.state === 'open').length;
 
   const reasons: string[] = [];
+  // Self-caught dogfooding this tool on its own PR (gdlc#193): a commit
+  // pushed moments ago has no CheckRun/StatusContext yet -- CI hasn't
+  // started, not "nothing required." `pending === 0 && failing === 0` was
+  // true in that window purely because `checks` was empty, so the original
+  // logic reported `settled: true` on a PR whose CI had not run at all --
+  // exactly the false-positive this tool exists to prevent. Zero checks
+  // reported is never treated as "no checks required"; a repo that
+  // genuinely runs no CI on PRs is out of scope for this heuristic.
+  if (checks.length === 0) reasons.push('no checks reported yet');
   if (pending > 0) reasons.push(`${pending} check(s) still pending`);
   if (failing > 0) reasons.push(`${failing} check(s) failing`);
   if (submittedReviews.length === 0) reasons.push('no reviews yet');

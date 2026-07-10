@@ -111,9 +111,14 @@ describe('assessPrReadiness', () => {
     expect(result.reasons).toContain('1 open code-scanning alert(s)');
   });
 
-  it('is settled with zero checks/threads/alerts and at least one review (a PR with no CI configured)', async () => {
+  // Self-caught dogfooding this tool on its own PR: a freshly-pushed commit
+  // has no CheckRun/StatusContext reported yet, and zero checks was
+  // originally (wrongly) treated the same as "nothing pending or failing" --
+  // reporting settled: true on a PR whose CI had not even started.
+  it('is NOT settled when zero checks are reported, even with a clean review/threads/alerts, because CI has not run', async () => {
     const result = await assessPrReadiness(REF, deps({ fetchReviews: async () => [{ author: 'x', state: 'APPROVED' }] }));
-    expect(result.settled).toBe(true);
+    expect(result.settled).toBe(false);
+    expect(result.reasons).toContain('no checks reported yet');
   });
 
   // requireCleanCodeScanning: false (issue #185/#186's prLifecycle toggle) --
