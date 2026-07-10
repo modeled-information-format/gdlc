@@ -25,11 +25,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- All 7 plugins' `mcp-server/src/index.ts` had `new McpServer({version})`
-  hardcoded at `0.6.0`, three releases stale — independently rediscovered
-  while building the above (already fixed in 0.7.2 alongside a new
-  `version-consistency-check` required CI check so this class of drift
-  cannot silently recur; issue #190).
 - `check_pr_readiness`'s local review (3 passes) caught and fixed 5 real
   bugs before this shipped: the hooks-layer `prLifecycle` reader disagreeing
   with `config.ts`'s resolver on a present-but-malformed config section; two
