@@ -96,6 +96,32 @@ function extractClosedIssueNumbers(text) {
   return [...numbers];
 }
 
+/** gdlc#201: matches a closing keyword followed by a comma-separated run of
+ * `#N` references (`Closes #A, #B, #C`) -- the exact syntax GitHub's own
+ * closing-keyword parser silently mishandles: it honors only the FIRST `#N`
+ * immediately after the keyword and treats every comma-continuation as a
+ * plain, non-closing mention. A PR author writing this almost always means
+ * to close all of them (session 1f3d575b's PR #368 did exactly this and
+ * nearly left 3 of 4 issues open post-merge). The capture group grabs the
+ * whole run so `detectCommaSeparatedClosingKeywords` can pull every `#N`
+ * out of it, not just the first. */
+const CLOSING_KEYWORD_LIST_RE = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*((?:#\d+\s*,\s*)+#\d+)/gi;
+
+/** Returns the issue numbers GitHub will silently NOT auto-close because
+ * they appear as a comma-continuation after a closing keyword rather than
+ * their own keyword -- i.e. every `#N` in a matched run except the first.
+ * A clause with only one `#N` (the unambiguous, correct form) never
+ * matches `CLOSING_KEYWORD_LIST_RE` at all, so this never flags it. */
+export function detectCommaSeparatedClosingKeywords(text) {
+  if (typeof text !== 'string') return [];
+  const dropped = new Set();
+  for (const match of text.matchAll(CLOSING_KEYWORD_LIST_RE)) {
+    const numbers = [...match[1].matchAll(/#(\d+)/g)].map((m) => Number(m[1]));
+    for (const n of numbers.slice(1)) dropped.add(n);
+  }
+  return [...dropped];
+}
+
 // Exported so the entrypoint can cheaply pre-check a Bash command before
 // deciding whether it's worth shelling out to `git remote get-url origin`
 // for the owner/repo fallback -- this hook runs on every Bash tool call
@@ -103,17 +129,15 @@ function extractClosedIssueNumbers(text) {
 // common case of an unrelated command (`ls`, `npm test`, ...).
 export const GH_ISSUE_OR_PR_RE = /^\s*gh\s+(issue|pr)\s+(view|edit|close|comment|create|list)\b/;
 
-/** Parse the closing-keyword issue numbers out of a `gh pr create` Bash
- * invocation's `--body`/`--body-file`/`--fill` flags. `--body-file`/`--fill`
- * read from a file or commit messages this hook cannot see without
- * shelling out again, so those forms yield no closed-issue numbers rather
- * than guessing -- a narrower detection than the MCP-tool path, not a wrong
- * one. */
-function extractClosedIssuesFromGhCommand(command) {
+/** Extracts a `gh ... create`'s `--body "..."` flag value. `--body-file`/
+ * `--fill` read from a file or commit messages this hook cannot see without
+ * shelling out again, so those forms yield `''` rather than guessing --
+ * both this function's two callers (closed-issue extraction, comma-list
+ * detection) treat an empty string as "nothing found", a narrower
+ * detection than the MCP-tool path, not a wrong one. */
+function extractBodyFlag(command) {
   const bodyFlag = /--body(?:=|\s+)(?:"((?:[^"\\]|\\.)*)"|'([^']*)'|(\S+))/.exec(command);
-  if (!bodyFlag) return [];
-  const raw = bodyFlag[1] ?? bodyFlag[2] ?? bodyFlag[3] ?? '';
-  return extractClosedIssueNumbers(raw);
+  return bodyFlag ? (bodyFlag[1] ?? bodyFlag[2] ?? bodyFlag[3] ?? '') : '';
 }
 
 /** A Bash tool_output may arrive as a plain string or an object carrying
@@ -231,13 +255,15 @@ export function extractTouch(input, fallbackOwnerRepo) {
 
     if (subcommand === 'create') {
       if (kind === 'pr') {
-        const closesIssues = extractClosedIssuesFromGhCommand(command).map((number) => ({ owner, repo, number }));
-        return { surface: 'gh-cli', action: 'create_pull_request', owner, repo, number: extractNumberFromGhUrl(outputText, 'pull'), closing: false, closesIssues };
+        const rawBody = extractBodyFlag(command);
+        const closesIssues = extractClosedIssueNumbers(rawBody).map((number) => ({ owner, repo, number }));
+        const droppedClosingIssues = detectCommaSeparatedClosingKeywords(rawBody);
+        return { surface: 'gh-cli', action: 'create_pull_request', owner, repo, number: extractNumberFromGhUrl(outputText, 'pull'), closing: false, closesIssues, droppedClosingIssues };
       }
       // `gh issue create`: an issue-creation touch, same action name the
       // MCP-tool path uses, so checkSubIssueLinkage/checkLifecycleComment
       // trigger identically regardless of which surface created it.
-      return { surface: 'gh-cli', action: 'create_issue', owner, repo, number: extractNumberFromGhUrl(outputText, 'issues'), closing: false, closesIssues: [] };
+      return { surface: 'gh-cli', action: 'create_issue', owner, repo, number: extractNumberFromGhUrl(outputText, 'issues'), closing: false, closesIssues: [], droppedClosingIssues: [] };
     }
 
     // For every other subcommand, the target number is the first bare
@@ -249,13 +275,13 @@ export function extractTouch(input, fallbackOwnerRepo) {
     const number = numberMatch ? Number(numberMatch[1]) : null;
 
     if (subcommand === 'edit' || subcommand === 'close') {
-      return { surface: 'gh-cli', action: 'update_issue', owner, repo, number, closing: subcommand === 'close', closesIssues: [] };
+      return { surface: 'gh-cli', action: 'update_issue', owner, repo, number, closing: subcommand === 'close', closesIssues: [], droppedClosingIssues: [] };
     }
     // view/list/comment: not a check-triggering transition itself (a
     // comment command is what checkLifecycleComment's own transcript scan
     // looks FOR, not a subject of these checks) -- recognized as a touch
     // for scratch-file bookkeeping, but no check fires on it.
-    return { surface: 'gh-cli', action: 'gh_command', owner, repo, number, closing: false, closesIssues: [] };
+    return { surface: 'gh-cli', action: 'gh_command', owner, repo, number, closing: false, closesIssues: [], droppedClosingIssues: [] };
   }
 
   const rawAction = mcpAction(toolName);
@@ -284,9 +310,11 @@ export function extractTouch(input, fallbackOwnerRepo) {
     : null;
 
   let closesIssues = [];
+  let droppedClosingIssues = [];
   if (PR_CREATE_ACTIONS.has(action)) {
     const bodyText = [toolInput?.body, normalizedOutput?.body].filter((v) => typeof v === 'string').join('\n');
     closesIssues = extractClosedIssueNumbers(bodyText).map((n) => ({ owner, repo, number: n }));
+    droppedClosingIssues = detectCommaSeparatedClosingKeywords(bodyText);
   }
 
   // set_field_value's own input/output carries itemId/fieldId, not
@@ -305,7 +333,7 @@ export function extractTouch(input, fallbackOwnerRepo) {
         : null
       : null;
 
-  return { surface: toolName.startsWith('mcp__github__') ? 'generic-github-mcp' : 'plugin-mcp', action, owner, repo, number, closing, closesIssues, itemId };
+  return { surface: toolName.startsWith('mcp__github__') ? 'generic-github-mcp' : 'plugin-mcp', action, owner, repo, number, closing, closesIssues, droppedClosingIssues, itemId };
 }
 
 // ---------------------------------------------------------------------------
@@ -366,6 +394,31 @@ export async function checkStatusProgression(touch, runGraphQL) {
     }
   }
   return { resolved: true, findings };
+}
+
+// ---------------------------------------------------------------------------
+// Check 1b: closing-keyword syntax -- gdlc#201/forensics root cause #1.
+// ---------------------------------------------------------------------------
+
+/** WHEN a just-opened PR's body uses a comma-separated closing-keyword list
+ * (`Closes #A, #B, #C`), THEN flag the numbers GitHub will silently NOT
+ * auto-close (everything after the first). Purely synchronous text
+ * analysis -- no GraphQL round trip, so this never needs to fail open on a
+ * network error the way the other checks do; the only "no finding" case is
+ * a body with no such pattern at all. */
+export function checkClosingKeywordSyntax(touch) {
+  if (!touch || !touch.droppedClosingIssues || touch.droppedClosingIssues.length === 0) {
+    return { resolved: true, findings: [] };
+  }
+  const refs = touch.droppedClosingIssues.map((n) => `#${n}`).join(', ');
+  return {
+    resolved: true,
+    findings: [
+      `PR body uses a comma-separated closing-keyword list -- GitHub only auto-closes the FIRST issue after the ` +
+        `keyword. ${refs} will stay open after merge unless each gets its own \`Closes #N\` (one per line) or is ` +
+        `closed manually.`,
+    ],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -575,7 +628,7 @@ export async function checkSubIssueLinkage(touch, runGraphQL) {
 // Assembly
 // ---------------------------------------------------------------------------
 
-/** Run all three checks independently -- one check's exception or empty
+/** Run all four checks independently -- one check's exception or empty
  * result never suppresses another's finding (NFR-5) -- and flatten into one
  * findings list. Each check function above already fails open internally;
  * this wrapper additionally guards against a check throwing outright, since
@@ -585,6 +638,11 @@ export async function runHygieneChecks(touch, { runGraphQL, transcriptPath, read
   const findings = [];
   const results = await Promise.allSettled([
     checkStatusProgression(touch, runGraphQL),
+    // checkClosingKeywordSyntax is synchronous (pure text analysis, no
+    // GraphQL) -- Promise.allSettled still accepts a plain value here,
+    // wrapping it as an already-fulfilled promise, so it needs no special
+    // handling to sit alongside its three async siblings.
+    checkClosingKeywordSyntax(touch),
     // checkLifecycleComment is async (issue #172's fix), so -- same as its
     // two siblings here -- any throw inside it, synchronous or not, is
     // caught by the implicit async-function promise wrapping and never

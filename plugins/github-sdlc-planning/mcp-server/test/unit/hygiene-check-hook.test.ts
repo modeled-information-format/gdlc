@@ -10,6 +10,8 @@ import { describe, expect, it } from 'vitest';
 import {
   extractTouch,
   checkStatusProgression,
+  detectCommaSeparatedClosingKeywords,
+  checkClosingKeywordSyntax,
   scanTranscriptForComment,
   checkLifecycleComment,
   resolveItemIdentity,
@@ -29,7 +31,7 @@ describe('extractTouch', () => {
 
   it('recognizes a gh issue command and extracts the issue number', () => {
     const touch = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh issue view 42' } }, { owner: 'acme', repo: 'widgets' });
-    expect(touch).toEqual({ surface: 'gh-cli', action: 'gh_command', owner: 'acme', repo: 'widgets', number: 42, closing: false, closesIssues: [] });
+    expect(touch).toEqual({ surface: 'gh-cli', action: 'gh_command', owner: 'acme', repo: 'widgets', number: 42, closing: false, closesIssues: [], droppedClosingIssues: [] });
   });
 
   it('recognizes a gh pr create command and extracts closing-keyword issue refs from --body', () => {
@@ -44,6 +46,7 @@ describe('extractTouch', () => {
         { owner: 'acme', repo: 'widgets', number: 7 },
       ]),
     );
+    expect(touch.droppedClosingIssues).toEqual([]); // each keyword has its own #N, no comma-list gap
   });
 
   it('recognizes a gh issue create command as create_issue, extracting the new number from stdout', () => {
@@ -55,7 +58,7 @@ describe('extractTouch', () => {
       },
       { owner: 'acme', repo: 'widgets' },
     );
-    expect(touch).toEqual({ surface: 'gh-cli', action: 'create_issue', owner: 'acme', repo: 'widgets', number: 123, closing: false, closesIssues: [] });
+    expect(touch).toEqual({ surface: 'gh-cli', action: 'create_issue', owner: 'acme', repo: 'widgets', number: 123, closing: false, closesIssues: [], droppedClosingIssues: [] });
   });
 
   it('returns a null number for gh issue create when stdout carries no parseable URL', () => {
@@ -68,7 +71,7 @@ describe('extractTouch', () => {
 
   it('recognizes gh issue edit and gh pr close as update_issue with the positional number', () => {
     const edit = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh issue edit 42 --add-label bug' } }, { owner: 'acme', repo: 'widgets' });
-    expect(edit).toEqual({ surface: 'gh-cli', action: 'update_issue', owner: 'acme', repo: 'widgets', number: 42, closing: false, closesIssues: [] });
+    expect(edit).toEqual({ surface: 'gh-cli', action: 'update_issue', owner: 'acme', repo: 'widgets', number: 42, closing: false, closesIssues: [], droppedClosingIssues: [] });
 
     const close = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh pr close 7' } }, { owner: 'acme', repo: 'widgets' });
     expect(close).toMatchObject({ action: 'update_issue', number: 7 });
@@ -159,6 +162,30 @@ describe('extractTouch', () => {
       null,
     );
     expect(touch.closesIssues).toEqual([{ owner: 'acme', repo: 'widgets', number: 12 }]);
+  });
+
+  it('gdlc#201: flags a comma-separated closing-keyword list on the MCP surface (session 1f3d575b PR #368 pattern)', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-pull-requests__create_pull_request', tool_input: { owner: 'acme', repo: 'widgets', body: 'Closes #309, #310, #311, #308' } },
+      null,
+    );
+    expect(touch.droppedClosingIssues).toEqual([310, 311, 308]);
+  });
+
+  it('gdlc#201: flags a comma-separated closing-keyword list on the gh-cli surface too', () => {
+    const touch = extractTouch(
+      { tool_name: 'Bash', tool_input: { command: 'gh pr create --title "x" --body "Closes #309, #310, #311"' } },
+      { owner: 'acme', repo: 'widgets' },
+    );
+    expect(touch.droppedClosingIssues).toEqual([310, 311]);
+  });
+
+  it('gdlc#201: does not flag separate keyword-led references, even for multiple issues', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-pull-requests__create_pull_request', tool_input: { owner: 'acme', repo: 'widgets', body: 'Closes #42 and fixes #7' } },
+      null,
+    );
+    expect(touch.droppedClosingIssues).toEqual([]);
   });
 
   it('unwraps the MCP content-array tool_output shape to read number/body, not just a flat object', () => {
@@ -551,6 +578,63 @@ describe('checkSubIssueLinkage', () => {
   });
 });
 
+describe('detectCommaSeparatedClosingKeywords', () => {
+  it('returns [] for non-string input', () => {
+    expect(detectCommaSeparatedClosingKeywords(undefined)).toEqual([]);
+    expect(detectCommaSeparatedClosingKeywords(null)).toEqual([]);
+  });
+
+  it('returns [] for a body with no closing keyword at all', () => {
+    expect(detectCommaSeparatedClosingKeywords('Just a description, with a comma.')).toEqual([]);
+  });
+
+  it('returns [] for a single #N reference, the unambiguous correct form', () => {
+    expect(detectCommaSeparatedClosingKeywords('Closes #42')).toEqual([]);
+  });
+
+  it('returns every dropped number for a 4-issue comma list (the exact PR #368 pattern)', () => {
+    expect(detectCommaSeparatedClosingKeywords('Closes #309, #310, #311, #308')).toEqual([310, 311, 308]);
+  });
+
+  it('is case-insensitive and matches fix/fixes/fixed/resolve/resolves/resolved too', () => {
+    expect(detectCommaSeparatedClosingKeywords('FIXES #1, #2')).toEqual([2]);
+    expect(detectCommaSeparatedClosingKeywords('resolved #1, #2, #3')).toEqual([2, 3]);
+  });
+
+  it('does not flag two SEPARATE keyword-led clauses, only a true comma-list under one keyword', () => {
+    expect(detectCommaSeparatedClosingKeywords('Closes #1. Also fixes #2.')).toEqual([]);
+  });
+
+  it('dedupes a number that appears dropped in more than one clause (Closes #1,#2 and fixes #3,#2 both drop #2)', () => {
+    // #3 is the FIRST reference in its own clause -- GitHub honors it, it is
+    // never dropped. Only #2 (second in both clauses) is dropped, and only
+    // once despite appearing in two separate matches.
+    expect(detectCommaSeparatedClosingKeywords('Closes #1, #2. Later: fixes #3, #2.')).toEqual([2]);
+  });
+});
+
+describe('checkClosingKeywordSyntax', () => {
+  it('returns no findings for a touch with no droppedClosingIssues', () => {
+    expect(checkClosingKeywordSyntax({ droppedClosingIssues: [] })).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('returns no findings for a touch missing the field entirely (older/unrelated touch shape)', () => {
+    expect(checkClosingKeywordSyntax({ action: 'update_issue' })).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('returns no findings for a null touch', () => {
+    expect(checkClosingKeywordSyntax(null)).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('surfaces every dropped number in one finding', () => {
+    const result = checkClosingKeywordSyntax({ droppedClosingIssues: [310, 311, 308] });
+    expect(result.resolved).toBe(true);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toContain('#310, #311, #308');
+    expect(result.findings[0]).toContain('only auto-closes the FIRST issue');
+  });
+});
+
 describe('runHygieneChecks', () => {
   it('combines findings from all three checks', async () => {
     const path = tmpTranscriptWith([]);
@@ -559,6 +643,20 @@ describe('runHygieneChecks', () => {
     const findings = await runHygieneChecks(touch, { runGraphQL, transcriptPath: path, readFn: undefined });
     expect(findings.some((f) => f.includes('Story has no sub-issues'))).toBe(true);
     expect(findings.some((f) => f.includes('no lifecycle comment'))).toBe(true);
+  });
+
+  it('gdlc#201: surfaces checkClosingKeywordSyntax findings alongside the other three', async () => {
+    const touch = {
+      action: 'create_pull_request',
+      owner: 'acme',
+      repo: 'widgets',
+      number: 5,
+      closesIssues: [],
+      droppedClosingIssues: [310, 311],
+    };
+    const runGraphQL = async () => ({});
+    const findings = await runHygieneChecks(touch, { runGraphQL, transcriptPath: undefined, readFn: undefined });
+    expect(findings.some((f) => f.includes('#310, #311'))).toBe(true);
   });
 
   it('never throws even when a check function itself throws synchronously', async () => {
