@@ -58,7 +58,7 @@ describe('getSessionContext', () => {
     mockRest('get', '/repos/acme/widgets/milestones', []);
     mockGraphQL((body) => {
       if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
-      return { node: { items: { nodes: [] } } };
+      return { node: { items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } };
     });
     const ctx = await getSessionContext({
       owner: 'acme',

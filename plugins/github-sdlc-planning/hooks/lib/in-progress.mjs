@@ -226,6 +226,15 @@ export function readBoardConfig(cwd = process.cwd(), env = process.env, existsFn
 
 const RELEVANT_ACTIONS = new Set(['add_sub_issue', 'update_issue']);
 
+/** gdlc#204/#214: the three file-editing tools whose FIRST call in a
+ * worktree session should flip the session's active issue (see
+ * first-edit-scratch.mjs) to In Progress in real time, instead of waiting
+ * for the next add_sub_issue/update_issue call -- session 1f3d575b, Story
+ * #308 showed a confirmed ~63 minute lag between the first code edit and
+ * the board reflecting it. Exported so set-in-progress.mjs's entrypoint can
+ * branch on it without re-declaring the tool-name list a second time. */
+export const FIRST_EDIT_TOOL_NAMES = new Set(['Write', 'Edit', 'MultiEdit']);
+
 /** Determine the issue that just had work started against it, from the hook
  * stdin payload's `tool_name`/`tool_input`. For `add_sub_issue`, the child is
  * the work item being started (the parent already existed). For

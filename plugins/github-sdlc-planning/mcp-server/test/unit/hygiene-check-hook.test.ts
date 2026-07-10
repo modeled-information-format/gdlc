@@ -10,6 +10,10 @@ import { describe, expect, it } from 'vitest';
 import {
   extractTouch,
   checkStatusProgression,
+  detectCommaSeparatedClosingKeywords,
+  checkClosingKeywordSyntax,
+  checkPostMergeClosingKeywords,
+  checkSyncNotFoundOnBoard,
   scanTranscriptForComment,
   checkLifecycleComment,
   resolveItemIdentity,
@@ -29,7 +33,7 @@ describe('extractTouch', () => {
 
   it('recognizes a gh issue command and extracts the issue number', () => {
     const touch = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh issue view 42' } }, { owner: 'acme', repo: 'widgets' });
-    expect(touch).toEqual({ surface: 'gh-cli', action: 'gh_command', owner: 'acme', repo: 'widgets', number: 42, closing: false, closesIssues: [] });
+    expect(touch).toEqual({ surface: 'gh-cli', action: 'gh_command', owner: 'acme', repo: 'widgets', number: 42, closing: false, closesIssues: [], droppedClosingIssues: [] });
   });
 
   it('recognizes a gh pr create command and extracts closing-keyword issue refs from --body', () => {
@@ -44,6 +48,7 @@ describe('extractTouch', () => {
         { owner: 'acme', repo: 'widgets', number: 7 },
       ]),
     );
+    expect(touch.droppedClosingIssues).toEqual([]); // each keyword has its own #N, no comma-list gap
   });
 
   it('recognizes a gh issue create command as create_issue, extracting the new number from stdout', () => {
@@ -55,7 +60,7 @@ describe('extractTouch', () => {
       },
       { owner: 'acme', repo: 'widgets' },
     );
-    expect(touch).toEqual({ surface: 'gh-cli', action: 'create_issue', owner: 'acme', repo: 'widgets', number: 123, closing: false, closesIssues: [] });
+    expect(touch).toEqual({ surface: 'gh-cli', action: 'create_issue', owner: 'acme', repo: 'widgets', number: 123, closing: false, closesIssues: [], droppedClosingIssues: [] });
   });
 
   it('returns a null number for gh issue create when stdout carries no parseable URL', () => {
@@ -68,7 +73,7 @@ describe('extractTouch', () => {
 
   it('recognizes gh issue edit and gh pr close as update_issue with the positional number', () => {
     const edit = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh issue edit 42 --add-label bug' } }, { owner: 'acme', repo: 'widgets' });
-    expect(edit).toEqual({ surface: 'gh-cli', action: 'update_issue', owner: 'acme', repo: 'widgets', number: 42, closing: false, closesIssues: [] });
+    expect(edit).toEqual({ surface: 'gh-cli', action: 'update_issue', owner: 'acme', repo: 'widgets', number: 42, closing: false, closesIssues: [], droppedClosingIssues: [] });
 
     const close = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh pr close 7' } }, { owner: 'acme', repo: 'widgets' });
     expect(close).toMatchObject({ action: 'update_issue', number: 7 });
@@ -159,6 +164,86 @@ describe('extractTouch', () => {
       null,
     );
     expect(touch.closesIssues).toEqual([{ owner: 'acme', repo: 'widgets', number: 12 }]);
+  });
+
+  it('gdlc#201: flags a comma-separated closing-keyword list on the MCP surface (session 1f3d575b PR #368 pattern)', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-pull-requests__create_pull_request', tool_input: { owner: 'acme', repo: 'widgets', body: 'Closes #309, #310, #311, #308' } },
+      null,
+    );
+    expect(touch.droppedClosingIssues).toEqual([310, 311, 308]);
+  });
+
+  it('gdlc#201: flags a comma-separated closing-keyword list on the gh-cli surface too', () => {
+    const touch = extractTouch(
+      { tool_name: 'Bash', tool_input: { command: 'gh pr create --title "x" --body "Closes #309, #310, #311"' } },
+      { owner: 'acme', repo: 'widgets' },
+    );
+    expect(touch.droppedClosingIssues).toEqual([310, 311]);
+  });
+
+  it('gdlc#201: does not flag separate keyword-led references, even for multiple issues', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-pull-requests__create_pull_request', tool_input: { owner: 'acme', repo: 'widgets', body: 'Closes #42 and fixes #7' } },
+      null,
+    );
+    expect(touch.droppedClosingIssues).toEqual([]);
+  });
+
+  it('gdlc#210: recognizes the generic github MCP server\'s merge_pull_request tool, reading the PR number from pullNumber', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github__merge_pull_request', tool_input: { owner: 'acme', repo: 'widgets', pullNumber: 9 } },
+      null,
+    );
+    expect(touch).toMatchObject({ surface: 'generic-github-mcp', action: 'merge_pull_request', owner: 'acme', repo: 'widgets', number: 9 });
+  });
+
+  it('gdlc#210: recognizes gh pr merge on the gh-cli surface, with the positional number', () => {
+    const touch = extractTouch({ tool_name: 'Bash', tool_input: { command: 'gh pr merge 9 --squash' } }, { owner: 'acme', repo: 'widgets' });
+    expect(touch).toMatchObject({ surface: 'gh-cli', action: 'merge_pull_request', owner: 'acme', repo: 'widgets', number: 9 });
+  });
+
+  it('gdlc#203/#212: recognizes add_sub_issue, using parentNumber (not childNumber) as touch.number', () => {
+    const touch = extractTouch(
+      {
+        tool_name: 'mcp__github-sdlc-planning__add_sub_issue',
+        tool_input: { owner: 'acme', repo: 'widgets', parentNumber: 100, childNumber: 105 },
+      },
+      null,
+    );
+    expect(touch).toMatchObject({ action: 'add_sub_issue', owner: 'acme', repo: 'widgets', number: 100 });
+  });
+
+  it('gdlc#203/#212: recognizes request_review, using pullNumber', () => {
+    const touch = extractTouch(
+      {
+        tool_name: 'mcp__github-pull-requests__request_review',
+        tool_input: { owner: 'acme', repo: 'widgets', pullNumber: 42, reviewers: ['Copilot'] },
+      },
+      null,
+    );
+    expect(touch).toMatchObject({ action: 'request_review', owner: 'acme', repo: 'widgets', number: 42 });
+  });
+
+  it('gdlc#203/#212: recognizes sync_linked_issues_project_field and carries notFoundOnBoard through', () => {
+    const touch = extractTouch(
+      {
+        tool_name: 'mcp__github-pull-requests__sync_linked_issues_project_field',
+        tool_input: { owner: 'acme', repo: 'widgets', pullNumber: 371 },
+        tool_output: { synced: [], notFoundOnBoard: [319, 320, 321], skippedCrossRepo: [] },
+      },
+      null,
+    );
+    expect(touch).toMatchObject({ action: 'sync_linked_issues_project_field', owner: 'acme', repo: 'widgets', number: 371 });
+    expect(touch.notFoundOnBoard).toEqual([319, 320, 321]);
+  });
+
+  it('gdlc#203/#212: an action with no notFoundOnBoard in its output carries an empty array, not undefined', () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-sdlc-planning__create_issue', tool_input: { owner: 'a', repo: 'b', title: 't', body: 'b', mif: { id: 'x', type: 'Task', namespace: 'ns' } } },
+      null,
+    );
+    expect(touch.notFoundOnBoard).toEqual([]);
   });
 
   it('unwraps the MCP content-array tool_output shape to read number/body, not just a flat object', () => {
@@ -491,6 +576,27 @@ describe('checkSubIssueLinkage', () => {
     expect(result.findings[0]).toContain('Epic has no sub-issues');
   });
 
+  it('gdlc#203/#212: fires on add_sub_issue, re-checking the PARENT (touch.number), catching a call that succeeded against the wrong parent', async () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-sdlc-planning__add_sub_issue', tool_input: { owner: 'acme', repo: 'widgets', parentNumber: 100, childNumber: 105 } },
+      null,
+    );
+    const runGraphQL = async () => ({ repository: { issue: { body: '<!-- mif-type: Epic -->', subIssues: { totalCount: 0 } } } });
+    const result = await checkSubIssueLinkage(touch, runGraphQL);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toContain('acme/widgets#100');
+  });
+
+  it('gdlc#203/#212: does not flag add_sub_issue when the parent now genuinely has sub-issues', async () => {
+    const touch = extractTouch(
+      { tool_name: 'mcp__github-sdlc-planning__add_sub_issue', tool_input: { owner: 'acme', repo: 'widgets', parentNumber: 100, childNumber: 105 } },
+      null,
+    );
+    const runGraphQL = async () => ({ repository: { issue: { body: '<!-- mif-type: Epic -->', subIssues: { totalCount: 1 } } } });
+    const result = await checkSubIssueLinkage(touch, runGraphQL);
+    expect(result.findings).toEqual([]);
+  });
+
   it('fires identically for a gh-cli-surfaced create_issue touch as for the MCP-tool surface (no surface-specific gap)', async () => {
     const ghCliTouch = extractTouch(
       {
@@ -551,6 +657,155 @@ describe('checkSubIssueLinkage', () => {
   });
 });
 
+describe('detectCommaSeparatedClosingKeywords', () => {
+  it('returns [] for non-string input', () => {
+    expect(detectCommaSeparatedClosingKeywords(undefined)).toEqual([]);
+    expect(detectCommaSeparatedClosingKeywords(null)).toEqual([]);
+  });
+
+  it('returns [] for a body with no closing keyword at all', () => {
+    expect(detectCommaSeparatedClosingKeywords('Just a description, with a comma.')).toEqual([]);
+  });
+
+  it('returns [] for a single #N reference, the unambiguous correct form', () => {
+    expect(detectCommaSeparatedClosingKeywords('Closes #42')).toEqual([]);
+  });
+
+  it('returns every dropped number for a 4-issue comma list (the exact PR #368 pattern)', () => {
+    expect(detectCommaSeparatedClosingKeywords('Closes #309, #310, #311, #308')).toEqual([310, 311, 308]);
+  });
+
+  it('is case-insensitive and matches fix/fixes/fixed/resolve/resolves/resolved too', () => {
+    expect(detectCommaSeparatedClosingKeywords('FIXES #1, #2')).toEqual([2]);
+    expect(detectCommaSeparatedClosingKeywords('resolved #1, #2, #3')).toEqual([2, 3]);
+  });
+
+  it('does not flag two SEPARATE keyword-led clauses, only a true comma-list under one keyword', () => {
+    expect(detectCommaSeparatedClosingKeywords('Closes #1. Also fixes #2.')).toEqual([]);
+  });
+
+  it('dedupes a number that appears dropped in more than one clause (Closes #1,#2 and fixes #3,#2 both drop #2)', () => {
+    // #3 is the FIRST reference in its own clause -- GitHub honors it, it is
+    // never dropped. Only #2 (second in both clauses) is dropped, and only
+    // once despite appearing in two separate matches.
+    expect(detectCommaSeparatedClosingKeywords('Closes #1, #2. Later: fixes #3, #2.')).toEqual([2]);
+  });
+});
+
+describe('checkClosingKeywordSyntax', () => {
+  it('returns no findings for a touch with no droppedClosingIssues', () => {
+    expect(checkClosingKeywordSyntax({ droppedClosingIssues: [] })).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('returns no findings for a touch missing the field entirely (older/unrelated touch shape)', () => {
+    expect(checkClosingKeywordSyntax({ action: 'update_issue' })).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('returns no findings for a null touch', () => {
+    expect(checkClosingKeywordSyntax(null)).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('surfaces every dropped number in one finding', () => {
+    const result = checkClosingKeywordSyntax({ droppedClosingIssues: [310, 311, 308] });
+    expect(result.resolved).toBe(true);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toContain('#310, #311, #308');
+    expect(result.findings[0]).toContain('only auto-closes the FIRST issue');
+  });
+});
+
+describe('checkPostMergeClosingKeywords', () => {
+  const mergeTouch = { action: 'merge_pull_request', owner: 'acme', repo: 'widgets', number: 368 };
+
+  it('returns no findings for a non-merge touch', async () => {
+    const result = await checkPostMergeClosingKeywords({ action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 }, async () => ({}));
+    expect(result).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('returns no findings for a null touch', async () => {
+    expect(await checkPostMergeClosingKeywords(null, async () => ({}))).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('fails open (no finding) when the PR query throws', async () => {
+    const result = await checkPostMergeClosingKeywords(mergeTouch, async () => {
+      throw new Error('boom');
+    });
+    expect(result).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('fails open when the PR is not actually merged yet (e.g. a failed merge attempt)', async () => {
+    const runGraphQL = async () => ({ repository: { pullRequest: { merged: false, body: 'Closes #309, #310' } } });
+    expect(await checkPostMergeClosingKeywords(mergeTouch, runGraphQL)).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('returns no findings when the merged PR body has no closing keywords at all', async () => {
+    const runGraphQL = async () => ({ repository: { pullRequest: { merged: true, body: 'just a description' } } });
+    expect(await checkPostMergeClosingKeywords(mergeTouch, runGraphQL)).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('reproduces the PR #368 pattern: flags every comma-dropped issue still open post-merge', async () => {
+    const runGraphQL = async (query, vars) => {
+      if (query.includes('pullRequest')) {
+        return { repository: { pullRequest: { merged: true, body: 'Closes #309, #310, #311, #308' } } };
+      }
+      // #309 was the one GitHub actually auto-closed; #310/#311/#308 were
+      // silently left open -- exactly what happened in session 1f3d575b
+      // before the agent caught and manually fixed it.
+      const closed = new Set([309]);
+      return { repository: { issue: { state: closed.has(vars.number) ? 'CLOSED' : 'OPEN' } } };
+    };
+    const result = await checkPostMergeClosingKeywords(mergeTouch, runGraphQL);
+    expect(result.resolved).toBe(true);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toContain('#310');
+    expect(result.findings[0]).toContain('#311');
+    expect(result.findings[0]).toContain('#308');
+    expect(result.findings[0]).not.toContain('#309');
+  });
+
+  it('returns no findings when every referenced issue is actually closed', async () => {
+    const runGraphQL = async (query) => {
+      if (query.includes('pullRequest')) return { repository: { pullRequest: { merged: true, body: 'Closes #1, #2' } } };
+      return { repository: { issue: { state: 'CLOSED' } } };
+    };
+    expect(await checkPostMergeClosingKeywords(mergeTouch, runGraphQL)).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('fails open per-issue-ref when one issue-state query throws, without losing findings for the others', async () => {
+    const runGraphQL = async (query, vars) => {
+      if (query.includes('pullRequest')) return { repository: { pullRequest: { merged: true, body: 'Closes #1, #2' } } };
+      if (vars.number === 1) throw new Error('boom');
+      return { repository: { issue: { state: 'OPEN' } } };
+    };
+    const result = await checkPostMergeClosingKeywords(mergeTouch, runGraphQL);
+    expect(result.findings[0]).toContain('#2');
+    expect(result.findings[0]).not.toContain('#1');
+  });
+});
+
+describe('checkSyncNotFoundOnBoard', () => {
+  it('returns no findings when notFoundOnBoard is empty', () => {
+    expect(checkSyncNotFoundOnBoard({ notFoundOnBoard: [] })).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('returns no findings for a touch missing the field entirely', () => {
+    expect(checkSyncNotFoundOnBoard({ action: 'update_issue' })).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('returns no findings for a null touch', () => {
+    expect(checkSyncNotFoundOnBoard(null)).toEqual({ resolved: true, findings: [] });
+  });
+
+  it('surfaces every notFoundOnBoard number, reproducing the gdlc#200 symptom (issues #319-323)', () => {
+    const touch = { notFoundOnBoard: [319, 320, 321, 322, 323], owner: 'modeled-information-format', repo: 'research-harness-template', number: 371 };
+    const result = checkSyncNotFoundOnBoard(touch);
+    expect(result.resolved).toBe(true);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]).toContain('#319, #320, #321, #322, #323');
+    expect(result.findings[0]).toContain('modeled-information-format/research-harness-template#371');
+  });
+});
+
 describe('runHygieneChecks', () => {
   it('combines findings from all three checks', async () => {
     const path = tmpTranscriptWith([]);
@@ -559,6 +814,20 @@ describe('runHygieneChecks', () => {
     const findings = await runHygieneChecks(touch, { runGraphQL, transcriptPath: path, readFn: undefined });
     expect(findings.some((f) => f.includes('Story has no sub-issues'))).toBe(true);
     expect(findings.some((f) => f.includes('no lifecycle comment'))).toBe(true);
+  });
+
+  it('gdlc#201: surfaces checkClosingKeywordSyntax findings alongside the other three', async () => {
+    const touch = {
+      action: 'create_pull_request',
+      owner: 'acme',
+      repo: 'widgets',
+      number: 5,
+      closesIssues: [],
+      droppedClosingIssues: [310, 311],
+    };
+    const runGraphQL = async () => ({});
+    const findings = await runHygieneChecks(touch, { runGraphQL, transcriptPath: undefined, readFn: undefined });
+    expect(findings.some((f) => f.includes('#310, #311'))).toBe(true);
   });
 
   it('never throws even when a check function itself throws synchronously', async () => {

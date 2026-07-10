@@ -19,6 +19,7 @@ import {
   extractStatusFieldAndOption,
   setIssueInProgress,
   buildAdditionalContext,
+  FIRST_EDIT_TOOL_NAMES,
 } from '../../../hooks/lib/in-progress.mjs';
 
 function tmpGdlcConfigWith(content: string | null): string {
@@ -567,5 +568,16 @@ describe('buildAdditionalContext', () => {
     const text = buildAdditionalContext({ owner: 'acme', repo: 'widgets', number: 9 });
     expect(text).toContain('acme/widgets#9');
     expect(text).toContain('In Progress');
+  });
+});
+
+describe('FIRST_EDIT_TOOL_NAMES', () => {
+  it('gdlc#204/#214: contains exactly Write, Edit, MultiEdit', () => {
+    expect([...FIRST_EDIT_TOOL_NAMES].sort()).toEqual(['Edit', 'MultiEdit', 'Write']);
+  });
+
+  it('does not include Bash or an MCP tool name', () => {
+    expect(FIRST_EDIT_TOOL_NAMES.has('Bash')).toBe(false);
+    expect(FIRST_EDIT_TOOL_NAMES.has('mcp__github-sdlc-planning__update_issue')).toBe(false);
   });
 });

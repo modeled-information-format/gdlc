@@ -1,3 +1,5 @@
+import { resolveGlobalConfigRoot } from './xdg.js';
+export { resolveGlobalConfigRoot };
 /** gdlc's layered global/project config (epic #78, ADR-0004, issues #80-82).
  * Both layers share this shape and one path-joining rule:
  * `resolve(root) => path.join(root, 'gdlc', 'config.yml')`. The global
@@ -28,6 +30,9 @@ export interface PrLifecycleConfig {
     requireLocalReview?: boolean;
     requireCopilotReview?: boolean;
     requireCleanCodeScanning?: boolean;
+    /** gdlc#202/#211: gate starting new branch/worktree work on any PR opened
+     * this session still having unresolved review threads. */
+    gateNewWorkOnUnresolvedThreads?: boolean;
 }
 export interface GdlcConfig {
     targeting?: {
@@ -48,7 +53,6 @@ export interface GdlcConfig {
 /** Same relative suffix under either root -- the one path rule both layers
  * share (ADR-0004's primary decision driver #2). */
 export declare function resolveConfigPath(root: string): string;
-export declare function resolveGlobalConfigRoot(env?: NodeJS.ProcessEnv): string;
 /** Issue #106 / ADR-0005: search upward from `startDir` toward the
  * filesystem root for `<dir>/.config/gdlc/config.yml`, git-style (the same
  * pattern git/npm/tsconfig use to find a project root from a nested cwd).
@@ -159,6 +163,7 @@ export interface ResolvedPrLifecycleConfig {
     requireLocalReview: boolean;
     requireCopilotReview: boolean;
     requireCleanCodeScanning: boolean;
+    gateNewWorkOnUnresolvedThreads: boolean;
 }
 /** Applies defaults to the raw `prLifecycle` section (issue #185/#186).
  * `enabled` defaults to `false` -- an absent or malformed section means the

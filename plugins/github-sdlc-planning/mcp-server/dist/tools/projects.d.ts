@@ -1,4 +1,5 @@
 import { type GithubClientDeps } from '../github-client.js';
+import { type ProjectProfile } from '../project-profile.js';
 import { type ProjectOwnerType } from '../resolvers.js';
 export interface AddItemToProjectInput {
     owner: string;
@@ -83,3 +84,16 @@ export interface GetProjectItemsResult {
     items: ProjectItemSummary[];
 }
 export declare function getProjectItems(input: GetProjectItemsInput, deps?: GithubClientDeps): Promise<GetProjectItemsResult>;
+export interface GetProjectStatusProfileInput {
+    projectOwnerLogin: string;
+    projectNumber: number;
+    projectOwnerType?: ProjectOwnerType;
+}
+/** gdlc#199/#206: read the durable, XDG-cached Status-field profile for a
+ * project (see `project-profile.ts`), refreshing it via a live GraphQL
+ * query only when the cache is missing or past its TTL -- callers that
+ * need to know a board's REAL Status options (and which documented
+ * CLAUDE.md lifecycle stages have no matching option) should call this
+ * instead of re-querying the field schema themselves or assuming a
+ * uniform 5-stage lifecycle exists on every board. */
+export declare function getProjectStatusProfile(input: GetProjectStatusProfileInput, deps?: GithubClientDeps): Promise<ProjectProfile>;

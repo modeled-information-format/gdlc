@@ -38826,6 +38826,108 @@ async function listSubIssues(input, deps = {}) {
   };
 }
 
+// src/project-profile.ts
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { dirname, join as join2 } from "node:path";
+
+// src/xdg.ts
+import { homedir } from "node:os";
+import { join } from "node:path";
+function resolveGlobalConfigRoot(env = process.env) {
+  return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== "" ? env.XDG_CONFIG_HOME : join(homedir(), ".config");
+}
+
+// src/project-profile.ts
+var DOCUMENTED_LIFECYCLE_STAGES = ["Backlog", "Ready", "In Progress", "In Review", "Done"];
+var DEFAULT_PROJECT_PROFILE_TTL_MS = 60 * 60 * 1e3;
+function computeMissingLifecycleStages(optionNames) {
+  return DOCUMENTED_LIFECYCLE_STAGES.filter((stage) => !optionNames.includes(stage));
+}
+var PROJECTS_SUBDIR = ["gdlc", "projects"];
+function sanitizePathSegment(segment) {
+  return segment.replace(/[\\/]/g, "_").replace(/^\.+/, "_");
+}
+function projectProfilePath(projectOwnerLogin, projectNumber, env = process.env) {
+  return join2(resolveGlobalConfigRoot(env), ...PROJECTS_SUBDIR, sanitizePathSegment(projectOwnerLogin), `${projectNumber}.json`);
+}
+var defaultFsDeps = {
+  existsFn: existsSync,
+  readFn: (path) => readFileSync(path, "utf8"),
+  writeFn: (path, contents) => writeFileSync(path, contents, "utf8"),
+  renameFn: renameSync,
+  mkdirFn: (path) => {
+    mkdirSync(path, { recursive: true });
+  }
+};
+function writeJsonAtomic(path, data, fns) {
+  fns.mkdirFn(dirname(path));
+  const tmpPath = `${path}.tmp-${process.pid}-${randomUUID()}`;
+  fns.writeFn(tmpPath, `${JSON.stringify(data, null, 2)}
+`);
+  fns.renameFn(tmpPath, path);
+}
+function readJson(path, fns) {
+  if (!fns.existsFn(path)) return null;
+  try {
+    const parsed = JSON.parse(fns.readFn(path));
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+function isStatusFieldOption(value) {
+  return typeof value === "object" && value !== null && typeof value.id === "string" && typeof value.name === "string";
+}
+function validateProjectProfile(value) {
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value;
+  if (typeof candidate.updatedAt !== "string") return null;
+  if (!Array.isArray(candidate.missingLifecycleStages) || !candidate.missingLifecycleStages.every((s) => typeof s === "string")) {
+    return null;
+  }
+  if (candidate.statusField !== null) {
+    if (typeof candidate.statusField !== "object" || candidate.statusField === void 0) return null;
+    const field = candidate.statusField;
+    if (typeof field.id !== "string" || typeof field.name !== "string" || !Array.isArray(field.options)) return null;
+    if (!field.options.every(isStatusFieldOption)) return null;
+  }
+  return {
+    updatedAt: candidate.updatedAt,
+    statusField: candidate.statusField ?? null,
+    missingLifecycleStages: candidate.missingLifecycleStages
+  };
+}
+function readProjectProfile(projectOwnerLogin, projectNumber, env = process.env, fs = {}) {
+  const fns = { ...defaultFsDeps, ...fs };
+  return validateProjectProfile(readJson(projectProfilePath(projectOwnerLogin, projectNumber, env), fns));
+}
+function isProjectProfileFresh(profile, now = Date.now(), ttlMs = DEFAULT_PROJECT_PROFILE_TTL_MS) {
+  const updatedAtMs = Date.parse(profile.updatedAt);
+  if (Number.isNaN(updatedAtMs)) return false;
+  return now - updatedAtMs < ttlMs;
+}
+function writeProjectProfile(projectOwnerLogin, projectNumber, statusField, env = process.env, fs = {}, now = Date.now) {
+  const fns = { ...defaultFsDeps, ...fs };
+  const profile = {
+    updatedAt: new Date(now()).toISOString(),
+    statusField,
+    missingLifecycleStages: computeMissingLifecycleStages(statusField?.options.map((o) => o.name) ?? [])
+  };
+  writeJsonAtomic(projectProfilePath(projectOwnerLogin, projectNumber, env), profile, fns);
+  return profile;
+}
+async function getOrRefreshProjectProfile(projectOwnerLogin, projectNumber, fetchStatusField, options = {}) {
+  const env = options.env ?? process.env;
+  const fs = options.fs ?? {};
+  const now = options.now ?? Date.now;
+  const ttlMs = options.ttlMs ?? DEFAULT_PROJECT_PROFILE_TTL_MS;
+  const cached2 = readProjectProfile(projectOwnerLogin, projectNumber, env, fs);
+  if (cached2 !== null && isProjectProfileFresh(cached2, now(), ttlMs)) return cached2;
+  const statusField = await fetchStatusField();
+  return writeProjectProfile(projectOwnerLogin, projectNumber, statusField, env, fs, now);
+}
+
 // src/tools/projects.ts
 var ADD_ITEM_MUTATION = `
   mutation($projectId: ID!, $contentId: ID!) {
@@ -38902,10 +39004,11 @@ async function setFieldValue(input, deps = {}) {
   return { itemId: input.itemId };
 }
 var GET_PROJECT_ITEMS_QUERY = `
-  query($projectId: ID!) {
+  query($projectId: ID!, $after: String) {
     node(id: $projectId) {
       ... on ProjectV2 {
-        items(first: 100) {
+        items(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
           nodes {
             id
             content {
@@ -38927,6 +39030,28 @@ var GET_PROJECT_ITEMS_QUERY = `
     }
   }
 `;
+var MAX_PAGES = 1e3;
+async function fetchAllProjectItemNodes(projectId, deps) {
+  const allNodes = [];
+  let after = null;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const data = await githubGraphQL(
+      GET_PROJECT_ITEMS_QUERY,
+      { projectId, after },
+      {},
+      deps
+    );
+    const items = data.node?.items;
+    allNodes.push(...items?.nodes ?? []);
+    if (items === void 0) return allNodes;
+    if (items.pageInfo === void 0) {
+      throw new Error(`fetchAllProjectItemNodes: malformed response -- items present but pageInfo missing (projectId=${projectId})`);
+    }
+    if (!items.pageInfo.hasNextPage) return allNodes;
+    after = items.pageInfo.endCursor;
+  }
+  throw new Error(`fetchAllProjectItemNodes: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);
+}
 async function getProjectItems(input, deps = {}) {
   const projectId = await resolveProjectNodeId(
     input.projectOwnerLogin,
@@ -38934,8 +39059,7 @@ async function getProjectItems(input, deps = {}) {
     input.projectOwnerType ?? "organization",
     deps
   );
-  const data = await githubGraphQL(GET_PROJECT_ITEMS_QUERY, { projectId }, {}, deps);
-  const nodes = data.node?.items?.nodes ?? [];
+  const nodes = await fetchAllProjectItemNodes(projectId, deps);
   return {
     items: nodes.map((n) => ({
       id: n.id,
@@ -38951,6 +39075,34 @@ async function getProjectItems(input, deps = {}) {
       }))
     }))
   };
+}
+var GET_STATUS_FIELD_SCHEMA_QUERY = `
+  query($projectId: ID!) {
+    node(id: $projectId) {
+      ... on ProjectV2 {
+        field(name: "Status") {
+          ... on ProjectV2SingleSelectField {
+            id
+            name
+            options { id name }
+          }
+        }
+      }
+    }
+  }
+`;
+async function fetchStatusFieldSchema(projectOwnerLogin, projectNumber, projectOwnerType, deps) {
+  const projectId = await resolveProjectNodeId(projectOwnerLogin, projectNumber, projectOwnerType, deps);
+  const data = await githubGraphQL(GET_STATUS_FIELD_SCHEMA_QUERY, { projectId }, {}, deps);
+  return data.node?.field ?? null;
+}
+async function getProjectStatusProfile(input, deps = {}) {
+  const projectOwnerType = input.projectOwnerType ?? "organization";
+  return getOrRefreshProjectProfile(
+    input.projectOwnerLogin,
+    input.projectNumber,
+    () => fetchStatusFieldSchema(input.projectOwnerLogin, input.projectNumber, projectOwnerType, deps)
+  );
 }
 
 // src/tools/milestones.ts
@@ -39044,23 +39196,20 @@ async function listDiscussions(input, deps = {}) {
 
 // src/config.ts
 var import_yaml = __toESM(require_dist2(), 1);
-import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join, resolve as resolvePath } from "node:path";
+import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
+import { homedir as homedir2 } from "node:os";
+import { dirname as dirname2, join as join3, resolve as resolvePath } from "node:path";
 var CONFIG_RELPATH = ["gdlc", "config.yml"];
 function resolveConfigPath(root) {
-  return join(root, ...CONFIG_RELPATH);
+  return join3(root, ...CONFIG_RELPATH);
 }
-function resolveGlobalConfigRoot(env = process.env) {
-  return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== "" ? env.XDG_CONFIG_HOME : join(homedir(), ".config");
-}
-function findProjectConfigRoot(startDir, existsFn = existsSync, ceiling = homedir()) {
+function findProjectConfigRoot(startDir, existsFn = existsSync2, ceiling = homedir2()) {
   const ceilingResolved = resolvePath(ceiling);
   let dir = resolvePath(startDir);
   for (; ; ) {
     if (dir === ceilingResolved) return null;
-    if (existsFn(resolveConfigPath(join(dir, ".config")))) return dir;
-    const parent = dirname(dir);
+    if (existsFn(resolveConfigPath(join3(dir, ".config")))) return dir;
+    const parent = dirname2(dir);
     if (parent === dir) return null;
     dir = parent;
   }
@@ -39111,6 +39260,7 @@ function normalizeConfig(parsed) {
     if (typeof raw.requireLocalReview === "boolean") prLifecycle.requireLocalReview = raw.requireLocalReview;
     if (typeof raw.requireCopilotReview === "boolean") prLifecycle.requireCopilotReview = raw.requireCopilotReview;
     if (typeof raw.requireCleanCodeScanning === "boolean") prLifecycle.requireCleanCodeScanning = raw.requireCleanCodeScanning;
+    if (typeof raw.gateNewWorkOnUnresolvedThreads === "boolean") prLifecycle.gateNewWorkOnUnresolvedThreads = raw.gateNewWorkOnUnresolvedThreads;
     if (Object.keys(prLifecycle).length > 0) config2.prLifecycle = prLifecycle;
   }
   return config2;
@@ -39118,7 +39268,7 @@ function normalizeConfig(parsed) {
 function loadConfigFile(path) {
   let text;
   try {
-    text = readFileSync(path, "utf8");
+    text = readFileSync2(path, "utf8");
   } catch {
     return {};
   }
@@ -39131,13 +39281,13 @@ function loadConfigFile(path) {
 function mergeConfigs(global, project) {
   return { ...global, ...project };
 }
-function resolveProjectConfigPath(startDir = process.cwd(), existsFn = existsSync, env = process.env) {
+function resolveProjectConfigPath(startDir = process.cwd(), existsFn = existsSync2, env = process.env) {
   const root = findProjectConfigRoot(startDir, existsFn);
   if (root === null) return null;
-  const path = resolveConfigPath(join(root, ".config"));
+  const path = resolveConfigPath(join3(root, ".config"));
   return path === resolveConfigPath(resolveGlobalConfigRoot(env)) ? null : path;
 }
-function loadGdlcConfig(projectRoot = process.cwd(), env = process.env, existsFn = existsSync) {
+function loadGdlcConfig(projectRoot = process.cwd(), env = process.env, existsFn = existsSync2) {
   const global = loadConfigFile(resolveConfigPath(resolveGlobalConfigRoot(env)));
   const projectPath = resolveProjectConfigPath(projectRoot, existsFn, env);
   const project = projectPath === null ? {} : loadConfigFile(projectPath);
@@ -39412,6 +39562,19 @@ server.registerTool(
     }
   },
   wrap(withRequiredBoardCoordinates(getProjectItems))
+);
+server.registerTool(
+  "get_project_status_profile",
+  {
+    title: "Get project Status-field profile",
+    description: "Read the durable, XDG-cached profile of a project's real Status field (option IDs/names) and which documented CLAUDE.md lifecycle stages (Backlog/Ready/In Progress/In Review/Done) have no matching board option, refreshing from a live GraphQL query only when the cache is missing or past its 1-hour TTL. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted.",
+    inputSchema: {
+      projectOwnerLogin: external_exports.string().optional(),
+      projectNumber: external_exports.number().int().optional(),
+      projectOwnerType: projectOwnerTypeSchema.optional()
+    }
+  },
+  wrap(withRequiredBoardCoordinates(getProjectStatusProfile))
 );
 server.registerTool(
   "create_milestone",

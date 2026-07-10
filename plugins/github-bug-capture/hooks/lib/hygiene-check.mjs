@@ -68,6 +68,32 @@ const STATUS_MUTATE_ACTIONS = new Set(['set_field_value', 'update_issue']);
 // issue_write is folded into ISSUE_CREATE_ACTIONS/STATUS_MUTATE_ACTIONS
 // instead of miscategorized here.
 const COMMENT_ACTIONS = new Set(['add_issue_comment']);
+// gdlc#201/#210: the generic github MCP server's merge tool (no
+// plugin-scoped merge_pull_request tool exists in this marketplace as of
+// this writing -- merging goes through mcp__github__merge_pull_request or
+// `gh pr merge`, per this workspace's own CLAUDE.local.md). A merge is the
+// one moment a PR's closing-keyword references become load-bearing --
+// checkPostMergeClosingKeywords below is the only check that fires on it.
+const PR_MERGE_ACTIONS = new Set(['merge_pull_request']);
+// gdlc#203/#212: three actions matched by this hook's own broad
+// registration regex (^mcp__...__.*) but previously absent from every
+// action set above, so extractTouch returned null for them and the hook
+// silently no-op'd. `add_sub_issue`'s target is the PARENT issue (its
+// `parentNumber`, not `childNumber`) -- checkSubIssueLinkage already knows
+// how to flag an Epic/Story with zero sub-issues; recognizing this action
+// lets that same check also fire right after a link is added, catching
+// the case where the call succeeded but the parent still shows zero (wrong
+// parent, a GitHub-side rejection that didn't surface as an error).
+const SUB_ISSUE_LINK_ACTIONS = new Set(['add_sub_issue']);
+// No separate `request_copilot_review` tool exists in this marketplace
+// today (Copilot review is `request_review` with `reviewers: ["Copilot"]`)
+// -- kept in the set anyway for forward-compat at zero cost, matching this
+// codebase's own precedent (STATUS_MUTATE_ACTIONS already lists actions
+// from more than one real tool). No dedicated check function fires on
+// this one: recognizing it is the whole fix, so it's scratch-logged for
+// hygiene-aggregate.mjs's end-of-turn report instead of silently invisible.
+const REVIEW_REQUEST_ACTIONS = new Set(['request_review', 'request_copilot_review']);
+const SYNC_FIELD_ACTIONS = new Set(['sync_linked_issues_project_field']);
 
 /** `mcp__github__issue_write`'s action name alone doesn't distinguish a
  * create from an update to an existing issue -- its own `method` field
@@ -78,6 +104,22 @@ const COMMENT_ACTIONS = new Set(['add_issue_comment']);
 function normalizeMcpAction(action, toolInput) {
   if (action !== 'issue_write') return action;
   return toolInput?.method === 'create' ? 'create_issue' : 'update_issue';
+}
+
+/** Code-review finding: extractTouch's `number` derivation had grown into
+ * an unreadable nested-ternary chain, one branch added per tool onboarded
+ * (four onboarding passes so far: the original two, then gdlc#201/#210's
+ * pullNumber, then gdlc#203/#212's three more actions). Returns the first
+ * argument that is actually a number, in the caller's own precedence
+ * order -- a flat, ordered list of candidates reads as "try these in
+ * order" instead of a pile of `cond ? a : cond ? b : ...`, and a future
+ * tool with yet another field name is one more argument, not one more
+ * nested branch inserted in exactly the right position. */
+function firstNumber(...candidates) {
+  for (const candidate of candidates) {
+    if (typeof candidate === 'number') return candidate;
+  }
+  return null;
 }
 
 /** `Closes #N` / `Fixes #N` / `Resolves #N` (any case, singular or plural
@@ -96,24 +138,48 @@ function extractClosedIssueNumbers(text) {
   return [...numbers];
 }
 
+/** gdlc#201: matches a closing keyword followed by a comma-separated run of
+ * `#N` references (`Closes #A, #B, #C`) -- the exact syntax GitHub's own
+ * closing-keyword parser silently mishandles: it honors only the FIRST `#N`
+ * immediately after the keyword and treats every comma-continuation as a
+ * plain, non-closing mention. A PR author writing this almost always means
+ * to close all of them (session 1f3d575b's PR #368 did exactly this and
+ * nearly left 3 of 4 issues open post-merge). The capture group grabs the
+ * whole run so `detectCommaSeparatedClosingKeywords` can pull every `#N`
+ * out of it, not just the first. */
+const CLOSING_KEYWORD_LIST_RE = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*((?:#\d+\s*,\s*)+#\d+)/gi;
+
+/** Returns the issue numbers GitHub will silently NOT auto-close because
+ * they appear as a comma-continuation after a closing keyword rather than
+ * their own keyword -- i.e. every `#N` in a matched run except the first.
+ * A clause with only one `#N` (the unambiguous, correct form) never
+ * matches `CLOSING_KEYWORD_LIST_RE` at all, so this never flags it. */
+export function detectCommaSeparatedClosingKeywords(text) {
+  if (typeof text !== 'string') return [];
+  const dropped = new Set();
+  for (const match of text.matchAll(CLOSING_KEYWORD_LIST_RE)) {
+    const numbers = [...match[1].matchAll(/#(\d+)/g)].map((m) => Number(m[1]));
+    for (const n of numbers.slice(1)) dropped.add(n);
+  }
+  return [...dropped];
+}
+
 // Exported so the entrypoint can cheaply pre-check a Bash command before
 // deciding whether it's worth shelling out to `git remote get-url origin`
 // for the owner/repo fallback -- this hook runs on every Bash tool call
 // (the matcher is unscoped), so that shell-out must not happen for the
 // common case of an unrelated command (`ls`, `npm test`, ...).
-export const GH_ISSUE_OR_PR_RE = /^\s*gh\s+(issue|pr)\s+(view|edit|close|comment|create|list)\b/;
+export const GH_ISSUE_OR_PR_RE = /^\s*gh\s+(issue|pr)\s+(view|edit|close|comment|create|list|merge)\b/;
 
-/** Parse the closing-keyword issue numbers out of a `gh pr create` Bash
- * invocation's `--body`/`--body-file`/`--fill` flags. `--body-file`/`--fill`
- * read from a file or commit messages this hook cannot see without
- * shelling out again, so those forms yield no closed-issue numbers rather
- * than guessing -- a narrower detection than the MCP-tool path, not a wrong
- * one. */
-function extractClosedIssuesFromGhCommand(command) {
+/** Extracts a `gh ... create`'s `--body "..."` flag value. `--body-file`/
+ * `--fill` read from a file or commit messages this hook cannot see without
+ * shelling out again, so those forms yield `''` rather than guessing --
+ * both this function's two callers (closed-issue extraction, comma-list
+ * detection) treat an empty string as "nothing found", a narrower
+ * detection than the MCP-tool path, not a wrong one. */
+function extractBodyFlag(command) {
   const bodyFlag = /--body(?:=|\s+)(?:"((?:[^"\\]|\\.)*)"|'([^']*)'|(\S+))/.exec(command);
-  if (!bodyFlag) return [];
-  const raw = bodyFlag[1] ?? bodyFlag[2] ?? bodyFlag[3] ?? '';
-  return extractClosedIssueNumbers(raw);
+  return bodyFlag ? (bodyFlag[1] ?? bodyFlag[2] ?? bodyFlag[3] ?? '') : '';
 }
 
 /** A Bash tool_output may arrive as a plain string or an object carrying
@@ -231,13 +297,15 @@ export function extractTouch(input, fallbackOwnerRepo) {
 
     if (subcommand === 'create') {
       if (kind === 'pr') {
-        const closesIssues = extractClosedIssuesFromGhCommand(command).map((number) => ({ owner, repo, number }));
-        return { surface: 'gh-cli', action: 'create_pull_request', owner, repo, number: extractNumberFromGhUrl(outputText, 'pull'), closing: false, closesIssues };
+        const rawBody = extractBodyFlag(command);
+        const closesIssues = extractClosedIssueNumbers(rawBody).map((number) => ({ owner, repo, number }));
+        const droppedClosingIssues = detectCommaSeparatedClosingKeywords(rawBody);
+        return { surface: 'gh-cli', action: 'create_pull_request', owner, repo, number: extractNumberFromGhUrl(outputText, 'pull'), closing: false, closesIssues, droppedClosingIssues };
       }
       // `gh issue create`: an issue-creation touch, same action name the
       // MCP-tool path uses, so checkSubIssueLinkage/checkLifecycleComment
       // trigger identically regardless of which surface created it.
-      return { surface: 'gh-cli', action: 'create_issue', owner, repo, number: extractNumberFromGhUrl(outputText, 'issues'), closing: false, closesIssues: [] };
+      return { surface: 'gh-cli', action: 'create_issue', owner, repo, number: extractNumberFromGhUrl(outputText, 'issues'), closing: false, closesIssues: [], droppedClosingIssues: [] };
     }
 
     // For every other subcommand, the target number is the first bare
@@ -249,13 +317,16 @@ export function extractTouch(input, fallbackOwnerRepo) {
     const number = numberMatch ? Number(numberMatch[1]) : null;
 
     if (subcommand === 'edit' || subcommand === 'close') {
-      return { surface: 'gh-cli', action: 'update_issue', owner, repo, number, closing: subcommand === 'close', closesIssues: [] };
+      return { surface: 'gh-cli', action: 'update_issue', owner, repo, number, closing: subcommand === 'close', closesIssues: [], droppedClosingIssues: [] };
+    }
+    if (subcommand === 'merge') {
+      return { surface: 'gh-cli', action: 'merge_pull_request', owner, repo, number, closing: false, closesIssues: [], droppedClosingIssues: [] };
     }
     // view/list/comment: not a check-triggering transition itself (a
     // comment command is what checkLifecycleComment's own transcript scan
     // looks FOR, not a subject of these checks) -- recognized as a touch
     // for scratch-file bookkeeping, but no check fires on it.
-    return { surface: 'gh-cli', action: 'gh_command', owner, repo, number, closing: false, closesIssues: [] };
+    return { surface: 'gh-cli', action: 'gh_command', owner, repo, number, closing: false, closesIssues: [], droppedClosingIssues: [] };
   }
 
   const rawAction = mcpAction(toolName);
@@ -266,7 +337,11 @@ export function extractTouch(input, fallbackOwnerRepo) {
     PR_CREATE_ACTIONS.has(action) ||
     ISSUE_CREATE_ACTIONS.has(action) ||
     STATUS_MUTATE_ACTIONS.has(action) ||
-    COMMENT_ACTIONS.has(action);
+    COMMENT_ACTIONS.has(action) ||
+    PR_MERGE_ACTIONS.has(action) ||
+    SUB_ISSUE_LINK_ACTIONS.has(action) ||
+    REVIEW_REQUEST_ACTIONS.has(action) ||
+    SYNC_FIELD_ACTIONS.has(action);
   if (!relevant) return null;
 
   const normalizedOutput = normalizeToolOutput(toolOutput);
@@ -275,19 +350,46 @@ export function extractTouch(input, fallbackOwnerRepo) {
   const closing = action === 'update_issue' && toolInput?.state === 'closed';
   // A create call's own tool_input never carries the new issue/PR's number
   // (it doesn't exist yet when the call is made) -- fall back to the
-  // tool's output, which returns it (create_issue: {number, ...}).
+  // tool's output, which returns it (create_issue: {number, ...}). A merge
+  // or PR-scoped-tool call's number arrives as `pullNumber` (the generic
+  // github MCP server's field name for merge_pull_request, and this
+  // marketplace's own field name for request_review/
+  // sync_linked_issues_project_field), never `number`/`issue_number` --
+  // checked last so it never shadows those for any other action.
+  // `add_sub_issue`'s own `parentNumber`/`childNumber` split is handled
+  // separately below (this touch's `number` is deliberately the PARENT,
+  // not the newly-linked child) since neither generic fallback name
+  // applies to it.
   const number =
-    typeof toolInput?.number === 'number' ? toolInput.number
-    : typeof toolInput?.issue_number === 'number' ? toolInput.issue_number
-    : typeof normalizedOutput?.number === 'number' ? normalizedOutput.number
-    : typeof normalizedOutput?.issue_number === 'number' ? normalizedOutput.issue_number
-    : null;
+    action === 'add_sub_issue'
+      ? firstNumber(toolInput?.parentNumber)
+      : firstNumber(
+          toolInput?.number,
+          toolInput?.issue_number,
+          normalizedOutput?.number,
+          normalizedOutput?.issue_number,
+          toolInput?.pullNumber,
+          toolInput?.pull_number,
+        );
 
   let closesIssues = [];
+  let droppedClosingIssues = [];
   if (PR_CREATE_ACTIONS.has(action)) {
     const bodyText = [toolInput?.body, normalizedOutput?.body].filter((v) => typeof v === 'string').join('\n');
     closesIssues = extractClosedIssueNumbers(bodyText).map((n) => ({ owner, repo, number: n }));
+    droppedClosingIssues = detectCommaSeparatedClosingKeywords(bodyText);
   }
+
+  // gdlc#203/#212: sync_linked_issues_project_field's own result already
+  // names exactly which linked issues it could NOT find on the board
+  // (gdlc#200's now-fixed pagination bug's most visible symptom) -- surface
+  // it if it ever recurs (a different board, a genuinely-missing item)
+  // rather than silently discarding a signal the tool call itself already
+  // computed for free.
+  const notFoundOnBoard =
+    SYNC_FIELD_ACTIONS.has(action) && Array.isArray(normalizedOutput?.notFoundOnBoard)
+      ? normalizedOutput.notFoundOnBoard.filter((n) => typeof n === 'number')
+      : [];
 
   // set_field_value's own input/output carries itemId/fieldId, not
   // owner/repo/number, since a Projects v2 item is addressed by itemId,
@@ -305,7 +407,18 @@ export function extractTouch(input, fallbackOwnerRepo) {
         : null
       : null;
 
-  return { surface: toolName.startsWith('mcp__github__') ? 'generic-github-mcp' : 'plugin-mcp', action, owner, repo, number, closing, closesIssues, itemId };
+  return {
+    surface: toolName.startsWith('mcp__github__') ? 'generic-github-mcp' : 'plugin-mcp',
+    action,
+    owner,
+    repo,
+    number,
+    closing,
+    closesIssues,
+    droppedClosingIssues,
+    itemId,
+    notFoundOnBoard,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -366,6 +479,100 @@ export async function checkStatusProgression(touch, runGraphQL) {
     }
   }
   return { resolved: true, findings };
+}
+
+// ---------------------------------------------------------------------------
+// Check 1b: closing-keyword syntax -- gdlc#201/forensics root cause #1.
+// ---------------------------------------------------------------------------
+
+/** WHEN a just-opened PR's body uses a comma-separated closing-keyword list
+ * (`Closes #A, #B, #C`), THEN flag the numbers GitHub will silently NOT
+ * auto-close (everything after the first). Purely synchronous text
+ * analysis -- no GraphQL round trip, so this never needs to fail open on a
+ * network error the way the other checks do; the only "no finding" case is
+ * a body with no such pattern at all. */
+export function checkClosingKeywordSyntax(touch) {
+  if (!touch || !touch.droppedClosingIssues || touch.droppedClosingIssues.length === 0) {
+    return { resolved: true, findings: [] };
+  }
+  const refs = touch.droppedClosingIssues.map((n) => `#${n}`).join(', ');
+  return {
+    resolved: true,
+    findings: [
+      `PR body uses a comma-separated closing-keyword list -- GitHub only auto-closes the FIRST issue after the ` +
+        `keyword. ${refs} will stay open after merge unless each gets its own \`Closes #N\` (one per line) or is ` +
+        `closed manually.`,
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Check 1c: post-merge closing-keyword verification -- gdlc#201/#210.
+// Defense in depth for when checkClosingKeywordSyntax's pre-merge warning
+// was ignored, missed, or the PR body was edited after creation.
+// ---------------------------------------------------------------------------
+
+export const PR_MERGE_STATE_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) { merged body }
+    }
+  }
+`;
+
+export const ISSUE_STATE_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) { state }
+    }
+  }
+`;
+
+/** WHEN a PR merge touch fires, THEN re-read the PR's own body (not the
+ * touch's cached one -- the body may have changed between creation and
+ * merge) and confirm every issue it references via a closing keyword
+ * (both correctly-parsed AND comma-dropped -- see
+ * `detectCommaSeparatedClosingKeywords`) is actually `CLOSED` now. This is
+ * the defense-in-depth half of gdlc#201: `checkClosingKeywordSyntax` warns
+ * BEFORE creation, this catches the case where that warning was missed,
+ * ignored, or the body changed after the PR was opened. Fails open on any
+ * unresolvable step (PR not found, not actually merged yet, a GraphQL
+ * error) -- never a guess, matching every other check in this file. */
+export async function checkPostMergeClosingKeywords(touch, runGraphQL) {
+  if (!touch || !PR_MERGE_ACTIONS.has(touch.action) || typeof touch.owner !== 'string' || typeof touch.repo !== 'string' || typeof touch.number !== 'number') {
+    return { resolved: true, findings: [] };
+  }
+  let pr;
+  try {
+    const data = await runGraphQL(PR_MERGE_STATE_QUERY, { owner: touch.owner, repo: touch.repo, number: touch.number });
+    pr = data?.repository?.pullRequest;
+  } catch {
+    return { resolved: true, findings: [] };
+  }
+  if (!pr || pr.merged !== true) return { resolved: true, findings: [] }; // not actually merged: nothing to verify yet
+
+  const referenced = new Set([...extractClosedIssueNumbers(pr.body), ...detectCommaSeparatedClosingKeywords(pr.body)]);
+  if (referenced.size === 0) return { resolved: true, findings: [] };
+
+  const stillOpen = [];
+  for (const number of referenced) {
+    try {
+      const data = await runGraphQL(ISSUE_STATE_QUERY, { owner: touch.owner, repo: touch.repo, number });
+      const state = data?.repository?.issue?.state;
+      if (state === 'OPEN') stillOpen.push(number);
+    } catch {
+      // fail open for this ref only; other refs and other checks are unaffected
+    }
+  }
+  if (stillOpen.length === 0) return { resolved: true, findings: [] };
+  const refs = stillOpen.map((n) => `#${n}`).join(', ');
+  return {
+    resolved: true,
+    findings: [
+      `${touch.owner}/${touch.repo}#${touch.number} merged, but ${refs} (referenced via a closing keyword in its body) ` +
+        `${stillOpen.length === 1 ? 'is' : 'are'} still open -- likely the comma-separated closing-keyword gap; verify and close manually if intended.`,
+    ],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -552,9 +759,17 @@ function extractMifType(body) {
  * currently has zero sub-issues. Skips any other MIF type (Task/Bug/
  * Feature are leaves) and skips a close (closing an empty Epic/Story is a
  * different problem this check does not speak to). Fails open on a
- * GraphQL error or a body with no recognizable MIF type marker. */
+ * GraphQL error or a body with no recognizable MIF type marker.
+ *
+ * gdlc#203/#212: also fires on `add_sub_issue` (touch.number is the
+ * PARENT, per extractTouch's own doc comment) -- re-checking the parent
+ * right after a link is added catches the call succeeding against the
+ * wrong parent, or a GitHub-side rejection that didn't surface as a tool
+ * error, either of which would otherwise leave the parent looking exactly
+ * like it did before the call. */
 export async function checkSubIssueLinkage(touch, runGraphQL) {
-  const isCreateOrUpdate = touch && !touch.closing && (ISSUE_CREATE_ACTIONS.has(touch.action) || touch.action === 'update_issue');
+  const isCreateOrUpdate =
+    touch && !touch.closing && (ISSUE_CREATE_ACTIONS.has(touch.action) || touch.action === 'update_issue' || SUB_ISSUE_LINK_ACTIONS.has(touch.action));
   if (!isCreateOrUpdate || typeof touch.owner !== 'string' || typeof touch.repo !== 'string' || typeof touch.number !== 'number') {
     return { resolved: true, findings: [] };
   }
@@ -572,10 +787,42 @@ export async function checkSubIssueLinkage(touch, runGraphQL) {
 }
 
 // ---------------------------------------------------------------------------
+// Check 5: sync_linked_issues_project_field's own notFoundOnBoard --
+// gdlc#203/#212. Purely synchronous: the tool call already computed this,
+// extractTouch just carries it through.
+// ---------------------------------------------------------------------------
+
+/** WHEN `sync_linked_issues_project_field` reports one or more linked
+ * issues it could not find on the board, THEN surface it loudly instead of
+ * letting the caller silently discard a signal the tool already computed.
+ * gdlc#200 (this same Epic, an earlier Story) already fixed the pagination
+ * bug that was the most likely cause of a false `notFoundOnBoard` on this
+ * org's real board, so a genuinely-missing item (never added to the
+ * project, added to the wrong project, or removed after being linked) is
+ * now the far more likely explanation -- the finding text below reflects
+ * that, code-review finding: an earlier revision's wording still pointed
+ * at board size as the likely cause, steering readers toward a problem
+ * this same PR had already eliminated. */
+export function checkSyncNotFoundOnBoard(touch) {
+  if (!touch || !touch.notFoundOnBoard || touch.notFoundOnBoard.length === 0) {
+    return { resolved: true, findings: [] };
+  }
+  const refs = touch.notFoundOnBoard.map((n) => `#${n}`).join(', ');
+  const where = touch.owner && touch.repo ? ` (${touch.owner}/${touch.repo}#${touch.number})` : '';
+  return {
+    resolved: true,
+    findings: [
+      `sync_linked_issues_project_field${where} could not find ${refs} on the board -- verify these issues are actually ` +
+        `on the target project (not just some project), or were not accidentally removed from it after being linked.`,
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Assembly
 // ---------------------------------------------------------------------------
 
-/** Run all three checks independently -- one check's exception or empty
+/** Run all six checks independently -- one check's exception or empty
  * result never suppresses another's finding (NFR-5) -- and flatten into one
  * findings list. Each check function above already fails open internally;
  * this wrapper additionally guards against a check throwing outright, since
@@ -585,6 +832,13 @@ export async function runHygieneChecks(touch, { runGraphQL, transcriptPath, read
   const findings = [];
   const results = await Promise.allSettled([
     checkStatusProgression(touch, runGraphQL),
+    // checkClosingKeywordSyntax/checkSyncNotFoundOnBoard are synchronous
+    // (pure data checks, no GraphQL) -- Promise.allSettled still accepts a
+    // plain value here, wrapping it as an already-fulfilled promise, so
+    // neither needs special handling to sit alongside its async siblings.
+    checkClosingKeywordSyntax(touch),
+    checkSyncNotFoundOnBoard(touch),
+    checkPostMergeClosingKeywords(touch, runGraphQL),
     // checkLifecycleComment is async (issue #172's fix), so -- same as its
     // two siblings here -- any throw inside it, synchronous or not, is
     // caught by the implicit async-function promise wrapping and never

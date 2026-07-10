@@ -1,4 +1,5 @@
 import { githubGraphQL, assertProjectScope } from '../github-client.js';
+import { getOrRefreshProjectProfile } from '../project-profile.js';
 import { resolveIssueNodeId, resolveProjectNodeId } from '../resolvers.js';
 const ADD_ITEM_MUTATION = `
   mutation($projectId: ID!, $contentId: ID!) {
@@ -65,10 +66,11 @@ export async function setFieldValue(input, deps = {}) {
     return { itemId: input.itemId };
 }
 const GET_PROJECT_ITEMS_QUERY = `
-  query($projectId: ID!) {
+  query($projectId: ID!, $after: String) {
     node(id: $projectId) {
       ... on ProjectV2 {
-        items(first: 100) {
+        items(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
           nodes {
             id
             content {
@@ -90,10 +92,52 @@ const GET_PROJECT_ITEMS_QUERY = `
     }
   }
 `;
+/** gdlc#200: `items(first: 100)` alone only ever returns the board's first
+ * page -- confirmed live against the org's real 235-item project board,
+ * where this silently dropped issues #319-323 from every caller's view
+ * (root-causing `sync_linked_issues_project_field`'s false-negative
+ * `notFoundOnBoard`). Loops on `hasNextPage`/`endCursor` until GitHub
+ * reports no further page, aggregating every page's nodes before this
+ * function's one caller (`getProjectItems`) maps them -- callers see the
+ * same flat node list they always did, just complete.
+ *
+ * Code-review finding: capped at `MAX_PAGES` (100,000 items at 100/page --
+ * far beyond any realistic Projects v2 board) rather than looping
+ * unbounded. Without this, a malformed or buggy GraphQL response (a stale
+ * or repeating `endCursor` with `hasNextPage` never flipping false) would
+ * hang the calling MCP tool and burn API rate limit indefinitely. Throws
+ * loudly on the cap rather than silently truncating -- silent truncation
+ * would reintroduce exactly the "items silently missing from the caller's
+ * view" bug this pagination fix exists to eliminate. */
+const MAX_PAGES = 1000;
+async function fetchAllProjectItemNodes(projectId, deps) {
+    const allNodes = [];
+    let after = null;
+    for (let page = 0; page < MAX_PAGES; page += 1) {
+        const data = await githubGraphQL(GET_PROJECT_ITEMS_QUERY, { projectId, after }, {}, deps);
+        const items = data.node?.items;
+        allNodes.push(...(items?.nodes ?? []));
+        if (items === undefined)
+            return allNodes; // no `items` at all: project not found / no access, nothing to paginate
+        // Copilot review finding: `items` can be present with `pageInfo`
+        // missing/undefined on a malformed or unexpected GraphQL response --
+        // `items.pageInfo.hasNextPage` would throw a confusing TypeError in
+        // that case. Since this function's whole purpose is to never silently
+        // truncate, a missing `pageInfo` on a page that DID return items is
+        // treated as a malformed response and throws a clear, named error
+        // rather than either crashing opaquely or guessing "no next page."
+        if (items.pageInfo === undefined) {
+            throw new Error(`fetchAllProjectItemNodes: malformed response -- items present but pageInfo missing (projectId=${projectId})`);
+        }
+        if (!items.pageInfo.hasNextPage)
+            return allNodes;
+        after = items.pageInfo.endCursor;
+    }
+    throw new Error(`fetchAllProjectItemNodes: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);
+}
 export async function getProjectItems(input, deps = {}) {
     const projectId = await resolveProjectNodeId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? 'organization', deps);
-    const data = await githubGraphQL(GET_PROJECT_ITEMS_QUERY, { projectId }, {}, deps);
-    const nodes = data.node?.items?.nodes ?? [];
+    const nodes = await fetchAllProjectItemNodes(projectId, deps);
     return {
         items: nodes.map((n) => ({
             id: n.id,
@@ -111,5 +155,44 @@ export async function getProjectItems(input, deps = {}) {
             })),
         })),
     };
+}
+const GET_STATUS_FIELD_SCHEMA_QUERY = `
+  query($projectId: ID!) {
+    node(id: $projectId) {
+      ... on ProjectV2 {
+        field(name: "Status") {
+          ... on ProjectV2SingleSelectField {
+            id
+            name
+            options { id name }
+          }
+        }
+      }
+    }
+  }
+`;
+/** The real GraphQL round trip a stale/cold `project-profile.ts` cache
+ * needs -- queries the project's `Status` single-select field by name and
+ * returns `null` when the board has no such field (an unusually-shaped
+ * board), never throws for that case. This is the ONLY place in this
+ * package that queries the Status field's option schema (id/name pairs);
+ * `getProjectItems` above queries item *field values* by name, a different
+ * concern entirely (it needs no schema, just whatever value each item
+ * already carries). */
+async function fetchStatusFieldSchema(projectOwnerLogin, projectNumber, projectOwnerType, deps) {
+    const projectId = await resolveProjectNodeId(projectOwnerLogin, projectNumber, projectOwnerType, deps);
+    const data = await githubGraphQL(GET_STATUS_FIELD_SCHEMA_QUERY, { projectId }, {}, deps);
+    return data.node?.field ?? null;
+}
+/** gdlc#199/#206: read the durable, XDG-cached Status-field profile for a
+ * project (see `project-profile.ts`), refreshing it via a live GraphQL
+ * query only when the cache is missing or past its TTL -- callers that
+ * need to know a board's REAL Status options (and which documented
+ * CLAUDE.md lifecycle stages have no matching option) should call this
+ * instead of re-querying the field schema themselves or assuming a
+ * uniform 5-stage lifecycle exists on every board. */
+export async function getProjectStatusProfile(input, deps = {}) {
+    const projectOwnerType = input.projectOwnerType ?? 'organization';
+    return getOrRefreshProjectProfile(input.projectOwnerLogin, input.projectNumber, () => fetchStatusFieldSchema(input.projectOwnerLogin, input.projectNumber, projectOwnerType, deps));
 }
 //# sourceMappingURL=projects.js.map

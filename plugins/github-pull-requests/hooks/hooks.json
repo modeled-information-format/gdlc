@@ -1,5 +1,5 @@
 {
-  "description": "ADR-0007 ticket-hygiene reminder (non-blocking PostToolUse/Stop/SubagentStop, byte-identical copy of github-sdlc-planning's canonical hygiene-check.mjs/hygiene-aggregate.mjs/lib, kept in sync by a build-time drift check) plus issue #185/#187's PR-lifecycle enforcement hooks (pr-lifecycle-gate.mjs, pr-lifecycle-reminder.mjs), which are NOT part of that drift-checked family -- they are this plugin's own, since PR-lifecycle enforcement is owned by github-pull-requests alone (ADR-0002).",
+  "description": "ADR-0007 ticket-hygiene reminder (non-blocking PostToolUse/Stop/SubagentStop, byte-identical copy of github-sdlc-planning's canonical hygiene-check.mjs/hygiene-aggregate.mjs/lib, kept in sync by a build-time drift check) plus issue #185/#187's PR-lifecycle enforcement hooks (pr-lifecycle-gate.mjs, pr-lifecycle-reminder.mjs) and gdlc#202/#211's unresolved-review-thread gate (track-opened-prs.mjs, review-thread-gate.mjs), none of which are part of that drift-checked family -- they are this plugin's own, since PR-lifecycle enforcement is owned by github-pull-requests alone (ADR-0002).",
   "hooks": {
     "PreToolUse": [
       {
@@ -9,6 +9,28 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/pr-lifecycle-gate.mjs"],
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/review-thread-gate.mjs"],
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "EnterWorktree",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/review-thread-gate.mjs"],
             "timeout": 15
           }
         ]
@@ -22,6 +44,12 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/hygiene-check.mjs"],
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/track-opened-prs.mjs"],
             "timeout": 15
           }
         ]
@@ -45,6 +73,12 @@
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/hygiene-check.mjs"],
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/track-opened-prs.mjs"],
+            "timeout": 15
           }
         ]
       },
@@ -55,6 +89,12 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/hygiene-check.mjs"],
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/track-opened-prs.mjs"],
             "timeout": 15
           }
         ]

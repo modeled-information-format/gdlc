@@ -39027,6 +39027,16 @@ async function addPullRequestToProject(input, deps = {}) {
   return { itemId: data.addProjectV2ItemById.item.id };
 }
 
+// ../../github-sdlc-planning/mcp-server/dist/xdg.js
+import { homedir } from "node:os";
+import { join } from "node:path";
+function resolveGlobalConfigRoot(env = process.env) {
+  return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== "" ? env.XDG_CONFIG_HOME : join(homedir(), ".config");
+}
+
+// ../../github-sdlc-planning/mcp-server/dist/project-profile.js
+var DEFAULT_PROJECT_PROFILE_TTL_MS = 60 * 60 * 1e3;
+
 // ../../github-sdlc-planning/mcp-server/dist/tools/projects.js
 var UPDATE_FIELD_VALUE_MUTATION = `
   mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: ProjectV2FieldValue!) {
@@ -39056,10 +39066,11 @@ async function setFieldValue(input, deps = {}) {
   return { itemId: input.itemId };
 }
 var GET_PROJECT_ITEMS_QUERY = `
-  query($projectId: ID!) {
+  query($projectId: ID!, $after: String) {
     node(id: $projectId) {
       ... on ProjectV2 {
-        items(first: 100) {
+        items(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
           nodes {
             id
             content {
@@ -39081,10 +39092,28 @@ var GET_PROJECT_ITEMS_QUERY = `
     }
   }
 `;
+var MAX_PAGES = 1e3;
+async function fetchAllProjectItemNodes(projectId, deps) {
+  const allNodes = [];
+  let after = null;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const data = await githubGraphQL2(GET_PROJECT_ITEMS_QUERY, { projectId, after }, {}, deps);
+    const items = data.node?.items;
+    allNodes.push(...items?.nodes ?? []);
+    if (items === void 0)
+      return allNodes;
+    if (items.pageInfo === void 0) {
+      throw new Error(`fetchAllProjectItemNodes: malformed response -- items present but pageInfo missing (projectId=${projectId})`);
+    }
+    if (!items.pageInfo.hasNextPage)
+      return allNodes;
+    after = items.pageInfo.endCursor;
+  }
+  throw new Error(`fetchAllProjectItemNodes: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);
+}
 async function getProjectItems(input, deps = {}) {
   const projectId = await resolveProjectNodeId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? "organization", deps);
-  const data = await githubGraphQL2(GET_PROJECT_ITEMS_QUERY, { projectId }, {}, deps);
-  const nodes = data.node?.items?.nodes ?? [];
+  const nodes = await fetchAllProjectItemNodes(projectId, deps);
   return {
     items: nodes.map((n) => ({
       id: n.id,
@@ -39176,22 +39205,19 @@ async function syncLinkedIssuesProjectField(input, deps = {}) {
 // ../../github-sdlc-planning/mcp-server/dist/config.js
 var import_yaml = __toESM(require_dist2(), 1);
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join, resolve as resolvePath } from "node:path";
+import { homedir as homedir2 } from "node:os";
+import { dirname, join as join2, resolve as resolvePath } from "node:path";
 var CONFIG_RELPATH = ["gdlc", "config.yml"];
 function resolveConfigPath(root) {
-  return join(root, ...CONFIG_RELPATH);
+  return join2(root, ...CONFIG_RELPATH);
 }
-function resolveGlobalConfigRoot(env = process.env) {
-  return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== "" ? env.XDG_CONFIG_HOME : join(homedir(), ".config");
-}
-function findProjectConfigRoot(startDir, existsFn = existsSync, ceiling = homedir()) {
+function findProjectConfigRoot(startDir, existsFn = existsSync, ceiling = homedir2()) {
   const ceilingResolved = resolvePath(ceiling);
   let dir = resolvePath(startDir);
   for (; ; ) {
     if (dir === ceilingResolved)
       return null;
-    if (existsFn(resolveConfigPath(join(dir, ".config"))))
+    if (existsFn(resolveConfigPath(join2(dir, ".config"))))
       return dir;
     const parent = dirname(dir);
     if (parent === dir)
@@ -39258,6 +39284,8 @@ function normalizeConfig(parsed) {
       prLifecycle.requireCopilotReview = raw.requireCopilotReview;
     if (typeof raw.requireCleanCodeScanning === "boolean")
       prLifecycle.requireCleanCodeScanning = raw.requireCleanCodeScanning;
+    if (typeof raw.gateNewWorkOnUnresolvedThreads === "boolean")
+      prLifecycle.gateNewWorkOnUnresolvedThreads = raw.gateNewWorkOnUnresolvedThreads;
     if (Object.keys(prLifecycle).length > 0)
       config2.prLifecycle = prLifecycle;
   }
@@ -39283,7 +39311,7 @@ function resolveProjectConfigPath(startDir = process.cwd(), existsFn = existsSyn
   const root = findProjectConfigRoot(startDir, existsFn);
   if (root === null)
     return null;
-  const path = resolveConfigPath(join(root, ".config"));
+  const path = resolveConfigPath(join2(root, ".config"));
   return path === resolveConfigPath(resolveGlobalConfigRoot(env)) ? null : path;
 }
 function loadGdlcConfig(projectRoot = process.cwd(), env = process.env, existsFn = existsSync) {
@@ -39300,7 +39328,8 @@ function resolvePrLifecycleConfig(config2) {
     localReviewer: raw.localReviewer ?? DEFAULT_LOCAL_REVIEWER,
     requireLocalReview: raw.requireLocalReview ?? true,
     requireCopilotReview: raw.requireCopilotReview ?? true,
-    requireCleanCodeScanning: raw.requireCleanCodeScanning ?? true
+    requireCleanCodeScanning: raw.requireCleanCodeScanning ?? true,
+    gateNewWorkOnUnresolvedThreads: raw.gateNewWorkOnUnresolvedThreads ?? true
   };
 }
 

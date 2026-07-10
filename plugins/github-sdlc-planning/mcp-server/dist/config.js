@@ -2,14 +2,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { parse } from 'yaml';
+import { resolveGlobalConfigRoot } from './xdg.js';
+export { resolveGlobalConfigRoot };
 const CONFIG_RELPATH = ['gdlc', 'config.yml'];
 /** Same relative suffix under either root -- the one path rule both layers
  * share (ADR-0004's primary decision driver #2). */
 export function resolveConfigPath(root) {
     return join(root, ...CONFIG_RELPATH);
-}
-export function resolveGlobalConfigRoot(env = process.env) {
-    return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== '' ? env.XDG_CONFIG_HOME : join(homedir(), '.config');
 }
 /** Issue #106 / ADR-0005: search upward from `startDir` toward the
  * filesystem root for `<dir>/.config/gdlc/config.yml`, git-style (the same
@@ -136,6 +135,8 @@ function normalizeConfig(parsed) {
             prLifecycle.requireCopilotReview = raw.requireCopilotReview;
         if (typeof raw.requireCleanCodeScanning === 'boolean')
             prLifecycle.requireCleanCodeScanning = raw.requireCleanCodeScanning;
+        if (typeof raw.gateNewWorkOnUnresolvedThreads === 'boolean')
+            prLifecycle.gateNewWorkOnUnresolvedThreads = raw.gateNewWorkOnUnresolvedThreads;
         if (Object.keys(prLifecycle).length > 0)
             config.prLifecycle = prLifecycle;
     }
@@ -307,6 +308,7 @@ export function resolvePrLifecycleConfig(config) {
         requireLocalReview: raw.requireLocalReview ?? true,
         requireCopilotReview: raw.requireCopilotReview ?? true,
         requireCleanCodeScanning: raw.requireCleanCodeScanning ?? true,
+        gateNewWorkOnUnresolvedThreads: raw.gateNewWorkOnUnresolvedThreads ?? true,
     };
 }
 //# sourceMappingURL=config.js.map

@@ -1,6 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, it, expect } from 'vitest';
 import { mockRest, mockGraphQL, mockUserScopes } from '../helpers.js';
-import { addItemToProject, setFieldValue, getProjectItems } from '../../src/tools/projects.js';
+import { addItemToProject, setFieldValue, getProjectItems, getProjectStatusProfile } from '../../src/tools/projects.js';
+import { readProjectProfile } from '../../src/project-profile.js';
 
 describe('addItemToProject', () => {
   it('AC-3: resolves the issue and project node IDs before mutating, never a numeric ID', async () => {
@@ -138,6 +142,7 @@ describe('getProjectItems', () => {
       return {
         node: {
           items: {
+            pageInfo: { hasNextPage: false, endCursor: null },
             nodes: [
               {
                 id: 'PVTI_1',
@@ -178,6 +183,7 @@ describe('getProjectItems', () => {
       return {
         node: {
           items: {
+            pageInfo: { hasNextPage: false, endCursor: null },
             nodes: [{ id: 'PVTI_2', content: { title: 'A draft idea' }, fieldValues: { nodes: [] } }],
           },
         },
@@ -186,5 +192,145 @@ describe('getProjectItems', () => {
 
     const result = await getProjectItems({ projectOwnerLogin: 'acme', projectNumber: 4 });
     expect(result.items).toEqual([{ id: 'PVTI_2', title: 'A draft idea', number: null, repo: null, fieldValues: [] }]);
+  });
+
+  it('gdlc#200 regression: paginates past a 100-item first page instead of silently dropping the rest', async () => {
+    // Mirrors the live-confirmed shape: the org's real board has 235 items;
+    // this proves a >100-item board (here, 150 across 2 pages) is returned
+    // in full, not just page 1 -- the exact bug that produced
+    // sync_linked_issues_project_field's false-negative notFoundOnBoard for
+    // issues #319-323 in session 1f3d575b.
+    const page1 = Array.from({ length: 100 }, (_, i) => ({
+      id: `PVTI_${i}`,
+      content: { title: `Item ${i}`, number: i, repository: { nameWithOwner: 'acme/widgets' } },
+      fieldValues: { nodes: [] },
+    }));
+    const page2 = Array.from({ length: 50 }, (_, i) => ({
+      id: `PVTI_${100 + i}`,
+      content: { title: `Item ${100 + i}`, number: 100 + i, repository: { nameWithOwner: 'acme/widgets' } },
+      fieldValues: { nodes: [] },
+    }));
+    let pageQueries = 0;
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      pageQueries += 1;
+      if (body.variables.after === undefined || body.variables.after === null) {
+        return { node: { items: { pageInfo: { hasNextPage: true, endCursor: 'CURSOR_PAGE_2' }, nodes: page1 } } };
+      }
+      expect(body.variables.after).toBe('CURSOR_PAGE_2');
+      return { node: { items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: page2 } } };
+    });
+
+    const result = await getProjectItems({ projectOwnerLogin: 'acme', projectNumber: 4 });
+    expect(pageQueries).toBe(2);
+    expect(result.items).toHaveLength(150);
+    // The specific item that would previously be silently dropped:
+    expect(result.items.find((i) => i.number === 123)).toBeDefined();
+  });
+
+  it('code-review finding: throws rather than looping forever when hasNextPage never becomes false', async () => {
+    // Simulates a malformed/buggy GraphQL response (a stale or repeating
+    // endCursor). Without a page cap, this would hang the calling MCP tool
+    // and burn API rate limit indefinitely instead of surfacing an error.
+    let calls = 0;
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      calls += 1;
+      return { node: { items: { pageInfo: { hasNextPage: true, endCursor: `CURSOR_${calls}` }, nodes: [] } } };
+    });
+
+    await expect(getProjectItems({ projectOwnerLogin: 'acme', projectNumber: 4 })).rejects.toThrow(/exceeded \d+ pages/);
+    // One call per page, up to the cap -- proves it actually stopped
+    // rather than looping past it.
+    expect(calls).toBe(1000);
+  });
+
+  it('Copilot review finding: throws a clear error rather than a confusing TypeError when pageInfo is missing on a present items page', async () => {
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      // Malformed/unexpected response: items present, pageInfo absent.
+      return { node: { items: { nodes: [{ id: 'PVTI_1', content: null, fieldValues: { nodes: [] } }] } } };
+    });
+
+    await expect(getProjectItems({ projectOwnerLogin: 'acme', projectNumber: 4 })).rejects.toThrow(/malformed response.*pageInfo missing/);
+  });
+
+  it('does not throw when node.items itself is entirely absent (project not found / no access)', async () => {
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      return { node: {} };
+    });
+
+    const result = await getProjectItems({ projectOwnerLogin: 'acme', projectNumber: 4 });
+    expect(result.items).toEqual([]);
+  });
+});
+
+describe('getProjectStatusProfile', () => {
+  const originalXdg = process.env.XDG_CONFIG_HOME;
+
+  afterEach(() => {
+    if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = originalXdg;
+  });
+
+  function isolate(): void {
+    process.env.XDG_CONFIG_HOME = mkdtempSync(join(tmpdir(), 'gdlc-status-profile-'));
+  }
+
+  it('fetches the Status field schema, computes missing stages, and persists to the XDG cache', async () => {
+    isolate();
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      expect(body.query).toContain('field(name: "Status")');
+      return {
+        node: {
+          field: {
+            id: 'PVTSSF_status',
+            name: 'Status',
+            options: [
+              { id: 'a', name: 'Todo' },
+              { id: 'b', name: 'In Progress' },
+              { id: 'c', name: 'In Review' },
+              { id: 'd', name: 'Blocked' },
+              { id: 'e', name: 'Done' },
+            ],
+          },
+        },
+      };
+    });
+
+    const profile = await getProjectStatusProfile({ projectOwnerLogin: 'acme', projectNumber: 4 });
+    expect(profile.statusField?.options).toHaveLength(5);
+    expect(profile.missingLifecycleStages).toEqual(['Backlog', 'Ready']);
+
+    const cached = readProjectProfile('acme', 4);
+    expect(cached).toEqual(profile);
+  });
+
+  it('caches null when the board has no Status field, without throwing', async () => {
+    isolate();
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      return { node: {} };
+    });
+
+    const profile = await getProjectStatusProfile({ projectOwnerLogin: 'acme', projectNumber: 4 });
+    expect(profile.statusField).toBeNull();
+    expect(profile.missingLifecycleStages).toEqual(['Backlog', 'Ready', 'In Progress', 'In Review', 'Done']);
+  });
+
+  it('serves a fresh cached profile without issuing another GraphQL call', async () => {
+    isolate();
+    let fieldQueryCalls = 0;
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      fieldQueryCalls += 1;
+      return { node: { field: { id: 'PVTSSF_status', name: 'Status', options: [{ id: 'a', name: 'Done' }] } } };
+    });
+
+    await getProjectStatusProfile({ projectOwnerLogin: 'acme', projectNumber: 4 });
+    await getProjectStatusProfile({ projectOwnerLogin: 'acme', projectNumber: 4 });
+    expect(fieldQueryCalls).toBe(1);
   });
 });

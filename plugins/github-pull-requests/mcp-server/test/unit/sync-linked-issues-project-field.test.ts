@@ -5,6 +5,7 @@ import { syncLinkedIssuesProjectField } from '../../src/tools/sync-linked-issues
 const projectQueryResponses = (items: Array<{ id: string; number: number; repo?: string }>) => ({
   node: {
     items: {
+      pageInfo: { hasNextPage: false, endCursor: null },
       nodes: items.map((i) => ({
         id: i.id,
         content: { title: `issue ${i.number}`, number: i.number, repository: { nameWithOwner: i.repo ?? 'acme/widgets' } },
@@ -208,6 +209,57 @@ describe('syncLinkedIssuesProjectField', () => {
     expect(result.synced).toEqual([]);
     expect(result.notFoundOnBoard).toEqual([8]);
     expect(result.skippedCrossRepo).toEqual([]);
+  });
+
+  it('gdlc#200 regression: finds and syncs a closing issue on page 2 of a >100-item board (not notFoundOnBoard)', async () => {
+    // Reproduces the live-confirmed bug: session 1f3d575b's PR #370/#371
+    // against the org's real 235-item board got notFoundOnBoard for issues
+    // #319-323, purely because get_project_items only ever fetched page 1.
+    mockRest('get', '/repos/acme/widgets/pulls/9', { merged: true });
+    const page1 = Array.from({ length: 100 }, (_, i) => ({
+      id: `PVTI_${i}`,
+      content: { title: `issue ${i}`, number: i, repository: { nameWithOwner: 'acme/widgets' } },
+      fieldValues: { nodes: [] },
+    }));
+    const page2Item = {
+      id: 'PVTI_123',
+      content: { title: 'issue 123', number: 123, repository: { nameWithOwner: 'acme/widgets' } },
+      fieldValues: { nodes: [] },
+    };
+    mockGraphQL((body) => {
+      if (body.query.includes('closingIssuesReferences')) {
+        return {
+          repository: {
+            pullRequest: {
+              body: 'Fixes #123',
+              closingIssuesReferences: { nodes: [{ number: 123, repository: { nameWithOwner: 'acme/widgets' } }] },
+            },
+          },
+        };
+      }
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      if (body.query.includes('items(first')) {
+        if (body.variables.after === undefined || body.variables.after === null) {
+          return { node: { items: { pageInfo: { hasNextPage: true, endCursor: 'CURSOR_2' }, nodes: page1 } } };
+        }
+        return { node: { items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [page2Item] } } };
+      }
+      return { updateProjectV2ItemFieldValue: { projectV2Item: { id: 'PVTI_123' } } };
+    });
+    mockRest('get', '/repos/acme/widgets/issues/123', { body: 'plain' });
+
+    const result = await syncLinkedIssuesProjectField({
+      owner: 'acme',
+      repo: 'widgets',
+      pullNumber: 9,
+      projectOwnerLogin: 'acme',
+      projectNumber: 4,
+      fieldId: 'PVTF_status',
+      value: { kind: 'singleSelect', optionId: 'OPT_done' },
+    });
+
+    expect(result.notFoundOnBoard).toEqual([]);
+    expect(result.synced).toEqual([{ issueNumber: 123, itemId: 'PVTI_123' }]);
   });
 
   it('Edge Case: wraps a get_project_items failure (project not found) as resolve_id_failed, not a bare PlanningError', async () => {
