@@ -94,3 +94,54 @@ jobs:
             done
           done
           exit "$status"
+
+  # CLAUDE.local.md's "Version discipline" requires the catalog, each
+  # plugin.json, each mcp-server/package.json, and each server's
+  # new McpServer({version}) string to agree. catalog-admission only checks
+  # marketplace.json against plugin.json; release.yml's manifest check only
+  # fires on a tag push. Neither ever looks at package-lock.json or
+  # src/index.ts, which is exactly how all 7 McpServer version strings went
+  # stale at 0.6.0 for three releases (0.7.0, 0.7.1) unnoticed — this job
+  # closes that gap on every PR, not just at tag time (issue #190).
+  version-consistency-check:
+    name: version-consistency-check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Every version-bearing location must agree, per plugin
+        run: |
+          set -euo pipefail
+          status=0
+          for dir in plugins/*/; do
+            name="$(basename "$dir")"
+            pj="${dir}.claude-plugin/plugin.json"
+            pkg="${dir}mcp-server/package.json"
+            lock="${dir}mcp-server/package-lock.json"
+            idx="${dir}mcp-server/src/index.ts"
+            for f in "$pj" "$pkg" "$lock" "$idx"; do
+              if [ ! -f "$f" ]; then
+                echo "::error file=$f::missing — every plugin must carry this file"
+                status=1
+              fi
+            done
+            [ -f "$pj" ] && [ -f "$pkg" ] && [ -f "$lock" ] && [ -f "$idx" ] || continue
+
+            v_plugin="$(jq -r '.version' "$pj")"
+            v_pkg="$(jq -r '.version' "$pkg")"
+            v_lock_top="$(jq -r '.version' "$lock")"
+            v_lock_self="$(jq -r '.packages[""].version' "$lock")"
+            v_idx="$(grep -oE "version: '[^']*'" "$idx" | head -1 | sed -E "s/version: '([^']*)'/\1/")"
+            v_mp="$(jq -r --arg n "$name" '.plugins[] | select(.name == $n) | .version' .claude-plugin/marketplace.json)"
+
+            uniq_count="$(printf '%s\n' "$v_plugin" "$v_pkg" "$v_lock_top" "$v_lock_self" "$v_idx" "$v_mp" | sort -u | wc -l)"
+            if [ "$uniq_count" -ne 1 ]; then
+              echo "::error::${name} version mismatch — plugin.json=${v_plugin} package.json=${v_pkg} package-lock.json(top)=${v_lock_top} package-lock.json(self)=${v_lock_self} src/index.ts=${v_idx:-<none found>} marketplace.json=${v_mp:-<no entry>}"
+              status=1
+            else
+              echo "${name}: OK (${v_plugin})"
+            fi
+          done
+          exit "$status"
