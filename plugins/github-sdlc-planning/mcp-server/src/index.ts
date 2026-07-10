@@ -5,7 +5,7 @@ import { z } from 'zod';
 
 import { createIssue, updateIssue } from './tools/issues.js';
 import { addSubIssue, listSubIssues } from './tools/sub-issues.js';
-import { addItemToProject, setFieldValue, getProjectItems } from './tools/projects.js';
+import { addItemToProject, setFieldValue, getProjectItems, getProjectStatusProfile } from './tools/projects.js';
 import { createMilestone, listMilestones, assignMilestone } from './tools/milestones.js';
 import { createDiscussion, listDiscussions } from './tools/discussions.js';
 import { getSessionContext, getAgentCapabilities } from './tools/session.js';
@@ -168,6 +168,24 @@ server.registerTool(
     },
   },
   wrap(withRequiredBoardCoordinates(getProjectItems)),
+);
+
+server.registerTool(
+  'get_project_status_profile',
+  {
+    title: 'Get project Status-field profile',
+    description:
+      'Read the durable, XDG-cached profile of a project\'s real Status field (option IDs/names) and which ' +
+      'documented CLAUDE.md lifecycle stages (Backlog/Ready/In Progress/In Review/Done) have no matching board ' +
+      'option, refreshing from a live GraphQL query only when the cache is missing or past its 1-hour TTL. ' +
+      'projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted.',
+    inputSchema: {
+      projectOwnerLogin: z.string().optional(),
+      projectNumber: z.number().int().optional(),
+      projectOwnerType: projectOwnerTypeSchema.optional(),
+    },
+  },
+  wrap(withRequiredBoardCoordinates(getProjectStatusProfile)),
 );
 
 server.registerTool(

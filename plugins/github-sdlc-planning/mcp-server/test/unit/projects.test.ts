@@ -1,6 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, it, expect } from 'vitest';
 import { mockRest, mockGraphQL, mockUserScopes } from '../helpers.js';
-import { addItemToProject, setFieldValue, getProjectItems } from '../../src/tools/projects.js';
+import { addItemToProject, setFieldValue, getProjectItems, getProjectStatusProfile } from '../../src/tools/projects.js';
+import { readProjectProfile } from '../../src/project-profile.js';
 
 describe('addItemToProject', () => {
   it('AC-3: resolves the issue and project node IDs before mutating, never a numeric ID', async () => {
@@ -186,5 +190,74 @@ describe('getProjectItems', () => {
 
     const result = await getProjectItems({ projectOwnerLogin: 'acme', projectNumber: 4 });
     expect(result.items).toEqual([{ id: 'PVTI_2', title: 'A draft idea', number: null, repo: null, fieldValues: [] }]);
+  });
+});
+
+describe('getProjectStatusProfile', () => {
+  const originalXdg = process.env.XDG_CONFIG_HOME;
+
+  afterEach(() => {
+    if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = originalXdg;
+  });
+
+  function isolate(): void {
+    process.env.XDG_CONFIG_HOME = mkdtempSync(join(tmpdir(), 'gdlc-status-profile-'));
+  }
+
+  it('fetches the Status field schema, computes missing stages, and persists to the XDG cache', async () => {
+    isolate();
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      expect(body.query).toContain('field(name: "Status")');
+      return {
+        node: {
+          field: {
+            id: 'PVTSSF_status',
+            name: 'Status',
+            options: [
+              { id: 'a', name: 'Todo' },
+              { id: 'b', name: 'In Progress' },
+              { id: 'c', name: 'In Review' },
+              { id: 'd', name: 'Blocked' },
+              { id: 'e', name: 'Done' },
+            ],
+          },
+        },
+      };
+    });
+
+    const profile = await getProjectStatusProfile({ projectOwnerLogin: 'acme', projectNumber: 4 });
+    expect(profile.statusField?.options).toHaveLength(5);
+    expect(profile.missingLifecycleStages).toEqual(['Backlog', 'Ready']);
+
+    const cached = readProjectProfile('acme', 4);
+    expect(cached).toEqual(profile);
+  });
+
+  it('caches null when the board has no Status field, without throwing', async () => {
+    isolate();
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      return { node: {} };
+    });
+
+    const profile = await getProjectStatusProfile({ projectOwnerLogin: 'acme', projectNumber: 4 });
+    expect(profile.statusField).toBeNull();
+    expect(profile.missingLifecycleStages).toEqual(['Backlog', 'Ready', 'In Progress', 'In Review', 'Done']);
+  });
+
+  it('serves a fresh cached profile without issuing another GraphQL call', async () => {
+    isolate();
+    let fieldQueryCalls = 0;
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      fieldQueryCalls += 1;
+      return { node: { field: { id: 'PVTSSF_status', name: 'Status', options: [{ id: 'a', name: 'Done' }] } } };
+    });
+
+    await getProjectStatusProfile({ projectOwnerLogin: 'acme', projectNumber: 4 });
+    await getProjectStatusProfile({ projectOwnerLogin: 'acme', projectNumber: 4 });
+    expect(fieldQueryCalls).toBe(1);
   });
 });

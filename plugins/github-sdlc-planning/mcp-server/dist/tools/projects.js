@@ -1,4 +1,5 @@
 import { githubGraphQL, assertProjectScope } from '../github-client.js';
+import { getOrRefreshProjectProfile } from '../project-profile.js';
 import { resolveIssueNodeId, resolveProjectNodeId } from '../resolvers.js';
 const ADD_ITEM_MUTATION = `
   mutation($projectId: ID!, $contentId: ID!) {
@@ -111,5 +112,44 @@ export async function getProjectItems(input, deps = {}) {
             })),
         })),
     };
+}
+const GET_STATUS_FIELD_SCHEMA_QUERY = `
+  query($projectId: ID!) {
+    node(id: $projectId) {
+      ... on ProjectV2 {
+        field(name: "Status") {
+          ... on ProjectV2SingleSelectField {
+            id
+            name
+            options { id name }
+          }
+        }
+      }
+    }
+  }
+`;
+/** The real GraphQL round trip a stale/cold `project-profile.ts` cache
+ * needs -- queries the project's `Status` single-select field by name and
+ * returns `null` when the board has no such field (an unusually-shaped
+ * board), never throws for that case. This is the ONLY place in this
+ * package that queries the Status field's option schema (id/name pairs);
+ * `getProjectItems` above queries item *field values* by name, a different
+ * concern entirely (it needs no schema, just whatever value each item
+ * already carries). */
+async function fetchStatusFieldSchema(projectOwnerLogin, projectNumber, projectOwnerType, deps) {
+    const projectId = await resolveProjectNodeId(projectOwnerLogin, projectNumber, projectOwnerType, deps);
+    const data = await githubGraphQL(GET_STATUS_FIELD_SCHEMA_QUERY, { projectId }, {}, deps);
+    return data.node?.field ?? null;
+}
+/** gdlc#199/#206: read the durable, XDG-cached Status-field profile for a
+ * project (see `project-profile.ts`), refreshing it via a live GraphQL
+ * query only when the cache is missing or past its TTL -- callers that
+ * need to know a board's REAL Status options (and which documented
+ * CLAUDE.md lifecycle stages have no matching option) should call this
+ * instead of re-querying the field schema themselves or assuming a
+ * uniform 5-stage lifecycle exists on every board. */
+export async function getProjectStatusProfile(input, deps = {}) {
+    const projectOwnerType = input.projectOwnerType ?? 'organization';
+    return getOrRefreshProjectProfile(input.projectOwnerLogin, input.projectNumber, () => fetchStatusFieldSchema(input.projectOwnerLogin, input.projectNumber, projectOwnerType, deps));
 }
 //# sourceMappingURL=projects.js.map

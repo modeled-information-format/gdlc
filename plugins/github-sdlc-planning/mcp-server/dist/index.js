@@ -38826,221 +38826,10 @@ async function listSubIssues(input, deps = {}) {
   };
 }
 
-// src/tools/projects.ts
-var ADD_ITEM_MUTATION = `
-  mutation($projectId: ID!, $contentId: ID!) {
-    addProjectV2ItemById(input: { projectId: $projectId, contentId: $contentId }) {
-      item { id }
-    }
-  }
-`;
-var ISSUE_PROJECT_ITEMS_QUERY = `
-  query($owner: String!, $repo: String!, $number: Int!) {
-    repository(owner: $owner, name: $repo) {
-      issue(number: $number) {
-        projectItems(first: 100) {
-          nodes { id project { id } }
-        }
-      }
-    }
-  }
-`;
-async function addItemToProject(input, deps = {}) {
-  await assertProjectScope(deps.fetchImpl);
-  const [contentId, projectId] = await Promise.all([
-    resolveIssueNodeId(input.owner, input.repo, input.issueNumber, deps),
-    resolveProjectNodeId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? "organization", deps)
-  ]);
-  const itemsData = await githubGraphQL(
-    ISSUE_PROJECT_ITEMS_QUERY,
-    { owner: input.owner, repo: input.repo, number: input.issueNumber },
-    {},
-    deps
-  );
-  const existingItem = (itemsData.repository?.issue?.projectItems?.nodes ?? []).find((n) => n.project.id === projectId);
-  if (existingItem) {
-    return { itemId: existingItem.id, existed: true };
-  }
-  const data = await githubGraphQL(ADD_ITEM_MUTATION, { projectId, contentId }, {}, deps);
-  return { itemId: data.addProjectV2ItemById.item.id, existed: false };
-}
-var UPDATE_FIELD_VALUE_MUTATION = `
-  mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: ProjectV2FieldValue!) {
-    updateProjectV2ItemFieldValue(input: { projectId: $projectId, itemId: $itemId, fieldId: $fieldId, value: $value }) {
-      projectV2Item { id }
-    }
-  }
-`;
-function toGraphQLFieldValue(value) {
-  switch (value.kind) {
-    case "text":
-      return { text: value.text };
-    case "number":
-      return { number: value.number };
-    case "date":
-      return { date: value.date };
-    case "singleSelect":
-      return { singleSelectOptionId: value.optionId };
-    case "iteration":
-      return { iterationId: value.iterationId };
-  }
-}
-async function setFieldValue(input, deps = {}) {
-  await assertProjectScope(deps.fetchImpl);
-  const projectId = await resolveProjectNodeId(
-    input.projectOwnerLogin,
-    input.projectNumber,
-    input.projectOwnerType ?? "organization",
-    deps
-  );
-  await githubGraphQL(
-    UPDATE_FIELD_VALUE_MUTATION,
-    { projectId, itemId: input.itemId, fieldId: input.fieldId, value: toGraphQLFieldValue(input.value) },
-    {},
-    deps
-  );
-  return { itemId: input.itemId };
-}
-var GET_PROJECT_ITEMS_QUERY = `
-  query($projectId: ID!) {
-    node(id: $projectId) {
-      ... on ProjectV2 {
-        items(first: 100) {
-          nodes {
-            id
-            content {
-              ... on Issue { title number repository { nameWithOwner } }
-              ... on PullRequest { title number repository { nameWithOwner } }
-              ... on DraftIssue { title }
-            }
-            fieldValues(first: 20) {
-              nodes {
-                ... on ProjectV2ItemFieldTextValue { text field { ... on ProjectV2FieldCommon { name } } }
-                ... on ProjectV2ItemFieldNumberValue { number field { ... on ProjectV2FieldCommon { name } } }
-                ... on ProjectV2ItemFieldDateValue { date field { ... on ProjectV2FieldCommon { name } } }
-                ... on ProjectV2ItemFieldSingleSelectValue { name field { ... on ProjectV2FieldCommon { name } } }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-`;
-async function getProjectItems(input, deps = {}) {
-  const projectId = await resolveProjectNodeId(
-    input.projectOwnerLogin,
-    input.projectNumber,
-    input.projectOwnerType ?? "organization",
-    deps
-  );
-  const data = await githubGraphQL(GET_PROJECT_ITEMS_QUERY, { projectId }, {}, deps);
-  const nodes = data.node?.items?.nodes ?? [];
-  return {
-    items: nodes.map((n) => ({
-      id: n.id,
-      title: n.content?.title ?? null,
-      number: n.content?.number ?? null,
-      repo: n.content?.repository?.nameWithOwner ?? null,
-      fieldValues: n.fieldValues.nodes.filter((fv) => fv.field?.name !== void 0).map((fv) => ({
-        fieldName: fv.field?.name,
-        text: fv.text,
-        number: fv.number,
-        date: fv.date,
-        optionName: fv.name
-      }))
-    }))
-  };
-}
-
-// src/tools/milestones.ts
-async function createMilestone(input, deps = {}) {
-  const body = { title: input.title };
-  if (input.description !== void 0) body.description = input.description;
-  if (input.dueOn !== void 0) body.due_on = input.dueOn;
-  if (input.state !== void 0) body.state = input.state;
-  const data = await githubRest(`/repos/${input.owner}/${input.repo}/milestones`, { method: "POST", body }, deps);
-  return { number: data.number, title: data.title, url: data.html_url, dueOn: data.due_on };
-}
-async function listMilestones(input, deps = {}) {
-  const state = input.state ?? "open";
-  const data = await githubRest(
-    `/repos/${input.owner}/${input.repo}/milestones?state=${state}`,
-    {},
-    deps
-  );
-  return data.map((m) => ({ number: m.number, title: m.title, url: m.html_url, dueOn: m.due_on }));
-}
-async function assignMilestone(input, deps = {}) {
-  await githubRest(
-    `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}`,
-    { method: "PATCH", body: { milestone: input.milestoneNumber } },
-    deps
-  );
-  return { issueNumber: input.issueNumber, milestoneNumber: input.milestoneNumber };
-}
-
-// src/tools/discussions.ts
-var DISCUSSION_CATEGORIES_QUERY = `
-  query($owner: String!, $repo: String!) {
-    repository(owner: $owner, name: $repo) {
-      discussionCategories(first: 25) { nodes { id name } }
-    }
-  }
-`;
-async function resolveCategoryId(owner, repo, categoryName, deps) {
-  const data = await githubGraphQL(DISCUSSION_CATEGORIES_QUERY, { owner, repo }, {}, deps);
-  const nodes = data.repository.discussionCategories.nodes;
-  const match = nodes.find((n) => n.name === categoryName);
-  if (!match) {
-    throw new PlanningError("github_api_error", `Discussion category "${categoryName}" not found in ${owner}/${repo}`, {
-      owner,
-      repo,
-      categoryName,
-      available: nodes.map((n) => n.name)
-    });
-  }
-  return match.id;
-}
-var CREATE_DISCUSSION_MUTATION = `
-  mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) {
-    createDiscussion(input: { repositoryId: $repositoryId, categoryId: $categoryId, title: $title, body: $body }) {
-      discussion { id number title url }
-    }
-  }
-`;
-async function createDiscussion(input, deps = {}) {
-  const [repositoryId, categoryId] = await Promise.all([
-    resolveRepositoryId(input.owner, input.repo, deps),
-    resolveCategoryId(input.owner, input.repo, input.categoryName, deps)
-  ]);
-  const data = await githubGraphQL(
-    CREATE_DISCUSSION_MUTATION,
-    { repositoryId, categoryId, title: input.title, body: input.body },
-    {},
-    deps
-  );
-  return data.createDiscussion.discussion;
-}
-var LIST_DISCUSSIONS_QUERY = `
-  query($owner: String!, $repo: String!) {
-    repository(owner: $owner, name: $repo) {
-      discussions(first: 50) {
-        nodes { id number title url category { name } }
-      }
-    }
-  }
-`;
-async function listDiscussions(input, deps = {}) {
-  const data = await githubGraphQL(LIST_DISCUSSIONS_QUERY, { owner: input.owner, repo: input.repo }, {}, deps);
-  return data.repository.discussions.nodes.map((n) => ({
-    id: n.id,
-    number: n.number,
-    title: n.title,
-    url: n.url,
-    category: n.category.name
-  }));
-}
+// src/project-profile.ts
+import { existsSync as existsSync2, mkdirSync, readFileSync as readFileSync2, renameSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { join as join2 } from "node:path";
 
 // src/config.ts
 var import_yaml = __toESM(require_dist2(), 1);
@@ -39177,6 +38966,344 @@ function isRepoAllowed(config2, owner, repo) {
   if (allowRepos?.includes(`${owner}/${repo}`)) return true;
   if (allowOrgs?.includes(owner)) return true;
   return false;
+}
+
+// src/project-profile.ts
+var DOCUMENTED_LIFECYCLE_STAGES = ["Backlog", "Ready", "In Progress", "In Review", "Done"];
+var DEFAULT_PROJECT_PROFILE_TTL_MS = 60 * 60 * 1e3;
+function computeMissingLifecycleStages(optionNames) {
+  return DOCUMENTED_LIFECYCLE_STAGES.filter((stage) => !optionNames.includes(stage));
+}
+var PROJECTS_SUBDIR = ["gdlc", "projects"];
+function sanitizePathSegment(segment) {
+  return segment.replace(/[\\/]/g, "_").replace(/^\.+/, "_");
+}
+function projectProfilePath(projectOwnerLogin, projectNumber, env = process.env) {
+  return join2(resolveGlobalConfigRoot(env), ...PROJECTS_SUBDIR, sanitizePathSegment(projectOwnerLogin), `${projectNumber}.json`);
+}
+var defaultFsDeps = {
+  existsFn: existsSync2,
+  readFn: (path) => readFileSync2(path, "utf8"),
+  writeFn: (path, contents) => writeFileSync(path, contents, "utf8"),
+  renameFn: renameSync,
+  mkdirFn: (path) => {
+    mkdirSync(path, { recursive: true });
+  }
+};
+function writeJsonAtomic(path, data, fns) {
+  fns.mkdirFn(dirnamePortable(path));
+  const tmpPath = `${path}.tmp-${process.pid}-${randomUUID()}`;
+  fns.writeFn(tmpPath, `${JSON.stringify(data, null, 2)}
+`);
+  fns.renameFn(tmpPath, path);
+}
+function dirnamePortable(path) {
+  const idx = path.lastIndexOf("/");
+  return idx === -1 ? "." : path.slice(0, idx);
+}
+function readJson(path, fns) {
+  if (!fns.existsFn(path)) return null;
+  try {
+    const parsed = JSON.parse(fns.readFn(path));
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+function isStatusFieldOption(value) {
+  return typeof value === "object" && value !== null && typeof value.id === "string" && typeof value.name === "string";
+}
+function validateProjectProfile(value) {
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value;
+  if (typeof candidate.updatedAt !== "string") return null;
+  if (!Array.isArray(candidate.missingLifecycleStages) || !candidate.missingLifecycleStages.every((s) => typeof s === "string")) {
+    return null;
+  }
+  if (candidate.statusField !== null) {
+    if (typeof candidate.statusField !== "object" || candidate.statusField === void 0) return null;
+    const field = candidate.statusField;
+    if (typeof field.id !== "string" || typeof field.name !== "string" || !Array.isArray(field.options)) return null;
+    if (!field.options.every(isStatusFieldOption)) return null;
+  }
+  return {
+    updatedAt: candidate.updatedAt,
+    statusField: candidate.statusField ?? null,
+    missingLifecycleStages: candidate.missingLifecycleStages
+  };
+}
+function readProjectProfile(projectOwnerLogin, projectNumber, env = process.env, fs = {}) {
+  const fns = { ...defaultFsDeps, ...fs };
+  return validateProjectProfile(readJson(projectProfilePath(projectOwnerLogin, projectNumber, env), fns));
+}
+function isProjectProfileFresh(profile, now = Date.now(), ttlMs = DEFAULT_PROJECT_PROFILE_TTL_MS) {
+  const updatedAtMs = Date.parse(profile.updatedAt);
+  if (Number.isNaN(updatedAtMs)) return false;
+  return now - updatedAtMs < ttlMs;
+}
+function writeProjectProfile(projectOwnerLogin, projectNumber, statusField, env = process.env, fs = {}, now = Date.now) {
+  const fns = { ...defaultFsDeps, ...fs };
+  const profile = {
+    updatedAt: new Date(now()).toISOString(),
+    statusField,
+    missingLifecycleStages: computeMissingLifecycleStages(statusField?.options.map((o) => o.name) ?? [])
+  };
+  writeJsonAtomic(projectProfilePath(projectOwnerLogin, projectNumber, env), profile, fns);
+  return profile;
+}
+async function getOrRefreshProjectProfile(projectOwnerLogin, projectNumber, fetchStatusField, options = {}) {
+  const env = options.env ?? process.env;
+  const fs = options.fs ?? {};
+  const now = options.now ?? Date.now;
+  const ttlMs = options.ttlMs ?? DEFAULT_PROJECT_PROFILE_TTL_MS;
+  const cached2 = readProjectProfile(projectOwnerLogin, projectNumber, env, fs);
+  if (cached2 !== null && isProjectProfileFresh(cached2, now(), ttlMs)) return cached2;
+  const statusField = await fetchStatusField();
+  return writeProjectProfile(projectOwnerLogin, projectNumber, statusField, env, fs, now);
+}
+
+// src/tools/projects.ts
+var ADD_ITEM_MUTATION = `
+  mutation($projectId: ID!, $contentId: ID!) {
+    addProjectV2ItemById(input: { projectId: $projectId, contentId: $contentId }) {
+      item { id }
+    }
+  }
+`;
+var ISSUE_PROJECT_ITEMS_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) {
+        projectItems(first: 100) {
+          nodes { id project { id } }
+        }
+      }
+    }
+  }
+`;
+async function addItemToProject(input, deps = {}) {
+  await assertProjectScope(deps.fetchImpl);
+  const [contentId, projectId] = await Promise.all([
+    resolveIssueNodeId(input.owner, input.repo, input.issueNumber, deps),
+    resolveProjectNodeId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? "organization", deps)
+  ]);
+  const itemsData = await githubGraphQL(
+    ISSUE_PROJECT_ITEMS_QUERY,
+    { owner: input.owner, repo: input.repo, number: input.issueNumber },
+    {},
+    deps
+  );
+  const existingItem = (itemsData.repository?.issue?.projectItems?.nodes ?? []).find((n) => n.project.id === projectId);
+  if (existingItem) {
+    return { itemId: existingItem.id, existed: true };
+  }
+  const data = await githubGraphQL(ADD_ITEM_MUTATION, { projectId, contentId }, {}, deps);
+  return { itemId: data.addProjectV2ItemById.item.id, existed: false };
+}
+var UPDATE_FIELD_VALUE_MUTATION = `
+  mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: ProjectV2FieldValue!) {
+    updateProjectV2ItemFieldValue(input: { projectId: $projectId, itemId: $itemId, fieldId: $fieldId, value: $value }) {
+      projectV2Item { id }
+    }
+  }
+`;
+function toGraphQLFieldValue(value) {
+  switch (value.kind) {
+    case "text":
+      return { text: value.text };
+    case "number":
+      return { number: value.number };
+    case "date":
+      return { date: value.date };
+    case "singleSelect":
+      return { singleSelectOptionId: value.optionId };
+    case "iteration":
+      return { iterationId: value.iterationId };
+  }
+}
+async function setFieldValue(input, deps = {}) {
+  await assertProjectScope(deps.fetchImpl);
+  const projectId = await resolveProjectNodeId(
+    input.projectOwnerLogin,
+    input.projectNumber,
+    input.projectOwnerType ?? "organization",
+    deps
+  );
+  await githubGraphQL(
+    UPDATE_FIELD_VALUE_MUTATION,
+    { projectId, itemId: input.itemId, fieldId: input.fieldId, value: toGraphQLFieldValue(input.value) },
+    {},
+    deps
+  );
+  return { itemId: input.itemId };
+}
+var GET_PROJECT_ITEMS_QUERY = `
+  query($projectId: ID!) {
+    node(id: $projectId) {
+      ... on ProjectV2 {
+        items(first: 100) {
+          nodes {
+            id
+            content {
+              ... on Issue { title number repository { nameWithOwner } }
+              ... on PullRequest { title number repository { nameWithOwner } }
+              ... on DraftIssue { title }
+            }
+            fieldValues(first: 20) {
+              nodes {
+                ... on ProjectV2ItemFieldTextValue { text field { ... on ProjectV2FieldCommon { name } } }
+                ... on ProjectV2ItemFieldNumberValue { number field { ... on ProjectV2FieldCommon { name } } }
+                ... on ProjectV2ItemFieldDateValue { date field { ... on ProjectV2FieldCommon { name } } }
+                ... on ProjectV2ItemFieldSingleSelectValue { name field { ... on ProjectV2FieldCommon { name } } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+async function getProjectItems(input, deps = {}) {
+  const projectId = await resolveProjectNodeId(
+    input.projectOwnerLogin,
+    input.projectNumber,
+    input.projectOwnerType ?? "organization",
+    deps
+  );
+  const data = await githubGraphQL(GET_PROJECT_ITEMS_QUERY, { projectId }, {}, deps);
+  const nodes = data.node?.items?.nodes ?? [];
+  return {
+    items: nodes.map((n) => ({
+      id: n.id,
+      title: n.content?.title ?? null,
+      number: n.content?.number ?? null,
+      repo: n.content?.repository?.nameWithOwner ?? null,
+      fieldValues: n.fieldValues.nodes.filter((fv) => fv.field?.name !== void 0).map((fv) => ({
+        fieldName: fv.field?.name,
+        text: fv.text,
+        number: fv.number,
+        date: fv.date,
+        optionName: fv.name
+      }))
+    }))
+  };
+}
+var GET_STATUS_FIELD_SCHEMA_QUERY = `
+  query($projectId: ID!) {
+    node(id: $projectId) {
+      ... on ProjectV2 {
+        field(name: "Status") {
+          ... on ProjectV2SingleSelectField {
+            id
+            name
+            options { id name }
+          }
+        }
+      }
+    }
+  }
+`;
+async function fetchStatusFieldSchema(projectOwnerLogin, projectNumber, projectOwnerType, deps) {
+  const projectId = await resolveProjectNodeId(projectOwnerLogin, projectNumber, projectOwnerType, deps);
+  const data = await githubGraphQL(GET_STATUS_FIELD_SCHEMA_QUERY, { projectId }, {}, deps);
+  return data.node?.field ?? null;
+}
+async function getProjectStatusProfile(input, deps = {}) {
+  const projectOwnerType = input.projectOwnerType ?? "organization";
+  return getOrRefreshProjectProfile(
+    input.projectOwnerLogin,
+    input.projectNumber,
+    () => fetchStatusFieldSchema(input.projectOwnerLogin, input.projectNumber, projectOwnerType, deps)
+  );
+}
+
+// src/tools/milestones.ts
+async function createMilestone(input, deps = {}) {
+  const body = { title: input.title };
+  if (input.description !== void 0) body.description = input.description;
+  if (input.dueOn !== void 0) body.due_on = input.dueOn;
+  if (input.state !== void 0) body.state = input.state;
+  const data = await githubRest(`/repos/${input.owner}/${input.repo}/milestones`, { method: "POST", body }, deps);
+  return { number: data.number, title: data.title, url: data.html_url, dueOn: data.due_on };
+}
+async function listMilestones(input, deps = {}) {
+  const state = input.state ?? "open";
+  const data = await githubRest(
+    `/repos/${input.owner}/${input.repo}/milestones?state=${state}`,
+    {},
+    deps
+  );
+  return data.map((m) => ({ number: m.number, title: m.title, url: m.html_url, dueOn: m.due_on }));
+}
+async function assignMilestone(input, deps = {}) {
+  await githubRest(
+    `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}`,
+    { method: "PATCH", body: { milestone: input.milestoneNumber } },
+    deps
+  );
+  return { issueNumber: input.issueNumber, milestoneNumber: input.milestoneNumber };
+}
+
+// src/tools/discussions.ts
+var DISCUSSION_CATEGORIES_QUERY = `
+  query($owner: String!, $repo: String!) {
+    repository(owner: $owner, name: $repo) {
+      discussionCategories(first: 25) { nodes { id name } }
+    }
+  }
+`;
+async function resolveCategoryId(owner, repo, categoryName, deps) {
+  const data = await githubGraphQL(DISCUSSION_CATEGORIES_QUERY, { owner, repo }, {}, deps);
+  const nodes = data.repository.discussionCategories.nodes;
+  const match = nodes.find((n) => n.name === categoryName);
+  if (!match) {
+    throw new PlanningError("github_api_error", `Discussion category "${categoryName}" not found in ${owner}/${repo}`, {
+      owner,
+      repo,
+      categoryName,
+      available: nodes.map((n) => n.name)
+    });
+  }
+  return match.id;
+}
+var CREATE_DISCUSSION_MUTATION = `
+  mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) {
+    createDiscussion(input: { repositoryId: $repositoryId, categoryId: $categoryId, title: $title, body: $body }) {
+      discussion { id number title url }
+    }
+  }
+`;
+async function createDiscussion(input, deps = {}) {
+  const [repositoryId, categoryId] = await Promise.all([
+    resolveRepositoryId(input.owner, input.repo, deps),
+    resolveCategoryId(input.owner, input.repo, input.categoryName, deps)
+  ]);
+  const data = await githubGraphQL(
+    CREATE_DISCUSSION_MUTATION,
+    { repositoryId, categoryId, title: input.title, body: input.body },
+    {},
+    deps
+  );
+  return data.createDiscussion.discussion;
+}
+var LIST_DISCUSSIONS_QUERY = `
+  query($owner: String!, $repo: String!) {
+    repository(owner: $owner, name: $repo) {
+      discussions(first: 50) {
+        nodes { id number title url category { name } }
+      }
+    }
+  }
+`;
+async function listDiscussions(input, deps = {}) {
+  const data = await githubGraphQL(LIST_DISCUSSIONS_QUERY, { owner: input.owner, repo: input.repo }, {}, deps);
+  return data.repository.discussions.nodes.map((n) => ({
+    id: n.id,
+    number: n.number,
+    title: n.title,
+    url: n.url,
+    category: n.category.name
+  }));
 }
 
 // src/tools/session.ts
@@ -39412,6 +39539,19 @@ server.registerTool(
     }
   },
   wrap(withRequiredBoardCoordinates(getProjectItems))
+);
+server.registerTool(
+  "get_project_status_profile",
+  {
+    title: "Get project Status-field profile",
+    description: "Read the durable, XDG-cached profile of a project's real Status field (option IDs/names) and which documented CLAUDE.md lifecycle stages (Backlog/Ready/In Progress/In Review/Done) have no matching board option, refreshing from a live GraphQL query only when the cache is missing or past its 1-hour TTL. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted.",
+    inputSchema: {
+      projectOwnerLogin: external_exports.string().optional(),
+      projectNumber: external_exports.number().int().optional(),
+      projectOwnerType: projectOwnerTypeSchema.optional()
+    }
+  },
+  wrap(withRequiredBoardCoordinates(getProjectStatusProfile))
 );
 server.registerTool(
   "create_milestone",

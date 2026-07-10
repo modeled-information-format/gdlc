@@ -1,4 +1,5 @@
 import { githubGraphQL, assertProjectScope, type GithubClientDeps } from '../github-client.js';
+import { getOrRefreshProjectProfile, type ProjectProfile } from '../project-profile.js';
 import { resolveIssueNodeId, resolveProjectNodeId, type ProjectOwnerType } from '../resolvers.js';
 
 export interface AddItemToProjectInput {
@@ -245,4 +246,68 @@ export async function getProjectItems(input: GetProjectItemsInput, deps: GithubC
         })),
     })),
   };
+}
+
+const GET_STATUS_FIELD_SCHEMA_QUERY = `
+  query($projectId: ID!) {
+    node(id: $projectId) {
+      ... on ProjectV2 {
+        field(name: "Status") {
+          ... on ProjectV2SingleSelectField {
+            id
+            name
+            options { id name }
+          }
+        }
+      }
+    }
+  }
+`;
+
+interface GetStatusFieldSchemaResponse {
+  node: {
+    field?: { id: string; name: string; options: Array<{ id: string; name: string }> } | null;
+  } | null;
+}
+
+export interface GetProjectStatusProfileInput {
+  projectOwnerLogin: string;
+  projectNumber: number;
+  projectOwnerType?: ProjectOwnerType;
+}
+
+/** The real GraphQL round trip a stale/cold `project-profile.ts` cache
+ * needs -- queries the project's `Status` single-select field by name and
+ * returns `null` when the board has no such field (an unusually-shaped
+ * board), never throws for that case. This is the ONLY place in this
+ * package that queries the Status field's option schema (id/name pairs);
+ * `getProjectItems` above queries item *field values* by name, a different
+ * concern entirely (it needs no schema, just whatever value each item
+ * already carries). */
+async function fetchStatusFieldSchema(
+  projectOwnerLogin: string,
+  projectNumber: number,
+  projectOwnerType: ProjectOwnerType,
+  deps: GithubClientDeps,
+): Promise<{ id: string; name: string; options: Array<{ id: string; name: string }> } | null> {
+  const projectId = await resolveProjectNodeId(projectOwnerLogin, projectNumber, projectOwnerType, deps);
+  const data = await githubGraphQL<GetStatusFieldSchemaResponse>(GET_STATUS_FIELD_SCHEMA_QUERY, { projectId }, {}, deps);
+  return data.node?.field ?? null;
+}
+
+/** gdlc#199/#206: read the durable, XDG-cached Status-field profile for a
+ * project (see `project-profile.ts`), refreshing it via a live GraphQL
+ * query only when the cache is missing or past its TTL -- callers that
+ * need to know a board's REAL Status options (and which documented
+ * CLAUDE.md lifecycle stages have no matching option) should call this
+ * instead of re-querying the field schema themselves or assuming a
+ * uniform 5-stage lifecycle exists on every board. */
+export async function getProjectStatusProfile(
+  input: GetProjectStatusProfileInput,
+  deps: GithubClientDeps = {},
+): Promise<ProjectProfile> {
+  const projectOwnerType = input.projectOwnerType ?? 'organization';
+  return getOrRefreshProjectProfile(input.projectOwnerLogin, input.projectNumber, () =>
+    fetchStatusFieldSchema(input.projectOwnerLogin, input.projectNumber, projectOwnerType, deps),
+  );
 }
