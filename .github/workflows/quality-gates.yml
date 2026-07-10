@@ -112,7 +112,7 @@ jobs:
       security-events: write
       actions: read
     uses: >-
-      modeled-information-format/.github/.github/workflows/reusable-semgrep.yml@7c56346c4bc47b15f08d44889116486583a1a7ac
+      modeled-information-format/.github/.github/workflows/reusable-semgrep.yml@eb961149b0cbdb2b5b839c2ea85c14a52d830216
     with:
       directory: .
   secrets:
