@@ -16,21 +16,21 @@
  */
 import { existsSync, mkdirSync, readFileSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+// Code-review finding: this module previously re-implemented
+// sanitizeSessionId verbatim even though hygiene-scratch.mjs, in this same
+// lib/ directory, already exports it -- a pure, side-effect-free sanitizer
+// with no dependency on the hygiene family's own scratch-stream format, so
+// there's no reason (unlike the storage/data itself, which deliberately
+// stays separate -- see the top-of-file doc comment) not to share it.
+// Imported (not just re-exported) since sessionPrsFilePath below calls it
+// directly; re-exported too so existing callers of this module keep
+// working unchanged.
+import { sanitizeSessionId } from './hygiene-scratch.mjs';
+
+export { sanitizeSessionId };
 
 const SCRATCH_DIR_NAME = 'gdlc-session-prs';
-
-/** Session IDs are expected to be opaque identifiers, but this sanitizes
- * defensively before using one as a filename component -- same contract as
- * hygiene-scratch.mjs's sanitizeSessionId, re-implemented here rather than
- * imported (this file's own dependency-free, single-purpose design; the
- * two never need to agree on anything beyond "produce a safe filename
- * component"). */
-export function sanitizeSessionId(sessionId) {
-  const value = typeof sessionId === 'string' ? sessionId : '';
-  const cleaned = value.replace(/[^a-zA-Z0-9._-]/g, '_');
-  return cleaned === '' ? 'unknown-session' : cleaned;
-}
 
 export function sessionPrsFilePath(sessionId, baseDir = tmpdir()) {
   return join(baseDir, SCRATCH_DIR_NAME, `${sanitizeSessionId(sessionId)}.jsonl`);
@@ -47,7 +47,7 @@ export function recordOpenedPr(path, ref, fns = {}) {
   const exists = fns.existsSync ?? existsSync;
   const append = fns.appendFileSync ?? appendFileSync;
   try {
-    const dir = path.slice(0, Math.max(path.lastIndexOf('/'), 0)) || '.';
+    const dir = dirname(path);
     if (dir && !exists(dir)) mkdir(dir, { recursive: true });
     append(path, `${JSON.stringify(ref)}\n`, 'utf8');
   } catch {

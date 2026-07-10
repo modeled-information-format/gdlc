@@ -26,23 +26,49 @@
  * over a scratch-file problem.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+// Code-review finding: this module previously re-implemented
+// sanitizeSessionId verbatim even though hygiene-scratch.mjs, in this same
+// lib/ directory, already exports it -- a pure, side-effect-free sanitizer
+// with no dependency on the hygiene family's own scratch-stream format, so
+// there's no reason (unlike the storage/data itself, which deliberately
+// stays separate -- see the top-of-file doc comment) not to share it.
+// Imported (not just re-exported) since activeIssuePath/promotedPath below
+// call it directly; re-exported too so existing callers of this module
+// keep working unchanged.
+import { sanitizeSessionId } from './hygiene-scratch.mjs';
+
+export { sanitizeSessionId };
 
 const SCRATCH_DIR_NAME = 'gdlc-first-edit';
 
-export function sanitizeSessionId(sessionId) {
-  const value = typeof sessionId === 'string' ? sessionId : '';
-  const cleaned = value.replace(/[^a-zA-Z0-9._-]/g, '_');
-  return cleaned === '' ? 'unknown-session' : cleaned;
+/** Code-review finding: scoping the active-issue/promoted state by
+ * session_id ALONE let one incidental update_issue call against an
+ * unrelated issue (or a second worktree active under the same session_id
+ * -- this workspace's own convention is one worktree per branch, several
+ * running in parallel) silently hijack "what's being worked on" for every
+ * other worktree sharing that session. Hashing `cwd` into the scratch
+ * filename gives each worktree its own active-issue slot, so an unrelated
+ * touch in worktree B can no longer overwrite what worktree A's next edit
+ * will read back. This does not fully solve an unrelated update_issue call
+ * made FROM THE SAME worktree (a genuinely harder problem -- nothing in a
+ * Write/Edit/MultiEdit call or a prior update_issue call distinguishes
+ * "housekeeping on a different issue" from "the issue I'm about to edit
+ * for"), which remains a known, accepted residual limitation, not a claim
+ * of full correctness. */
+function scopeSuffix(cwd) {
+  const value = typeof cwd === 'string' && cwd !== '' ? cwd : 'unknown-cwd';
+  return createHash('sha256').update(value).digest('hex').slice(0, 12);
 }
 
-export function activeIssuePath(sessionId, baseDir = tmpdir()) {
-  return join(baseDir, SCRATCH_DIR_NAME, `${sanitizeSessionId(sessionId)}-active.json`);
+export function activeIssuePath(sessionId, cwd, baseDir = tmpdir()) {
+  return join(baseDir, SCRATCH_DIR_NAME, `${sanitizeSessionId(sessionId)}-${scopeSuffix(cwd)}-active.json`);
 }
 
-export function promotedPath(sessionId, baseDir = tmpdir()) {
-  return join(baseDir, SCRATCH_DIR_NAME, `${sanitizeSessionId(sessionId)}-promoted.json`);
+export function promotedPath(sessionId, cwd, baseDir = tmpdir()) {
+  return join(baseDir, SCRATCH_DIR_NAME, `${sanitizeSessionId(sessionId)}-${scopeSuffix(cwd)}-promoted.json`);
 }
 
 function writeJson(path, data, fns = {}) {
@@ -50,7 +76,7 @@ function writeJson(path, data, fns = {}) {
   const exists = fns.existsSync ?? existsSync;
   const write = fns.writeFileSync ?? writeFileSync;
   try {
-    const dir = path.slice(0, Math.max(path.lastIndexOf('/'), 0)) || '.';
+    const dir = dirname(path);
     if (dir && !exists(dir)) mkdir(dir, { recursive: true });
     write(path, JSON.stringify(data), 'utf8');
   } catch {

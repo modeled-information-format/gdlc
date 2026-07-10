@@ -106,6 +106,22 @@ function normalizeMcpAction(action, toolInput) {
   return toolInput?.method === 'create' ? 'create_issue' : 'update_issue';
 }
 
+/** Code-review finding: extractTouch's `number` derivation had grown into
+ * an unreadable nested-ternary chain, one branch added per tool onboarded
+ * (four onboarding passes so far: the original two, then gdlc#201/#210's
+ * pullNumber, then gdlc#203/#212's three more actions). Returns the first
+ * argument that is actually a number, in the caller's own precedence
+ * order -- a flat, ordered list of candidates reads as "try these in
+ * order" instead of a pile of `cond ? a : cond ? b : ...`, and a future
+ * tool with yet another field name is one more argument, not one more
+ * nested branch inserted in exactly the right position. */
+function firstNumber(...candidates) {
+  for (const candidate of candidates) {
+    if (typeof candidate === 'number') return candidate;
+  }
+  return null;
+}
+
 /** `Closes #N` / `Fixes #N` / `Resolves #N` (any case, singular or plural
  * keyword) referencing a same-repo issue -- the same closing-keyword set
  * GitHub itself recognizes. Best-effort text scan over whatever the tool
@@ -345,14 +361,16 @@ export function extractTouch(input, fallbackOwnerRepo) {
   // not the newly-linked child) since neither generic fallback name
   // applies to it.
   const number =
-    action === 'add_sub_issue' ? (typeof toolInput?.parentNumber === 'number' ? toolInput.parentNumber : null)
-    : typeof toolInput?.number === 'number' ? toolInput.number
-    : typeof toolInput?.issue_number === 'number' ? toolInput.issue_number
-    : typeof normalizedOutput?.number === 'number' ? normalizedOutput.number
-    : typeof normalizedOutput?.issue_number === 'number' ? normalizedOutput.issue_number
-    : typeof toolInput?.pullNumber === 'number' ? toolInput.pullNumber
-    : typeof toolInput?.pull_number === 'number' ? toolInput.pull_number
-    : null;
+    action === 'add_sub_issue'
+      ? firstNumber(toolInput?.parentNumber)
+      : firstNumber(
+          toolInput?.number,
+          toolInput?.issue_number,
+          normalizedOutput?.number,
+          normalizedOutput?.issue_number,
+          toolInput?.pullNumber,
+          toolInput?.pull_number,
+        );
 
   let closesIssues = [];
   let droppedClosingIssues = [];
@@ -777,10 +795,14 @@ export async function checkSubIssueLinkage(touch, runGraphQL) {
 /** WHEN `sync_linked_issues_project_field` reports one or more linked
  * issues it could not find on the board, THEN surface it loudly instead of
  * letting the caller silently discard a signal the tool already computed.
- * gdlc#200 fixed the pagination bug that was the most likely cause of a
- * false `notFoundOnBoard` on this org's real board, but a genuinely-missing
- * item (never added, wrong project) still produces this same response
- * shape and is exactly what this check exists to catch. */
+ * gdlc#200 (this same Epic, an earlier Story) already fixed the pagination
+ * bug that was the most likely cause of a false `notFoundOnBoard` on this
+ * org's real board, so a genuinely-missing item (never added to the
+ * project, added to the wrong project, or removed after being linked) is
+ * now the far more likely explanation -- the finding text below reflects
+ * that, code-review finding: an earlier revision's wording still pointed
+ * at board size as the likely cause, steering readers toward a problem
+ * this same PR had already eliminated. */
 export function checkSyncNotFoundOnBoard(touch) {
   if (!touch || !touch.notFoundOnBoard || touch.notFoundOnBoard.length === 0) {
     return { resolved: true, findings: [] };
@@ -791,7 +813,7 @@ export function checkSyncNotFoundOnBoard(touch) {
     resolved: true,
     findings: [
       `sync_linked_issues_project_field${where} could not find ${refs} on the board -- verify these issues are actually ` +
-        `on the target project, or that the board has fewer than 100+N items where N is these issues' position.`,
+        `on the target project (not just some project), or were not accidentally removed from it after being linked.`,
     ],
   };
 }

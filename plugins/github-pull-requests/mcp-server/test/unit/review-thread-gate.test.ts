@@ -44,6 +44,18 @@ describe('isWorktreeOrBranchCreation', () => {
     expect(isWorktreeOrBranchCreation('Bash', { command: 'git branch' })).toBe(false);
   });
 
+  it('code-review finding: does NOT flag git branch --show-current -- the exact command this workspace\'s own CLAUDE.local.md mandates running before every phase', () => {
+    expect(isWorktreeOrBranchCreation('Bash', { command: 'git branch --show-current' })).toBe(false);
+  });
+
+  it('code-review finding: does NOT flag other read-only git branch flags (-a, -r, -vv, -m, --set-upstream-to)', () => {
+    expect(isWorktreeOrBranchCreation('Bash', { command: 'git branch -a' })).toBe(false);
+    expect(isWorktreeOrBranchCreation('Bash', { command: 'git branch -r' })).toBe(false);
+    expect(isWorktreeOrBranchCreation('Bash', { command: 'git branch -vv' })).toBe(false);
+    expect(isWorktreeOrBranchCreation('Bash', { command: 'git branch -m old-name new-name' })).toBe(false);
+    expect(isWorktreeOrBranchCreation('Bash', { command: 'git branch --set-upstream-to=origin/main' })).toBe(false);
+  });
+
   it('does not flag an unrelated Bash command', () => {
     expect(isWorktreeOrBranchCreation('Bash', { command: 'npm test' })).toBe(false);
   });
@@ -98,6 +110,30 @@ describe('checkUnresolvedReviewThreads', () => {
       runGraphQL,
     );
     expect(result).toEqual([{ owner: 'acme', repo: 'widgets', pullNumber: 2, unresolved: 1 }]);
+  });
+
+  it('code-review finding: queries every tracked PR concurrently, not one at a time', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const runGraphQL = async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      inFlight -= 1;
+      return { repository: { pullRequest: { reviewThreads: { nodes: [] } } } };
+    };
+    await checkUnresolvedReviewThreads(
+      [
+        { owner: 'acme', repo: 'widgets', pullNumber: 1 },
+        { owner: 'acme', repo: 'widgets', pullNumber: 2 },
+        { owner: 'acme', repo: 'widgets', pullNumber: 3 },
+      ],
+      runGraphQL,
+    );
+    // A sequential for-of/await loop would never have more than 1 in
+    // flight at once; concurrent dispatch via Promise.allSettled lets all
+    // 3 overlap.
+    expect(maxInFlight).toBe(3);
   });
 
   it('fails open per-ref: a GraphQL error for one PR never suppresses a finding for another', async () => {

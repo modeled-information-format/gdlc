@@ -16,15 +16,23 @@
 
 /** Matches the Bash commands that create a new local branch or worktree --
  * `git worktree add [...] -b <branch>`, `git checkout -b <branch>`,
- * `git switch -c <branch>`, and a plain `git branch <name>` (creating,
- * not `git branch -d`/`-D`/`--list`/no-args). Deliberately does NOT match
- * `git worktree add <path> <existing-ref>` (checking out an existing
- * branch into a new worktree creates no new branch, and this gate's whole
- * concern is starting NEW work) -- see `EnterWorktree`'s own convention of
- * always pairing worktree creation with a new branch, which is exactly the
- * shape this regex requires. */
+ * `git switch -c <branch>`, and a plain `git branch <name>` (creating).
+ * Code-review finding: an earlier revision only excluded `git branch
+ * -d`/`-D`/`--list`, which still misclassified every OTHER read-only
+ * invocation as a creation -- `-a`, `-r`, `-v`/`-vv`, `--show-current`
+ * (the exact command this workspace's own CLAUDE.local.md instructs
+ * running before every phase), `-m`/`-M`/`--move`, `--set-upstream-to`,
+ * etc. `git branch` only ever creates when its first argument is a bare
+ * name with no leading `-` at all -- every flag form is excluded by the
+ * general `(?!-)` lookahead below instead of enumerating each one, so a
+ * future git-branch flag never needs a matching update here. Deliberately
+ * does NOT match `git worktree add <path> <existing-ref>` (checking out
+ * an existing branch into a new worktree creates no new branch, and this
+ * gate's whole concern is starting NEW work) -- see `EnterWorktree`'s own
+ * convention of always pairing worktree creation with a new branch, which
+ * is exactly the shape this regex requires. */
 export const BRANCH_OR_WORKTREE_CREATE_RE =
-  /^\s*git\s+(?:worktree\s+add\b.*\s-b\s+\S+|checkout\s+-b\s+\S+|switch\s+-c\s+\S+|branch\s+(?!-[dD]\b|--list\b)\S+)/;
+  /^\s*git\s+(?:worktree\s+add\b.*\s-b\s+\S+|checkout\s+-b\s+\S+|switch\s+-c\s+\S+|branch\s+(?!-)\S+)/;
 
 /** `EnterWorktree` is a distinct Claude Code tool (not a Bash invocation)
  * that always creates a worktree, and per its own convention, a branch
@@ -52,20 +60,25 @@ export const REVIEW_THREADS_QUERY = `
  * count). Fails open PER REF -- a GraphQL error for one PR (deleted repo,
  * revoked access, transient failure) never suppresses a real finding for
  * another; matches every other check in this hook family's "never guess,
- * never let one failure hide another's finding" contract. */
+ * never let one failure hide another's finding" contract.
+ *
+ * Code-review finding: queries every tracked PR CONCURRENTLY
+ * (Promise.allSettled), not one at a time -- a session that opened N PRs
+ * previously paid N sequential round trips on this PreToolUse gate before
+ * any worktree/branch-creation command was allowed to proceed. The
+ * production runGraphQL (review-thread-gate.mjs's entrypoint) is itself
+ * async (execFile, not execFileSync) specifically so these can genuinely
+ * overlap rather than one blocking subprocess call serializing them. */
 export async function checkUnresolvedReviewThreads(prs, runGraphQL) {
-  const flagged = [];
-  for (const ref of prs) {
-    try {
+  const results = await Promise.allSettled(
+    prs.map(async (ref) => {
       const data = await runGraphQL(REVIEW_THREADS_QUERY, { owner: ref.owner, repo: ref.repo, number: ref.pullNumber });
       const nodes = data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
       const unresolved = nodes.filter((n) => !n.isResolved).length;
-      if (unresolved > 0) flagged.push({ ...ref, unresolved });
-    } catch {
-      // fail open for this ref only; other refs are unaffected
-    }
-  }
-  return flagged;
+      return unresolved > 0 ? { ...ref, unresolved } : null;
+    }),
+  );
+  return results.filter((r) => r.status === 'fulfilled' && r.value !== null).map((r) => r.value);
 }
 
 export function buildGateReason(flagged) {

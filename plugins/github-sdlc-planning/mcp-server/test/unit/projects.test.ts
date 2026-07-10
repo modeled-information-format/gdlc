@@ -227,6 +227,23 @@ describe('getProjectItems', () => {
     // The specific item that would previously be silently dropped:
     expect(result.items.find((i) => i.number === 123)).toBeDefined();
   });
+
+  it('code-review finding: throws rather than looping forever when hasNextPage never becomes false', async () => {
+    // Simulates a malformed/buggy GraphQL response (a stale or repeating
+    // endCursor). Without a page cap, this would hang the calling MCP tool
+    // and burn API rate limit indefinitely instead of surfacing an error.
+    let calls = 0;
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      calls += 1;
+      return { node: { items: { pageInfo: { hasNextPage: true, endCursor: `CURSOR_${calls}` }, nodes: [] } } };
+    });
+
+    await expect(getProjectItems({ projectOwnerLogin: 'acme', projectNumber: 4 })).rejects.toThrow(/exceeded \d+ pages/);
+    // One call per page, up to the cap -- proves it actually stopped
+    // rather than looping past it.
+    expect(calls).toBe(1000);
+  });
 });
 
 describe('getProjectStatusProfile', () => {

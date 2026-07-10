@@ -39165,10 +39165,11 @@ var GET_PROJECT_ITEMS_QUERY = `
     }
   }
 `;
+var MAX_PAGES = 1e3;
 async function fetchAllProjectItemNodes(projectId, deps) {
   const allNodes = [];
   let after = null;
-  for (; ; ) {
+  for (let page = 0; page < MAX_PAGES; page += 1) {
     const data = await githubGraphQL(
       GET_PROJECT_ITEMS_QUERY,
       { projectId, after },
@@ -39177,10 +39178,10 @@ async function fetchAllProjectItemNodes(projectId, deps) {
     );
     const items = data.node?.items;
     allNodes.push(...items?.nodes ?? []);
-    if (!items?.pageInfo.hasNextPage) break;
+    if (!items?.pageInfo.hasNextPage) return allNodes;
     after = items.pageInfo.endCursor;
   }
-  return allNodes;
+  throw new Error(`fetchAllProjectItemNodes: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);
 }
 async function getProjectItems(input, deps = {}) {
   const projectId = await resolveProjectNodeId(

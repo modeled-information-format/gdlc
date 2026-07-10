@@ -99,19 +99,29 @@ const GET_PROJECT_ITEMS_QUERY = `
  * `notFoundOnBoard`). Loops on `hasNextPage`/`endCursor` until GitHub
  * reports no further page, aggregating every page's nodes before this
  * function's one caller (`getProjectItems`) maps them -- callers see the
- * same flat node list they always did, just complete. */
+ * same flat node list they always did, just complete.
+ *
+ * Code-review finding: capped at `MAX_PAGES` (100,000 items at 100/page --
+ * far beyond any realistic Projects v2 board) rather than looping
+ * unbounded. Without this, a malformed or buggy GraphQL response (a stale
+ * or repeating `endCursor` with `hasNextPage` never flipping false) would
+ * hang the calling MCP tool and burn API rate limit indefinitely. Throws
+ * loudly on the cap rather than silently truncating -- silent truncation
+ * would reintroduce exactly the "items silently missing from the caller's
+ * view" bug this pagination fix exists to eliminate. */
+const MAX_PAGES = 1000;
 async function fetchAllProjectItemNodes(projectId, deps) {
     const allNodes = [];
     let after = null;
-    for (;;) {
+    for (let page = 0; page < MAX_PAGES; page += 1) {
         const data = await githubGraphQL(GET_PROJECT_ITEMS_QUERY, { projectId, after }, {}, deps);
         const items = data.node?.items;
         allNodes.push(...(items?.nodes ?? []));
         if (!items?.pageInfo.hasNextPage)
-            break;
+            return allNodes;
         after = items.pageInfo.endCursor;
     }
-    return allNodes;
+    throw new Error(`fetchAllProjectItemNodes: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);
 }
 export async function getProjectItems(input, deps = {}) {
     const projectId = await resolveProjectNodeId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? 'organization', deps);

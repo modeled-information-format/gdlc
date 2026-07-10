@@ -32,13 +32,28 @@ describe('sanitizeSessionId', () => {
 });
 
 describe('activeIssuePath / promotedPath', () => {
-  it('produces distinct paths for the same session', () => {
-    expect(activeIssuePath('abc', '/tmp/x')).not.toBe(promotedPath('abc', '/tmp/x'));
+  it('produces distinct paths for the same session and cwd', () => {
+    expect(activeIssuePath('abc', '/worktrees/x', '/tmp/x')).not.toBe(promotedPath('abc', '/worktrees/x', '/tmp/x'));
   });
 
   it('are namespaced under gdlc-first-edit', () => {
-    expect(activeIssuePath('abc', '/tmp/x')).toBe(join('/tmp/x', 'gdlc-first-edit', 'abc-active.json'));
-    expect(promotedPath('abc', '/tmp/x')).toBe(join('/tmp/x', 'gdlc-first-edit', 'abc-promoted.json'));
+    expect(activeIssuePath('abc', '/worktrees/x', '/tmp/x')).toMatch(new RegExp(`^${join('/tmp/x', 'gdlc-first-edit', 'abc-')}[0-9a-f]{12}-active\\.json$`));
+    expect(promotedPath('abc', '/worktrees/x', '/tmp/x')).toMatch(new RegExp(`^${join('/tmp/x', 'gdlc-first-edit', 'abc-')}[0-9a-f]{12}-promoted\\.json$`));
+  });
+
+  it('code-review finding: scopes by cwd too, so two worktrees sharing one session_id get distinct active-issue slots', () => {
+    const pathA = activeIssuePath('abc', '/worktrees/repo-story-a', '/tmp/x');
+    const pathB = activeIssuePath('abc', '/worktrees/repo-story-b', '/tmp/x');
+    expect(pathA).not.toBe(pathB);
+  });
+
+  it('is deterministic for the same session_id/cwd pair', () => {
+    expect(activeIssuePath('abc', '/worktrees/x', '/tmp/x')).toBe(activeIssuePath('abc', '/worktrees/x', '/tmp/x'));
+  });
+
+  it('falls back to a stable value for a missing/non-string cwd rather than throwing', () => {
+    expect(() => activeIssuePath('abc', undefined, '/tmp/x')).not.toThrow();
+    expect(activeIssuePath('abc', undefined, '/tmp/x')).toBe(activeIssuePath('abc', undefined, '/tmp/x'));
   });
 });
 
