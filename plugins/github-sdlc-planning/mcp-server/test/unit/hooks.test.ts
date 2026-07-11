@@ -39,6 +39,22 @@ function withSkipMutationConfirmPack(root: string): NodeJS.ProcessEnv {
   return { ...process.env, XDG_CONFIG_HOME: path.join(root, 'no-such-global') };
 }
 
+// gdlc#227: a fresh tmpdir with no `.config/gdlc/config.yml` of its own,
+// and XDG_CONFIG_HOME pointed at a nonexistent global path within it, so
+// confirm-mutation.mjs's upward search can't accidentally climb into (and
+// pick up a real `packs:` override from) whatever ancestor directories the
+// machine actually running these tests happens to have -- e.g. this very
+// repo's own `.config/gdlc/config.yml`, once it legitimately defines
+// `packs: skipMutationConfirm: true` (see PR #229). Every test below that
+// isn't itself testing the skipMutationConfirm pack needs this so it
+// observes confirm-mutation.mjs's fail-closed default (still asks)
+// regardless of the host machine's real directory tree, not just on
+// machines/CI checkouts with no such ancestor file.
+function isolatedNoConfigEnv(): { cwd: string; env: NodeJS.ProcessEnv } {
+  const root = mkdtempSync(path.join(tmpdir(), 'confirm-mutation-isolated-'));
+  return { cwd: root, env: { ...process.env, XDG_CONFIG_HOME: path.join(root, 'no-such-global') } };
+}
+
 describe('validate-mif.mjs (AC-9)', () => {
   it('emits a correction instruction when the tool output body is not MIF-conformant', () => {
     const result = runHook('validate-mif.mjs', {
@@ -86,10 +102,14 @@ describe('validate-mif.mjs (AC-9)', () => {
 
 describe('confirm-mutation.mjs', () => {
   it('asks for confirmation before a board-mutating tool call, with a legible reason', () => {
-    const result = runHook('confirm-mutation.mjs', {
-      tool_name: 'mcp__github-sdlc-planning__create_issue',
-      tool_input: { owner: 'acme', repo: 'widgets', title: 'Ship it' },
-    });
+    const result = runHook(
+      'confirm-mutation.mjs',
+      {
+        tool_name: 'mcp__github-sdlc-planning__create_issue',
+        tool_input: { owner: 'acme', repo: 'widgets', title: 'Ship it' },
+      },
+      isolatedNoConfigEnv(),
+    );
     expect(result.hookSpecificOutput?.hookEventName).toBe('PreToolUse');
     expect(result.hookSpecificOutput?.permissionDecision).toBe('ask');
     expect(result.hookSpecificOutput?.permissionDecisionReason).toContain('Ship it');
@@ -101,36 +121,52 @@ describe('confirm-mutation.mjs', () => {
   });
 
   it('labels an omitted owner/repo as a config default, not a bare "?", when the caller relies on destination.repo (issue #83)', () => {
-    const result = runHook('confirm-mutation.mjs', {
-      tool_name: 'mcp__github-sdlc-planning__create_issue',
-      tool_input: { title: 'Ship it' },
-    });
+    const result = runHook(
+      'confirm-mutation.mjs',
+      {
+        tool_name: 'mcp__github-sdlc-planning__create_issue',
+        tool_input: { title: 'Ship it' },
+      },
+      isolatedNoConfigEnv(),
+    );
     expect(result.hookSpecificOutput?.permissionDecisionReason).toContain('config default');
     expect(result.hookSpecificOutput?.permissionDecisionReason).not.toContain('?');
   });
 
   it('labels an omitted projectOwnerLogin/projectNumber as a config default when the caller relies on the board mapping', () => {
-    const result = runHook('confirm-mutation.mjs', {
-      tool_name: 'mcp__github-sdlc-planning__add_item_to_project',
-      tool_input: { owner: 'acme', repo: 'widgets', issueNumber: 5 },
-    });
+    const result = runHook(
+      'confirm-mutation.mjs',
+      {
+        tool_name: 'mcp__github-sdlc-planning__add_item_to_project',
+        tool_input: { owner: 'acme', repo: 'widgets', issueNumber: 5 },
+      },
+      isolatedNoConfigEnv(),
+    );
     expect(result.hookSpecificOutput?.permissionDecisionReason).toContain('config default');
   });
 
   it('labels a partial owner/repo (one given, one omitted) as invalid, not a config default, since that call is guaranteed to throw', () => {
-    const result = runHook('confirm-mutation.mjs', {
-      tool_name: 'mcp__github-sdlc-planning__create_issue',
-      tool_input: { owner: 'acme', title: 'Ship it' },
-    });
+    const result = runHook(
+      'confirm-mutation.mjs',
+      {
+        tool_name: 'mcp__github-sdlc-planning__create_issue',
+        tool_input: { owner: 'acme', title: 'Ship it' },
+      },
+      isolatedNoConfigEnv(),
+    );
     expect(result.hookSpecificOutput?.permissionDecisionReason).toContain('invalid');
     expect(result.hookSpecificOutput?.permissionDecisionReason).not.toContain('config default');
   });
 
   it('labels a partial projectOwnerLogin/projectNumber as invalid, not a config default', () => {
-    const result = runHook('confirm-mutation.mjs', {
-      tool_name: 'mcp__github-sdlc-planning__add_item_to_project',
-      tool_input: { owner: 'acme', repo: 'widgets', issueNumber: 5, projectNumber: 3 },
-    });
+    const result = runHook(
+      'confirm-mutation.mjs',
+      {
+        tool_name: 'mcp__github-sdlc-planning__add_item_to_project',
+        tool_input: { owner: 'acme', repo: 'widgets', issueNumber: 5, projectNumber: 3 },
+      },
+      isolatedNoConfigEnv(),
+    );
     expect(result.hookSpecificOutput?.permissionDecisionReason).toContain('invalid');
     expect(result.hookSpecificOutput?.permissionDecisionReason).not.toContain('config default');
   });
@@ -138,10 +174,14 @@ describe('confirm-mutation.mjs', () => {
   it('recognizes the plugin-qualified tool-name form Claude Code uses for a marketplace-installed MCP server', () => {
     // Regression test: see the matching case in in-progress-hook.test.ts
     // for the underlying bug this guards against.
-    const result = runHook('confirm-mutation.mjs', {
-      tool_name: 'mcp__plugin_github-sdlc-planning_github-sdlc-planning__create_issue',
-      tool_input: { owner: 'acme', repo: 'widgets', title: 'Ship it' },
-    });
+    const result = runHook(
+      'confirm-mutation.mjs',
+      {
+        tool_name: 'mcp__plugin_github-sdlc-planning_github-sdlc-planning__create_issue',
+        tool_input: { owner: 'acme', repo: 'widgets', title: 'Ship it' },
+      },
+      isolatedNoConfigEnv(),
+    );
     expect(result.hookSpecificOutput?.hookEventName).toBe('PreToolUse');
     expect(result.hookSpecificOutput?.permissionDecision).toBe('ask');
     expect(result.hookSpecificOutput?.permissionDecisionReason).toContain('Ship it');
