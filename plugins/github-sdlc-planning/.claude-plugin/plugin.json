@@ -20,6 +20,6 @@
     "planning"
   ],
   "dependencies": [
-    { "name": "mif-docs", "marketplace": "modeled-information-format", "version": "^0.3.1" }
+    { "name": "mif-docs", "marketplace": "modeled-information-format", "version": ">=0.3.1 <1.0.0" }
   ]
 }
