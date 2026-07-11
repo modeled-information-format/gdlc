@@ -34,25 +34,40 @@ function resolveGlobalGdlcConfigRoot(env = process.env) {
   return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== '' ? env.XDG_CONFIG_HOME : join(homedir(), '.config');
 }
 
-/** Same upward search as `in-progress.mjs`'s `findGdlcProjectRoot` and
- * `settings.mjs`'s identical function in the sibling plugins. */
-function findGdlcProjectRoot(startDir, existsFn = existsSync, ceiling = homedir()) {
+/** ADR-0008: the ancestor-directory sequence `findAllGdlcProjectConfigPaths`
+ * walks. Yields `startDir` itself first, then each ancestor toward
+ * `ceiling` (exclusive), nearest first. */
+function* walkGdlcAncestorDirs(startDir, ceiling) {
   const ceilingResolved = resolvePath(ceiling);
   let dir = resolvePath(startDir);
   for (;;) {
-    if (dir === ceilingResolved) return null;
-    if (existsFn(resolveGdlcConfigPath(join(dir, '.config')))) return dir;
+    if (dir === ceilingResolved) return;
+    yield dir;
     const parent = dirname(dir);
-    if (parent === dir) return null;
+    if (parent === dir) return;
     dir = parent;
   }
 }
 
-function resolveGdlcProjectConfigPath(startDir, existsFn, env) {
-  const root = findGdlcProjectRoot(startDir, existsFn);
-  if (root === null) return null;
-  const path = resolveGdlcConfigPath(join(root, '.config'));
-  return path === resolveGdlcConfigPath(resolveGlobalGdlcConfigRoot(env)) ? null : path;
+/** ADR-0008: every ancestor of `startDir` (up to `ceiling`, exclusive)
+ * whose `.config/gdlc/config.yml` exists, nearest first, EXCLUDING (but not
+ * stopping the climb at) a candidate that collides with the global layer's
+ * own resolved path -- skip-and-continue instead of stop-and-return-null,
+ * so a legitimate further ancestor is never hidden behind an accidental
+ * collision. Existence-only: never reads file content, so
+ * `readPrLifecycleRaw` below controls exactly when/how each candidate is
+ * actually parsed, using the real `resolveLayerPrLifecycle` presence check
+ * -- not a separate synthetic predicate. Same upward search as
+ * `in-progress.mjs`'s `findAllGdlcProjectConfigPaths` and `settings.mjs`'s
+ * identical function in the sibling plugins. Exported for tests. */
+export function findAllGdlcProjectConfigPaths(startDir, existsFn = existsSync, env = process.env, ceiling = homedir()) {
+  const globalPath = resolveGdlcConfigPath(resolveGlobalGdlcConfigRoot(env));
+  const paths = [];
+  for (const dir of walkGdlcAncestorDirs(startDir, ceiling)) {
+    const candidate = resolveGdlcConfigPath(join(dir, '.config'));
+    if (existsFn(candidate) && candidate !== globalPath) paths.push(candidate);
+  }
+  return paths;
 }
 
 /** Same quote/comment handling as `in-progress.mjs`'s `extractScalarValue`. */
@@ -129,12 +144,17 @@ function resolveLayerPrLifecycle(path) {
   return Object.keys(raw).length > 0 ? { present: true, raw } : { present: false, raw: {} };
 }
 
-/** Project layer replaces global wholly when present (ADR-0004's
- * per-section cascade), same as every other section. Exported for tests. */
+/** The NEAREST ancestor layer whose `prLifecycle:` section is actually
+ * present (ADR-0004's per-section cascade, ADR-0008's N-ancestor extension)
+ * replaces the global one wholly -- it does not fall through to the global
+ * layer just because a NEARER ancestor's file doesn't happen to define
+ * `prLifecycle:` at all (or defines it with zero valid keys), only once NO
+ * ancestor does. Exported for tests. */
 export function readPrLifecycleRaw(cwd = process.cwd(), env = process.env, existsFn = existsSync) {
-  const projectPath = resolveGdlcProjectConfigPath(cwd, existsFn, env);
-  const project = projectPath === null ? { present: false, raw: {} } : resolveLayerPrLifecycle(projectPath);
-  if (project.present) return project.raw;
+  for (const path of findAllGdlcProjectConfigPaths(cwd, existsFn, env)) {
+    const layer = resolveLayerPrLifecycle(path);
+    if (layer.present) return layer.raw;
+  }
 
   const global = resolveLayerPrLifecycle(resolveGdlcConfigPath(resolveGlobalGdlcConfigRoot(env)));
   return global.raw;
