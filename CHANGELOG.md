@@ -5,6 +5,57 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-07-11
+
+### Added
+
+- `github-sdlc-planning`: `withOptionalBoardCoordinates` (used by
+  `get_session_context`) now writes a one-time-per-process stderr
+  diagnostic naming exactly what to configure when board resolution is a
+  no-op, instead of falling back completely silently.
+
+### Fixed
+
+- Real fix for a config-cascade shadowing bug (Epic #227): the layered
+  `.config/gdlc/config.yml` resolver previously stopped its upward
+  ancestor search at the first directory with *any* config file, even if
+  that file didn't define the section being resolved — silently
+  shadowing a real ancestor override (e.g. a nested repo's own
+  `board:`-only config hiding a workspace-root ancestor's `packs:`
+  override) and falling through to the wrong layer instead. Now climbs
+  every ancestor up to `$HOME`, resolving each section (`board:`/
+  `packs:`/`prLifecycle:`) independently from the nearest ancestor that
+  actually, validly defines it — using each section's own real
+  parse/validate function as the sole presence oracle, never a separate
+  synthetic predicate. Documented in [ADR-0008](docs/decisions/adr-0008-project-config-n-ancestor-resolution.md),
+  amending ADR-0004/0005. Fixed identically across `github-sdlc-planning`
+  (`config.ts`, `in-progress.mjs`, `settings.mjs`), `github-bug-capture`
+  (`settings.mjs`), and `github-pull-requests` (`pr-lifecycle-config.mjs`).
+- `github-sdlc-planning`/`github-bug-capture`: caught and fixed a related,
+  previously-undetected bug via the above's regression tests —
+  `resolveLayerPacks` was treating a `packs:` section's header line
+  existing as "present," even with zero successfully-parsed keys (e.g. a
+  comment-only body), instead of requiring at least one valid key. Diverged
+  from `github-pull-requests`' `prLifecycle:` reader, which had already
+  been fixed for the same class of bug once before.
+- `github-sdlc-planning`: `config.ts`'s `normalizeConfig` now matches the
+  hooks-layer reader's `board:` presence rule exactly — a `board:` header
+  present but invalid (comment-only body, or every field malformed) now
+  correctly stops the cascade there (resolving to an empty/partial board)
+  instead of silently falling through to a further ancestor or the global
+  layer, the opposite fall-through direction from `packs:`/`prLifecycle:`.
+- `github-pull-requests`: `pr-readiness.ts`'s CLI script crashed when run
+  from an installed plugin cache (issue #226) — it imported
+  `@github-sdlc-plugins/github-sdlc-planning-mcp-server` via a path only
+  resolvable inside this monorepo's npm workspaces, and the installed
+  plugin cache's version-namespaced directory layout left even a correctly
+  created dependency symlink dangling. Now bundled via esbuild
+  (`dist/pr-readiness.js`) at build time, the same way the main MCP server
+  already handles this cross-package import, so it runs standalone with no
+  `node_modules` present. Also fixed the built file's shebang (`node`, not
+  `tsx` — a bundled plain-JS file has no `tsx` dependency to invoke) and
+  broadened its usage text to cover all three valid invocation forms.
+
 ## [0.9.0] - 2026-07-10
 
 ### Added
