@@ -32,31 +32,43 @@ function resolveGlobalGdlcConfigRoot(env = process.env) {
   return env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME !== '' ? env.XDG_CONFIG_HOME : join(homedir(), '.config');
 }
 
-/** ADR-0005's upward search, re-implemented here for the same
- * dependency-free reason as `in-progress.mjs`'s identical function. Climbs
- * from `startDir` toward the filesystem root looking for
- * `<dir>/.config/gdlc/config.yml`; `ceiling` (default `homedir()`) stops the
- * climb before checking that directory, so a stray leftover file at the
- * OS-default global-layer path is never mistaken for a project config. */
-function findGdlcProjectRoot(startDir, existsFn = existsSync, ceiling = homedir()) {
+/** ADR-0008: the ancestor-directory sequence `findAllGdlcProjectConfigPaths`
+ * walks. Yields `startDir` itself first, then each ancestor toward
+ * `ceiling` (exclusive), nearest first. Was shared with a single-match
+ * `findGdlcProjectRoot` (ADR-0005) before ADR-0008 replaced every call site
+ * of that function in this file with the multi-match version below; kept as
+ * its own named generator rather than inlined, matching the shared-walk
+ * shape `in-progress.mjs`/`config.ts` also use, in case a future
+ * single-match need reappears. */
+function* walkGdlcAncestorDirs(startDir, ceiling) {
   const ceilingResolved = resolvePath(ceiling);
   let dir = resolvePath(startDir);
   for (;;) {
-    if (dir === ceilingResolved) return null;
-    if (existsFn(resolveGdlcConfigPath(join(dir, '.config')))) return dir;
+    if (dir === ceilingResolved) return;
+    yield dir;
     const parent = dirname(dir);
-    if (parent === dir) return null;
+    if (parent === dir) return;
     dir = parent;
   }
 }
 
-/** Same collision guard as `in-progress.mjs`'s identical function: excludes
- * a project-layer "find" that is literally the global layer's own file. */
-function resolveGdlcProjectConfigPath(startDir, existsFn, env) {
-  const root = findGdlcProjectRoot(startDir, existsFn);
-  if (root === null) return null;
-  const path = resolveGdlcConfigPath(join(root, '.config'));
-  return path === resolveGdlcConfigPath(resolveGlobalGdlcConfigRoot(env)) ? null : path;
+/** ADR-0008: every ancestor of `startDir` (up to `ceiling`, exclusive)
+ * whose `.config/gdlc/config.yml` exists, nearest first, EXCLUDING (but not
+ * stopping the climb at) a candidate that collides with the global layer's
+ * own resolved path -- skip-and-continue instead of stop-and-return-null,
+ * so a legitimate further ancestor is never hidden behind an accidental
+ * collision. Existence-only: never reads file content, so callers (see
+ * `readPacksConfig` below) control exactly when/how each candidate is
+ * actually parsed, using the real `resolveLayerPacks` presence check --
+ * not a separate synthetic predicate. Exported for tests. */
+export function findAllGdlcProjectConfigPaths(startDir, existsFn = existsSync, env = process.env, ceiling = homedir()) {
+  const globalPath = resolveGdlcConfigPath(resolveGlobalGdlcConfigRoot(env));
+  const paths = [];
+  for (const dir of walkGdlcAncestorDirs(startDir, ceiling)) {
+    const candidate = resolveGdlcConfigPath(join(dir, '.config'));
+    if (existsFn(candidate) && candidate !== globalPath) paths.push(candidate);
+  }
+  return paths;
 }
 
 /** Extract a scalar value from the text captured after `key:`, same
@@ -102,11 +114,18 @@ export function parsePacksSection(text) {
   return packs;
 }
 
-/** Read one layer's `gdlc/config.yml` and report both whether a `packs:`
- * key exists at all and, if so, its parsed map -- mirroring
+/** Read one layer's `gdlc/config.yml` and report both whether it actually
+ * defines any usable `packs:` entry and, if so, its parsed map -- mirroring
  * `in-progress.mjs`'s `resolveGdlcLayerBoard`, so a present-but-different
  * project section can wholly replace the global one instead of falling
- * through to it. */
+ * through to it.
+ *
+ * ADR-0008 bug fix: present is `Object.keys(packs).length > 0`, NOT merely
+ * whether the `packs:` header line exists (e.g. a comment-only body used to
+ * count as present here, with an empty map) -- the same presence-semantics
+ * bug `pr-lifecycle-config.mjs`'s `resolveLayerPrLifecycle` was already
+ * fixed for once, caught here by a regression test for ADR-0008's
+ * ancestor-shadowing fix. */
 function resolveLayerPacks(path) {
   let text;
   try {
@@ -114,20 +133,21 @@ function resolveLayerPacks(path) {
   } catch {
     return { present: false, packs: {} };
   }
-  if (!/^packs:\s*$/m.test(text)) return { present: false, packs: {} };
-  return { present: true, packs: parsePacksSection(text) };
+  const packs = parsePacksSection(text);
+  return Object.keys(packs).length > 0 ? { present: true, packs } : { present: false, packs: {} };
 }
 
-/** Resolve the merged `packs:` map: a `packs:` section present at the
- * project layer replaces the global one wholly (ADR-0004's per-section
- * cascade, same semantics as `config.ts`'s `mergeConfigs` for every other
- * section) -- it does not fall through to the global layer just because
- * the project layer's map doesn't happen to name every pack. Exported for
- * tests. */
+/** Resolve the merged `packs:` map: the NEAREST ancestor layer whose
+ * `packs:` section is actually present (ADR-0004's per-section cascade,
+ * ADR-0008's N-ancestor extension) replaces the global one wholly -- it
+ * does not fall through to the global layer just because a NEARER
+ * ancestor's file doesn't happen to define `packs:` at all, only once NO
+ * ancestor does. Exported for tests. */
 export function readPacksConfig(cwd = process.cwd(), env = process.env, existsFn = existsSync) {
-  const projectPath = resolveGdlcProjectConfigPath(cwd, existsFn, env);
-  const project = projectPath === null ? { present: false, packs: {} } : resolveLayerPacks(projectPath);
-  if (project.present) return project.packs;
+  for (const path of findAllGdlcProjectConfigPaths(cwd, existsFn, env)) {
+    const layer = resolveLayerPacks(path);
+    if (layer.present) return layer.packs;
+  }
 
   const global = resolveLayerPacks(resolveGdlcConfigPath(resolveGlobalGdlcConfigRoot(env)));
   return global.packs;
