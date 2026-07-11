@@ -27,8 +27,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import {
   extractScalarValue,
+  findAllGdlcProjectConfigPaths,
   resolveGdlcConfigPath,
-  resolveGdlcProjectConfigPath,
   resolveGlobalGdlcConfigRoot,
 } from './in-progress.mjs';
 
@@ -73,11 +73,20 @@ export function parsePacksSection(text) {
   return { found, packs };
 }
 
-/** Read one layer's `gdlc/config.yml` and report both whether a `packs:`
- * key exists at all and, if so, its parsed map -- mirroring
- * `in-progress.mjs`'s `resolveGdlcLayerBoard`, so a present-but-different
- * project section can wholly replace the global one instead of falling
- * through to it. */
+/** Read one layer's `gdlc/config.yml` and report both whether it actually
+ * defines any usable `packs:` entry and, if so, its parsed map -- mirroring
+ * `pr-lifecycle-config.mjs`'s `resolveLayerPrLifecycle`, so a
+ * present-but-different project section can wholly replace the global one
+ * instead of falling through to it.
+ *
+ * ADR-0008 bug fix: present is `Object.keys(packs).length > 0`, NOT
+ * `parsePacksSection`'s own `found` flag (which is true merely because the
+ * `packs:` header line exists, even with zero successfully-parsed keys --
+ * e.g. a comment-only body). A regression test written for ADR-0008's
+ * ancestor-shadowing fix caught this: `resolveLayerPacks` was still using
+ * `found` here, exactly the presence-semantics bug `resolveLayerPrLifecycle`
+ * (`pr-lifecycle-config.mjs`) was already fixed for once, undetected until
+ * a multi-ancestor scenario actually exercised it. */
 function resolveLayerPacks(path) {
   let text;
   try {
@@ -85,19 +94,21 @@ function resolveLayerPacks(path) {
   } catch {
     return { present: false, packs: {} };
   }
-  const { found, packs } = parsePacksSection(text);
-  return found ? { present: true, packs } : { present: false, packs: {} };
+  const { packs } = parsePacksSection(text);
+  return Object.keys(packs).length > 0 ? { present: true, packs } : { present: false, packs: {} };
 }
 
-/** Resolve the merged `packs:` map: a `packs:` section present at the
- * project layer replaces the global one wholly (ADR-0004's per-section
- * cascade), it does not fall through to the global layer just because the
- * project layer's map doesn't happen to name every pack. Exported for
- * tests. */
+/** Resolve the merged `packs:` map: the NEAREST ancestor layer whose
+ * `packs:` section is actually present (ADR-0004's per-section cascade,
+ * ADR-0008's N-ancestor extension) replaces the global one wholly -- it
+ * does not fall through to the global layer just because a NEARER
+ * ancestor's file doesn't happen to define `packs:` at all, only once NO
+ * ancestor does. Exported for tests. */
 export function readPacksConfig(cwd = process.cwd(), env = process.env, existsFn = existsSync) {
-  const projectPath = resolveGdlcProjectConfigPath(cwd, existsFn, env);
-  const project = projectPath === null ? { present: false, packs: {} } : resolveLayerPacks(projectPath);
-  if (project.present) return project.packs;
+  for (const path of findAllGdlcProjectConfigPaths(cwd, existsFn, env)) {
+    const layer = resolveLayerPacks(path);
+    if (layer.present) return layer.packs;
+  }
 
   const global = resolveLayerPacks(resolveGdlcConfigPath(resolveGlobalGdlcConfigRoot(env)));
   return global.packs;
