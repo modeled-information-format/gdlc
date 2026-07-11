@@ -88,6 +88,67 @@ describe('readPrLifecycleRaw: fallthrough when a present section has zero parsea
   });
 });
 
+describe('readPrLifecycleRaw: ADR-0008 N-ancestor resolution', () => {
+  // gdlc#227: a nearer ancestor's config.yml that defines only board: (no
+  // prLifecycle: section at all) must not shadow a prLifecycle: section
+  // set at a FURTHER ancestor -- the search has to keep climbing past the
+  // board-only file instead of stopping there and falling straight through
+  // to the global layer.
+  it('does not let a nearer ancestor config with only board: shadow prLifecycle: set at a further ancestor', () => {
+    const outer = tmpDir();
+    const globalRoot = join(outer, 'global-config');
+    writeGlobalConfig(globalRoot, 'prLifecycle:\n  enabled: false\n');
+    writeProjectConfig(outer, ENABLED);
+    const inner = join(outer, 'repos', 'gdlc');
+    mkdirSync(inner, { recursive: true });
+    writeProjectConfig(inner, 'board:\n  projectOwnerLogin: acme\n  projectNumber: 1\n');
+
+    expect(readPrLifecycleRaw(inner, fakeEnv(globalRoot))).toEqual({ enabled: true, requireCopilotReview: false });
+  });
+
+  // The sharper case: a nearer ancestor's file HAS the prLifecycle: header,
+  // but it resolves to zero valid parsed content (comment-only body, or
+  // every key malformed) -- this must ALSO not shadow a further ancestor's
+  // real value. This is the trigger the original fallthrough regression
+  // test above already covers for a SINGLE project layer vs global; this
+  // extends it to a THIRD layer in between.
+  it('does not let a nearer ancestor with a present-but-empty prLifecycle: header shadow a further ancestor', () => {
+    const outer = tmpDir();
+    const globalRoot = join(outer, 'global-config');
+    writeGlobalConfig(globalRoot, 'prLifecycle:\n  enabled: false\n');
+    writeProjectConfig(outer, ENABLED);
+    const inner = join(outer, 'repos', 'gdlc');
+    mkdirSync(inner, { recursive: true });
+    writeProjectConfig(inner, 'prLifecycle:\n  enabled: "yes"\n');
+
+    expect(readPrLifecycleRaw(inner, fakeEnv(globalRoot))).toEqual({ enabled: true, requireCopilotReview: false });
+  });
+
+  it('a nearer ancestor section still wins over the same section at a further ancestor', () => {
+    const outer = tmpDir();
+    writeProjectConfig(outer, 'prLifecycle:\n  enabled: false\n');
+    const inner = join(outer, 'repos', 'gdlc');
+    mkdirSync(inner, { recursive: true });
+    writeProjectConfig(inner, ENABLED);
+
+    expect(readPrLifecycleRaw(inner, fakeEnv(join(outer, 'no-such-global')))).toEqual({
+      enabled: true,
+      requireCopilotReview: false,
+    });
+  });
+
+  it('still falls through to global when NO ancestor at all defines prLifecycle:, board-only files included', () => {
+    const outer = tmpDir();
+    const globalRoot = join(outer, 'global-config');
+    writeGlobalConfig(globalRoot, ENABLED);
+    const inner = join(outer, 'repos', 'gdlc');
+    mkdirSync(inner, { recursive: true });
+    writeProjectConfig(inner, 'board:\n  projectOwnerLogin: acme\n  projectNumber: 1\n');
+
+    expect(readPrLifecycleRaw(inner, fakeEnv(globalRoot))).toEqual({ enabled: true, requireCopilotReview: false });
+  });
+});
+
 describe('resolvePrLifecycle: defaults match config.ts resolvePrLifecycleConfig exactly', () => {
   it('is fail-closed (enabled: false) with the documented defaults when unconfigured', () => {
     const dir = tmpDir();

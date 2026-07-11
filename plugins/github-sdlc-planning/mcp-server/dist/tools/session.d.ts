@@ -18,12 +18,21 @@ export interface SessionContextResult {
         dueOn: string | null;
     }>;
     projectBoard: Awaited<ReturnType<typeof getProjectItems>> | null;
-    /** Issue #106: the filesystem path of the project-layer config file that
-     * was actually used (after upward search from cwd), or `null` if none was
-     * found. Previously this resolution was entirely invisible -- a `null`
-     * `projectBoard` above looked identical whether no board was configured
-     * anywhere, or a real config file simply wasn't reachable from the MCP
-     * server's cwd. This field makes that distinction observable. */
+    /** Issue #106 / ADR-0008: the filesystem path of the NEAREST project-layer
+     * config file `loadGdlcConfig` actually considers (after upward search
+     * from cwd), or `null` if none was found. Previously this resolution was
+     * entirely invisible -- a `null` `projectBoard` above looked identical
+     * whether no board was configured anywhere, or a real config file simply
+     * wasn't reachable from the MCP server's cwd. This field makes that
+     * distinction observable.
+     *
+     * ADR-0008: `loadGdlcConfig` now merges EVERY ancestor layer it finds, not
+     * just this nearest one -- a further ancestor's section can still win if
+     * the nearest layer doesn't define it. This field intentionally still
+     * reports only the single nearest match (consistent in KIND with what
+     * `loadGdlcConfig` treats as highest-priority), not the full list, to
+     * avoid a breaking change to this tool's output shape; it is a debugging
+     * aid naming the most relevant file, not a complete resolution trace. */
     projectConfigPath: string | null;
 }
 export declare function getSessionContext(input: GetSessionContextInput, deps?: GithubClientDeps): Promise<SessionContextResult>;

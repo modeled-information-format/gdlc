@@ -26,9 +26,19 @@ export interface BoardArgs {
  * either returns a complete `{ projectOwnerLogin, projectNumber }` or this
  * function throws first. */
 export declare function withRequiredBoardCoordinates<TArgs extends BoardArgs, TResult>(fn: (args: TArgs) => Promise<TResult> | TResult): (args: BoardArgs & Record<string, unknown>) => Promise<TResult> | TResult;
+/** Writes a diagnostic to stderr (never stdout -- that's the MCP
+ * JSON-RPC transport, writing there would corrupt the protocol stream)
+ * when `withOptionalBoardCoordinates` resolves no usable board
+ * coordinates. Not an error: this path is explicitly the "no board
+ * configured" case those callers treat as valid. Exported for tests. */
+export declare function warnNoOpBoard(write?: (line: string) => void): void;
+/** Test-only reset for `warnNoOpBoard`'s once-per-process guard. */
+export declare function resetNoOpBoardWarning(): void;
 /** Same config fallback as `withRequiredBoardCoordinates`, but never
  * throws: a tool like `get_session_context` treats "no board configured"
- * as a valid, optional state rather than an error. */
+ * as a valid, optional state rather than an error -- surfaced instead as a
+ * one-time stderr diagnostic (`warnNoOpBoard`) naming the no-op and how to
+ * configure it, rather than a completely silent fallback. */
 export declare function withOptionalBoardCoordinates<TArgs extends BoardArgs, TResult>(fn: (args: TArgs) => Promise<TResult> | TResult): (args: BoardArgs & Record<string, unknown>) => Promise<TResult> | TResult;
 export interface IssueDestinationArgs {
     owner?: string;

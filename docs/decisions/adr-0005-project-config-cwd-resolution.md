@@ -328,4 +328,24 @@ proportionate, explicitly-scoped deferrals, not silent gaps.
 diagnostic field to the other config-driven tool wrappers; give the legacy
 carrier its own upward search if it outlives its planned removal window.
 
+### 2026-07-11
+
+**Status:** Compliant, extended by a later ADR
+
+**Findings:**
+
+| Finding | Files | Lines | Assessment |
+| --- | --- | --- | --- |
+| [ADR-0008](adr-0008-project-config-n-ancestor-resolution.md) extends this ADR's upward search from "stop at the first ancestor with any config file" to "continue past a non-matching ancestor, per section" — a different, narrower bug (#227: ancestor shadowing) than this ADR's own deferred Option 4 (caller-supplied project-root override, for cwd sibling-repo ambiguity), which remains open and unaddressed | `mcp-server/src/config.ts`, `hooks/lib/in-progress.mjs`, `hooks/lib/settings.mjs`, `hooks/lib/pr-lifecycle-config.mjs` | `findProjectConfigRoot`, `findGdlcProjectRoot` | compliant |
+
+**Summary:** Cross-reference only — this ADR's upward-search decision is not
+changed or reversed, only extended to continue past a non-matching ancestor
+instead of stopping at the first match. `status:` stays `accepted`. The
+Option 4 gap this ADR itself deferred (caller-supplied override) is still
+open; ADR-0008 explicitly does not close it, since #227 is a different bug.
+
+**Action Required:** None for this ADR. See ADR-0008 for the extending
+decision and its implementing issue (#227).
+
 [adr-0004]: adr-0004-project-config-surface.md
+[adr-0008]: adr-0008-project-config-n-ancestor-resolution.md

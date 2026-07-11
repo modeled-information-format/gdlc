@@ -86,6 +86,50 @@ describe('readPacksConfig', () => {
     writeProjectConfig(dir, 'packs:\n  triage-skills: true\n');
     expect(readPacksConfig(dir, fakeEnv(globalRoot))).toEqual({ 'triage-skills': true });
   });
+
+  // ADR-0008 / gdlc#227: a nearer ancestor's config.yml that defines only
+  // board: (no packs: section at all) must not shadow a packs: section set
+  // at a FURTHER ancestor -- the search has to keep climbing past the
+  // board-only file instead of stopping there and falling straight through
+  // to the global layer.
+  it('does not let a nearer ancestor config with only board: shadow packs: set at a further ancestor', () => {
+    const outer = tmpDir();
+    const globalRoot = join(outer, 'global-config');
+    writeGlobalConfig(globalRoot, 'packs:\n  triage-skills: true\n');
+    writeProjectConfig(outer, ENABLED_HOOKS);
+    const inner = join(outer, 'repos', 'gdlc');
+    mkdirSync(inner, { recursive: true });
+    writeProjectConfig(inner, 'board:\n  projectOwnerLogin: acme\n  projectNumber: 1\n');
+
+    expect(readPacksConfig(inner, fakeEnv(globalRoot))).toEqual({ hooks: true, 'gh-aw': false });
+  });
+
+  // ADR-0008: the sharper case a first fix attempt got wrong -- a nearer
+  // ancestor's file HAS the packs: header, but it resolves to zero valid
+  // parsed content (comment-only body). This must ALSO not shadow a
+  // further ancestor's real value.
+  it('does not let a nearer ancestor with a present-but-empty packs: header shadow a further ancestor', () => {
+    const outer = tmpDir();
+    const globalRoot = join(outer, 'global-config');
+    writeGlobalConfig(globalRoot, 'packs:\n  triage-skills: true\n');
+    writeProjectConfig(outer, ENABLED_HOOKS);
+    const inner = join(outer, 'repos', 'gdlc');
+    mkdirSync(inner, { recursive: true });
+    writeProjectConfig(inner, 'packs:\n  # nothing configured yet\n');
+
+    expect(readPacksConfig(inner, fakeEnv(globalRoot))).toEqual({ hooks: true, 'gh-aw': false });
+  });
+
+  it('still falls through to global when NO ancestor at all defines packs:, board-only files included', () => {
+    const outer = tmpDir();
+    const globalRoot = join(outer, 'global-config');
+    writeGlobalConfig(globalRoot, 'packs:\n  triage-skills: true\n');
+    const inner = join(outer, 'repos', 'gdlc');
+    mkdirSync(inner, { recursive: true });
+    writeProjectConfig(inner, 'board:\n  projectOwnerLogin: acme\n  projectNumber: 1\n');
+
+    expect(readPacksConfig(inner, fakeEnv(globalRoot))).toEqual({ 'triage-skills': true });
+  });
 });
 
 describe('isPackEnabled', () => {

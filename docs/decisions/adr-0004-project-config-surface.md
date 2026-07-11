@@ -454,5 +454,24 @@ remain accurate history and are not rewritten.
 **Action Required:** None for this ADR. See ADR-0006 for the superseding
 decision and its implementing issues (#140–#144).
 
+### 2026-07-11
+
+**Status:** Compliant, extended by a later ADR
+
+**Findings:**
+
+| Finding | Files | Lines | Assessment |
+| --- | --- | --- | --- |
+| [ADR-0008](adr-0008-project-config-n-ancestor-resolution.md) generalizes this ADR's per-section wholesale-replacement cascade from exactly one project layer to every ancestor layer between cwd and `$HOME`; this ADR's carrier (`.config/gdlc/config.yml`), path convention, and per-section-wins semantics are unaffected and remain in force | - | - | compliant |
+
+**Summary:** Cross-reference only — this ADR's carrier/path decision (the
+part not already superseded by ADR-0006) is not changed or reversed, only
+extended to resolve across N ancestor layers instead of one. `status:`
+frontmatter is unchanged by this note (stays `superseded`, per the
+ADR-0006 supersession already recorded above).
+
+**Action Required:** None for this ADR. See ADR-0008 for the extending
+decision and its implementing issue (#227).
+
 [adr-0003]: adr-0003-board-status-hygiene.md
 [adr-0006]: adr-0006-eliminate-markdown-config-carriers.md

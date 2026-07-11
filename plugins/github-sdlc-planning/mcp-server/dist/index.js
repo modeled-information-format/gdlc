@@ -39203,16 +39203,25 @@ var CONFIG_RELPATH = ["gdlc", "config.yml"];
 function resolveConfigPath(root) {
   return join3(root, ...CONFIG_RELPATH);
 }
-function findProjectConfigRoot(startDir, existsFn = existsSync2, ceiling = homedir2()) {
+function* walkAncestorDirs(startDir, ceiling) {
   const ceilingResolved = resolvePath(ceiling);
   let dir = resolvePath(startDir);
   for (; ; ) {
-    if (dir === ceilingResolved) return null;
-    if (existsFn(resolveConfigPath(join3(dir, ".config")))) return dir;
+    if (dir === ceilingResolved) return;
+    yield dir;
     const parent = dirname2(dir);
-    if (parent === dir) return null;
+    if (parent === dir) return;
     dir = parent;
   }
+}
+function findAllProjectConfigPaths(startDir = process.cwd(), existsFn = existsSync2, env = process.env, ceiling = homedir2()) {
+  const globalPath = resolveConfigPath(resolveGlobalConfigRoot(env));
+  const paths = [];
+  for (const dir of walkAncestorDirs(startDir, ceiling)) {
+    const candidate = resolveConfigPath(join3(dir, ".config"));
+    if (existsFn(candidate) && candidate !== globalPath) paths.push(candidate);
+  }
+  return paths;
 }
 function isPlainObject3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -39234,8 +39243,9 @@ function normalizeConfig(parsed) {
   if (isPlainObject3(parsed.destination) && typeof parsed.destination.repo === "string") {
     config2.destination = { repo: parsed.destination.repo };
   }
-  if (isPlainObject3(parsed.board)) {
-    const { projectOwnerLogin, projectNumber, projectOwnerType } = parsed.board;
+  if (parsed.board === null || isPlainObject3(parsed.board)) {
+    const raw = isPlainObject3(parsed.board) ? parsed.board : {};
+    const { projectOwnerLogin, projectNumber, projectOwnerType } = raw;
     const board = {};
     if (typeof projectOwnerLogin === "string" && projectOwnerLogin !== "") board.projectOwnerLogin = projectOwnerLogin;
     if (typeof projectNumber === "number" || typeof projectNumber === "string") {
@@ -39243,7 +39253,7 @@ function normalizeConfig(parsed) {
       if (Number.isInteger(parsedNumber) && parsedNumber > 0) board.projectNumber = parsedNumber;
     }
     if (projectOwnerType === "organization" || projectOwnerType === "user") board.projectOwnerType = projectOwnerType;
-    if (Object.keys(board).length > 0) config2.board = board;
+    config2.board = board;
   }
   if (isPlainObject3(parsed.packs)) {
     const packs = {};
@@ -39281,17 +39291,10 @@ function loadConfigFile(path) {
 function mergeConfigs(global, project) {
   return { ...global, ...project };
 }
-function resolveProjectConfigPath(startDir = process.cwd(), existsFn = existsSync2, env = process.env) {
-  const root = findProjectConfigRoot(startDir, existsFn);
-  if (root === null) return null;
-  const path = resolveConfigPath(join3(root, ".config"));
-  return path === resolveConfigPath(resolveGlobalConfigRoot(env)) ? null : path;
-}
 function loadGdlcConfig(projectRoot = process.cwd(), env = process.env, existsFn = existsSync2) {
   const global = loadConfigFile(resolveConfigPath(resolveGlobalConfigRoot(env)));
-  const projectPath = resolveProjectConfigPath(projectRoot, existsFn, env);
-  const project = projectPath === null ? {} : loadConfigFile(projectPath);
-  return mergeConfigs(global, project);
+  const projectPaths = findAllProjectConfigPaths(projectRoot, existsFn, env);
+  return projectPaths.reduceRight((acc, path) => mergeConfigs(acc, loadConfigFile(path)), global);
 }
 function resolveBoardCoordinates(explicit, config2) {
   const hasExplicitLogin = explicit.projectOwnerLogin !== void 0;
@@ -39344,7 +39347,7 @@ async function getSessionContext(input, deps = {}) {
   return {
     openMilestones: milestones.map((m) => ({ number: m.number, title: m.title, url: m.html_url, dueOn: m.due_on })),
     projectBoard,
-    projectConfigPath: resolveProjectConfigPath()
+    projectConfigPath: findAllProjectConfigPaths()[0] ?? null
   };
 }
 function getAgentCapabilities() {
@@ -39389,6 +39392,14 @@ function withRequiredBoardCoordinates(fn) {
     return fn({ ...args, ...resolved });
   };
 }
+var hasWarnedNoOpBoard = false;
+function warnNoOpBoard(write = (line) => process.stderr.write(line)) {
+  if (hasWarnedNoOpBoard) return;
+  hasWarnedNoOpBoard = true;
+  write(
+    "[gdlc] No board configured for this session -- board-aware fields will be omitted. Set board: { projectOwnerLogin, projectNumber } in .config/gdlc/config.yml (or the global $XDG_CONFIG_HOME/gdlc/config.yml) to enable them.\n"
+  );
+}
 function withOptionalBoardCoordinates(fn) {
   return (args) => {
     const config2 = loadGdlcConfig();
@@ -39396,6 +39407,7 @@ function withOptionalBoardCoordinates(fn) {
       { projectOwnerLogin: args.projectOwnerLogin, projectNumber: args.projectNumber, projectOwnerType: args.projectOwnerType },
       config2
     );
+    if (!resolved) warnNoOpBoard();
     return fn(resolved ? { ...args, ...resolved } : args);
   };
 }

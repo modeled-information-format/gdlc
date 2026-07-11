@@ -28,13 +28,39 @@ export function withRequiredBoardCoordinates(fn) {
         return fn({ ...args, ...resolved });
     };
 }
+/** Fires exactly once per process on the first no-op board resolution, so a
+ * long-lived MCP server doesn't spam stderr on every subsequent
+ * `get_session_context` call in the same session -- the guidance doesn't
+ * change between calls, and the config isn't going to fix itself mid-session. */
+let hasWarnedNoOpBoard = false;
+/** Writes a diagnostic to stderr (never stdout -- that's the MCP
+ * JSON-RPC transport, writing there would corrupt the protocol stream)
+ * when `withOptionalBoardCoordinates` resolves no usable board
+ * coordinates. Not an error: this path is explicitly the "no board
+ * configured" case those callers treat as valid. Exported for tests. */
+export function warnNoOpBoard(write = (line) => process.stderr.write(line)) {
+    if (hasWarnedNoOpBoard)
+        return;
+    hasWarnedNoOpBoard = true;
+    write('[gdlc] No board configured for this session -- board-aware fields will be omitted. ' +
+        'Set board: { projectOwnerLogin, projectNumber } in .config/gdlc/config.yml ' +
+        '(or the global $XDG_CONFIG_HOME/gdlc/config.yml) to enable them.\n');
+}
+/** Test-only reset for `warnNoOpBoard`'s once-per-process guard. */
+export function resetNoOpBoardWarning() {
+    hasWarnedNoOpBoard = false;
+}
 /** Same config fallback as `withRequiredBoardCoordinates`, but never
  * throws: a tool like `get_session_context` treats "no board configured"
- * as a valid, optional state rather than an error. */
+ * as a valid, optional state rather than an error -- surfaced instead as a
+ * one-time stderr diagnostic (`warnNoOpBoard`) naming the no-op and how to
+ * configure it, rather than a completely silent fallback. */
 export function withOptionalBoardCoordinates(fn) {
     return (args) => {
         const config = loadGdlcConfig();
         const resolved = resolveBoardCoordinates({ projectOwnerLogin: args.projectOwnerLogin, projectNumber: args.projectNumber, projectOwnerType: args.projectOwnerType }, config);
+        if (!resolved)
+            warnNoOpBoard();
         return fn((resolved ? { ...args, ...resolved } : args));
     };
 }

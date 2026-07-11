@@ -66,13 +66,26 @@ export function resolveGlobalGdlcConfigRoot(env = process.env) {
  * nothing is found by the time the ceiling or the filesystem root is
  * reached. */
 export function findGdlcProjectRoot(startDir, existsFn = existsSync, ceiling = homedir()) {
+  for (const dir of walkGdlcAncestorDirs(startDir, ceiling)) {
+    if (existsFn(resolveGdlcConfigPath(join(dir, '.config')))) return dir;
+  }
+  return null;
+}
+
+/** ADR-0008: the ancestor-directory sequence both `findGdlcProjectRoot`
+ * (single nearest match) and `findAllGdlcProjectConfigPaths` (every match)
+ * walk -- one generator, so a correctness fix to the walk itself only has
+ * one place to land instead of two copies kept in sync by hand. Yields
+ * `startDir` itself first, then each ancestor toward `ceiling` (exclusive),
+ * nearest first. */
+function* walkGdlcAncestorDirs(startDir, ceiling) {
   const ceilingResolved = resolvePath(ceiling);
   let dir = resolvePath(startDir);
   for (;;) {
-    if (dir === ceilingResolved) return null;
-    if (existsFn(resolveGdlcConfigPath(join(dir, '.config')))) return dir;
+    if (dir === ceilingResolved) return;
+    yield dir;
     const parent = dirname(dir);
-    if (parent === dir) return null;
+    if (parent === dir) return;
     dir = parent;
   }
 }
@@ -91,6 +104,27 @@ export function resolveGdlcProjectConfigPath(startDir, existsFn, env) {
   if (root === null) return null;
   const path = resolveGdlcConfigPath(join(root, '.config'));
   return path === resolveGdlcConfigPath(resolveGlobalGdlcConfigRoot(env)) ? null : path;
+}
+
+/** ADR-0008: every ancestor of `startDir` (up to `ceiling`, exclusive)
+ * whose `.config/gdlc/config.yml` exists, nearest first, EXCLUDING (but not
+ * stopping the climb at) a candidate that collides with the global layer's
+ * own resolved path -- skip-and-continue instead of stop-and-return-null,
+ * so a legitimate further ancestor is never hidden behind an accidental
+ * collision. Existence-only: never reads file content, so callers (see
+ * `readBoardConfig` below) control exactly when/how each candidate is
+ * actually parsed, using that section's own real presence check -- not a
+ * separate synthetic predicate, which is exactly what let the `.mjs` hooks
+ * and `config.ts` silently disagree in a first, reverted fix attempt (see
+ * ADR-0008). Exported for tests. */
+export function findAllGdlcProjectConfigPaths(startDir, existsFn = existsSync, env = process.env, ceiling = homedir()) {
+  const globalPath = resolveGdlcConfigPath(resolveGlobalGdlcConfigRoot(env));
+  const paths = [];
+  for (const dir of walkGdlcAncestorDirs(startDir, ceiling)) {
+    const candidate = resolveGdlcConfigPath(join(dir, '.config'));
+    if (existsFn(candidate) && candidate !== globalPath) paths.push(candidate);
+  }
+  return paths;
 }
 
 /** Extract a scalar value from the text captured after `key:`, matching
@@ -199,14 +233,16 @@ export function readGdlcConfigBoardSection(path) {
  * "not configured" (`null`) rather than a thrown error. A hook must never
  * break the tool call it observes.
  *
- * Resolution order (ADR-0004's original design, ADR-0006 removes the third
- * tier): the project layer's `.config/gdlc/config.yml` `board:` section --
- * searched upward from `cwd` toward the filesystem root (issue #106 /
- * ADR-0005), not just at the literal `cwd` -- then the global layer's
- * `$XDG_CONFIG_HOME/gdlc/config.yml` `board:` section. The legacy
- * `.claude/github-sdlc-planning.local.md` `board:` key fallback ADR-0004
- * kept "for one release" is removed as of ADR-0006; a repo still relying on
- * it must migrate its `board:` key into `.config/gdlc/config.yml`.
+ * Resolution order (ADR-0004's original per-section cascade, ADR-0008's
+ * N-ancestor extension): every ancestor of `cwd`'s `.config/gdlc/config.yml`
+ * `board:` section, nearest-real-presence-wins -- searched upward from `cwd`
+ * toward the filesystem root (issue #106 / ADR-0005 / ADR-0008), not just
+ * the literal `cwd` or only its nearest ancestor -- then the global layer's
+ * `$XDG_CONFIG_HOME/gdlc/config.yml` `board:` section if no ancestor defines
+ * it. The legacy `.claude/github-sdlc-planning.local.md` `board:` key
+ * fallback ADR-0004 kept "for one release" is removed as of ADR-0006; a
+ * repo still relying on it must migrate its `board:` key into
+ * `.config/gdlc/config.yml`.
  *
  * A layer whose `board:` key is present but incomplete/invalid stops the
  * cascade there (returning `null`) rather than falling through to the
@@ -216,9 +252,10 @@ export function readGdlcConfigBoardSection(path) {
  * config file resolve to different board coordinates depending on whether
  * this hook or an mcp-server tool call read it. */
 export function readBoardConfig(cwd = process.cwd(), env = process.env, existsFn = existsSync) {
-  const projectPath = resolveGdlcProjectConfigPath(cwd, existsFn, env);
-  const project = projectPath === null ? { present: false, board: null } : resolveGdlcLayerBoard(projectPath);
-  if (project.present) return project.board;
+  for (const path of findAllGdlcProjectConfigPaths(cwd, existsFn, env)) {
+    const layer = resolveGdlcLayerBoard(path);
+    if (layer.present) return layer.board;
+  }
 
   const global = resolveGdlcLayerBoard(resolveGdlcConfigPath(resolveGlobalGdlcConfigRoot(env)));
   return global.board;

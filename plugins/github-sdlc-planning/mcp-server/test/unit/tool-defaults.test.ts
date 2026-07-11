@@ -1,8 +1,14 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { withRequiredBoardCoordinates, withOptionalBoardCoordinates, withIssueDestination } from '../../src/tool-defaults.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  withRequiredBoardCoordinates,
+  withOptionalBoardCoordinates,
+  withIssueDestination,
+  warnNoOpBoard,
+  resetNoOpBoardWarning,
+} from '../../src/tool-defaults.js';
 import { isPlanningError } from '../../src/errors.js';
 
 function tmpProjectWith(contents: string | null): string {
@@ -76,6 +82,8 @@ describe('withRequiredBoardCoordinates', () => {
 });
 
 describe('withOptionalBoardCoordinates', () => {
+  afterEach(() => resetNoOpBoardWarning());
+
   it('fills board coordinates from config when available', async () => {
     isolate(tmpProjectWith(['board:', '  projectOwnerLogin: acme', '  projectNumber: 2', ''].join('\n')), tmpGlobalWith(null));
     const fn = withOptionalBoardCoordinates((args: { projectOwnerLogin?: string; projectNumber?: number }) => args);
@@ -86,6 +94,62 @@ describe('withOptionalBoardCoordinates', () => {
     isolate(tmpProjectWith(null), tmpGlobalWith(null));
     const fn = withOptionalBoardCoordinates((args: { owner: string }) => args);
     expect(await fn({ owner: 'acme' })).toEqual({ owner: 'acme' });
+  });
+
+  it('does not warn when board coordinates resolve from config', async () => {
+    isolate(tmpProjectWith(['board:', '  projectOwnerLogin: acme', '  projectNumber: 2', ''].join('\n')), tmpGlobalWith(null));
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const fn = withOptionalBoardCoordinates((args: { projectOwnerLogin?: string; projectNumber?: number }) => args);
+      await fn({});
+      expect(stderrSpy).not.toHaveBeenCalled();
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
+
+  it('warns on stderr, once, when nothing resolves across repeated calls', async () => {
+    isolate(tmpProjectWith(null), tmpGlobalWith(null));
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const fn = withOptionalBoardCoordinates((args: { owner: string }) => args);
+      expect(await fn({ owner: 'acme' })).toEqual({ owner: 'acme' });
+      expect(await fn({ owner: 'acme' })).toEqual({ owner: 'acme' });
+      expect(stderrSpy).toHaveBeenCalledTimes(1);
+      expect(stderrSpy.mock.calls[0]?.[0]).toContain('No board configured');
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
+});
+
+describe('warnNoOpBoard', () => {
+  afterEach(() => resetNoOpBoardWarning());
+
+  it('writes a diagnostic naming the no-op and how to configure it', () => {
+    const lines: string[] = [];
+    warnNoOpBoard((line) => lines.push(line));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('No board configured');
+    expect(lines[0]).toContain('.config/gdlc/config.yml');
+    expect(lines[0]).toContain('projectOwnerLogin');
+    expect(lines[0]).toContain('projectNumber');
+  });
+
+  it('fires only once per process, not on every call', () => {
+    const lines: string[] = [];
+    warnNoOpBoard((line) => lines.push(line));
+    warnNoOpBoard((line) => lines.push(line));
+    warnNoOpBoard((line) => lines.push(line));
+    expect(lines).toHaveLength(1);
+  });
+
+  it('resetNoOpBoardWarning allows it to fire again (test isolation only)', () => {
+    const lines: string[] = [];
+    warnNoOpBoard((line) => lines.push(line));
+    resetNoOpBoardWarning();
+    warnNoOpBoard((line) => lines.push(line));
+    expect(lines).toHaveLength(2);
   });
 });
 

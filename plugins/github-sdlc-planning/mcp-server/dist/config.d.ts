@@ -82,6 +82,22 @@ export declare function resolveConfigPath(root: string): string;
  * project-always-wins semantics, would outrank the real, intentionally
  * configured global layer. */
 export declare function findProjectConfigRoot(startDir: string, existsFn?: (path: string) => boolean, ceiling?: string): string | null;
+/** ADR-0008: every ancestor of `startDir` (up to `ceiling`, exclusive)
+ * whose `.config/gdlc/config.yml` exists, nearest first, EXCLUDING (but not
+ * stopping the climb at) a candidate that collides with the global layer's
+ * own resolved path -- same collision guard as `resolveProjectConfigPath`,
+ * but skip-and-continue instead of stop-and-return-null, so a legitimate
+ * further ancestor is never hidden behind an accidental collision.
+ *
+ * `findProjectConfigRoot` only ever surfaces the single NEAREST such
+ * directory -- correct for the `projectConfigPath` diagnostic (naming one
+ * concrete file), but wrong for `loadGdlcConfig`'s merge: a nearer ancestor
+ * whose file defines only one section (e.g. `board:`) would otherwise make
+ * `findProjectConfigRoot` stop there, silently hiding a `packs:`/
+ * `prLifecycle:` section set at any further ancestor and falling straight
+ * through to the *global* layer instead -- the exact bug #227 reported.
+ * Exported for tests. */
+export declare function findAllProjectConfigPaths(startDir?: string, existsFn?: (path: string) => boolean, env?: NodeJS.ProcessEnv, ceiling?: string): string[];
 /** Read and parse one layer's `gdlc/config.yml`. A missing file, an
  * unreadable file, or a YAML syntax error are all an empty config, not a
  * thrown error -- a hooks-style fail-soft reader. Exported for tests. */
@@ -112,17 +128,22 @@ export declare function mergeConfigs(global: GdlcConfig, project: GdlcConfig): G
  * would otherwise let it silently outrank the real global config, since
  * `mergeConfigs` always lets "project" win. */
 export declare function resolveProjectConfigPath(startDir?: string, existsFn?: (path: string) => boolean, env?: NodeJS.ProcessEnv): string | null;
-/** Load and merge both layers. `projectRoot` defaults to `process.cwd()`
+/** Load and merge every layer. `projectRoot` defaults to `process.cwd()`
  * (the running tool's project root); `env` defaults to `process.env` (for
- * `XDG_CONFIG_HOME`, tests inject a fake one). Issue #106: `projectRoot` is
- * only the SEARCH START, not necessarily where the file is found --
- * `resolveProjectConfigPath` climbs upward from it first, and excludes a
- * match against the global layer's own path (see that function's doc
- * comment, and ADR-0005 for what the upward search does and does not fix).
- * `existsFn` is injectable (default `existsSync`) so a test asserting
- * "nothing found anywhere" doesn't have to walk the real filesystem to its
- * root, which would risk a false match against whatever the test-running
- * machine's real ancestor directories happen to contain. */
+ * `XDG_CONFIG_HOME`, tests inject a fake one).
+ *
+ * ADR-0008: merges EVERY ancestor project-layer file found by
+ * `findAllProjectConfigPaths`, nearest-wins per section, onto the global
+ * layer as the base -- not just the single nearest one (issue #106 /
+ * ADR-0005's original design). A nearer ancestor's file replaces a further
+ * ancestor's (or global's) same section wholly (ADR-0004's per-section
+ * cascade, now extended across N ancestor layers instead of just one),
+ * while a section that nearer file doesn't define falls through to the
+ * next ancestor that does, and only then to global. `existsFn` is
+ * injectable (default `existsSync`) so a test asserting "nothing found
+ * anywhere" doesn't have to walk the real filesystem to its root, which
+ * would risk a false match against whatever the test-running machine's
+ * real ancestor directories happen to contain. */
 export declare function loadGdlcConfig(projectRoot?: string, env?: NodeJS.ProcessEnv, existsFn?: (path: string) => boolean): GdlcConfig;
 /** Resolve board coordinates from explicit tool-call arguments or config,
  * atomically: `projectOwnerLogin`/`projectNumber` together identify ONE

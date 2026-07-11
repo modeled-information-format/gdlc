@@ -222,6 +222,37 @@ describe('readBoardConfig', () => {
       projectOwnerType: 'organization',
     });
   });
+
+  // ADR-0008 / gdlc#227: a nearer ancestor's config.yml that has NO board:
+  // key at all (e.g. only packs:) must not shadow a board: section set at a
+  // FURTHER ancestor -- the search has to keep climbing past the file that
+  // doesn't define board: instead of stopping there and falling straight
+  // through to the global layer.
+  it('does not let a nearer ancestor config with no board: key shadow board: set at a further ancestor', () => {
+    const outer = tmpGdlcProjectWith('board:\n  projectOwnerLogin: from-outer\n  projectNumber: 9\n');
+    const inner = join(outer, 'repos', 'gdlc');
+    mkdirSync(join(inner, '.config', 'gdlc'), { recursive: true });
+    writeFileSync(join(inner, '.config', 'gdlc', 'config.yml'), 'packs:\n  hooks: true\n');
+
+    expect(readBoardConfig(inner, emptyGlobalRoot())).toEqual({
+      projectOwnerLogin: 'from-outer',
+      projectNumber: 9,
+      projectOwnerType: 'organization',
+    });
+  });
+
+  it('a nearer ancestor board: section still wins over the same section at a further ancestor', () => {
+    const outer = tmpGdlcProjectWith('board:\n  projectOwnerLogin: from-outer\n  projectNumber: 9\n');
+    const inner = join(outer, 'repos', 'gdlc');
+    mkdirSync(join(inner, '.config', 'gdlc'), { recursive: true });
+    writeFileSync(join(inner, '.config', 'gdlc', 'config.yml'), 'board:\n  projectOwnerLogin: from-inner\n  projectNumber: 1\n');
+
+    expect(readBoardConfig(inner, emptyGlobalRoot())).toEqual({
+      projectOwnerLogin: 'from-inner',
+      projectNumber: 1,
+      projectOwnerType: 'organization',
+    });
+  });
 });
 
 describe('extractAffectedIssue', () => {
