@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-07-11
+
+### Changed
+
+- `github-sdlc-planning`: widened the `mif-docs` cross-marketplace
+  dependency range from `^0.3.1` to `>=0.3.1 <1.0.0` (#241). The caret
+  range only resolved `>=0.3.1 <0.4.0`, silently excluding the
+  already-released `mif-docs` v0.4.0 (a purely additive, opt-in-off-by-
+  default feature) from resolution.
+
+### Fixed
+
+- Corrected two overstated claims in `SECURITY.md` and
+  `docs/explanation/attested-marketplace.md` (#242, #243): `mif-docs` is
+  not a SHA-pinned `marketplace.json` entry (it's a `dependencies[]`
+  semver-range edge, resolved against upstream git tags, never a `sha`);
+  `catalog-admission` only enforces the cross-marketplace entry's
+  allowlist membership, never the same-marketplace edge or either edge's
+  version-range resolution; and the `manifest-review` gate is soft-fail,
+  not the fail-closed check for SHA-pinning (`catalog-admission` is).
+
 ## [0.10.0] - 2026-07-11
 
 ### Added
