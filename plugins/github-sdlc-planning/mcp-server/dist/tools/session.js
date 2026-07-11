@@ -1,5 +1,5 @@
 import { githubRest } from '../github-client.js';
-import { resolveProjectConfigPath } from '../config.js';
+import { findAllProjectConfigPaths } from '../config.js';
 import { getProjectItems } from './projects.js';
 export async function getSessionContext(input, deps = {}) {
     const milestonesPromise = githubRest(`/repos/${input.owner}/${input.repo}/milestones?state=open`, {}, deps);
@@ -14,7 +14,7 @@ export async function getSessionContext(input, deps = {}) {
     return {
         openMilestones: milestones.map((m) => ({ number: m.number, title: m.title, url: m.html_url, dueOn: m.due_on })),
         projectBoard,
-        projectConfigPath: resolveProjectConfigPath(),
+        projectConfigPath: findAllProjectConfigPaths()[0] ?? null,
     };
 }
 export function getAgentCapabilities() {

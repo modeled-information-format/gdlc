@@ -102,15 +102,58 @@ export function findProjectConfigRoot(
   existsFn: (path: string) => boolean = existsSync,
   ceiling: string = homedir(),
 ): string | null {
+  for (const dir of walkAncestorDirs(startDir, ceiling)) {
+    if (existsFn(resolveConfigPath(join(dir, '.config')))) return dir;
+  }
+  return null;
+}
+
+/** ADR-0008: the ancestor-directory sequence both `findProjectConfigRoot`
+ * (single nearest match) and `findAllProjectConfigPaths` (every match) walk
+ * -- one generator, so a correctness fix to the walk itself (ceiling
+ * handling, filesystem-root termination) only has one place to land instead
+ * of two copies that must be kept in sync by hand. Yields `startDir` itself
+ * first, then each ancestor toward `ceiling` (exclusive), nearest first. */
+function* walkAncestorDirs(startDir: string, ceiling: string): Generator<string> {
   const ceilingResolved = resolvePath(ceiling);
   let dir = resolvePath(startDir);
   for (;;) {
-    if (dir === ceilingResolved) return null;
-    if (existsFn(resolveConfigPath(join(dir, '.config')))) return dir;
+    if (dir === ceilingResolved) return;
+    yield dir;
     const parent = dirname(dir);
-    if (parent === dir) return null;
+    if (parent === dir) return;
     dir = parent;
   }
+}
+
+/** ADR-0008: every ancestor of `startDir` (up to `ceiling`, exclusive)
+ * whose `.config/gdlc/config.yml` exists, nearest first, EXCLUDING (but not
+ * stopping the climb at) a candidate that collides with the global layer's
+ * own resolved path -- same collision guard as `resolveProjectConfigPath`,
+ * but skip-and-continue instead of stop-and-return-null, so a legitimate
+ * further ancestor is never hidden behind an accidental collision.
+ *
+ * `findProjectConfigRoot` only ever surfaces the single NEAREST such
+ * directory -- correct for the `projectConfigPath` diagnostic (naming one
+ * concrete file), but wrong for `loadGdlcConfig`'s merge: a nearer ancestor
+ * whose file defines only one section (e.g. `board:`) would otherwise make
+ * `findProjectConfigRoot` stop there, silently hiding a `packs:`/
+ * `prLifecycle:` section set at any further ancestor and falling straight
+ * through to the *global* layer instead -- the exact bug #227 reported.
+ * Exported for tests. */
+export function findAllProjectConfigPaths(
+  startDir: string = process.cwd(),
+  existsFn: (path: string) => boolean = existsSync,
+  env: NodeJS.ProcessEnv = process.env,
+  ceiling: string = homedir(),
+): string[] {
+  const globalPath = resolveConfigPath(resolveGlobalConfigRoot(env));
+  const paths: string[] = [];
+  for (const dir of walkAncestorDirs(startDir, ceiling)) {
+    const candidate = resolveConfigPath(join(dir, '.config'));
+    if (existsFn(candidate) && candidate !== globalPath) paths.push(candidate);
+  }
+  return paths;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -253,26 +296,32 @@ export function resolveProjectConfigPath(
   return path === resolveConfigPath(resolveGlobalConfigRoot(env)) ? null : path;
 }
 
-/** Load and merge both layers. `projectRoot` defaults to `process.cwd()`
+/** Load and merge every layer. `projectRoot` defaults to `process.cwd()`
  * (the running tool's project root); `env` defaults to `process.env` (for
- * `XDG_CONFIG_HOME`, tests inject a fake one). Issue #106: `projectRoot` is
- * only the SEARCH START, not necessarily where the file is found --
- * `resolveProjectConfigPath` climbs upward from it first, and excludes a
- * match against the global layer's own path (see that function's doc
- * comment, and ADR-0005 for what the upward search does and does not fix).
- * `existsFn` is injectable (default `existsSync`) so a test asserting
- * "nothing found anywhere" doesn't have to walk the real filesystem to its
- * root, which would risk a false match against whatever the test-running
- * machine's real ancestor directories happen to contain. */
+ * `XDG_CONFIG_HOME`, tests inject a fake one).
+ *
+ * ADR-0008: merges EVERY ancestor project-layer file found by
+ * `findAllProjectConfigPaths`, nearest-wins per section, onto the global
+ * layer as the base -- not just the single nearest one (issue #106 /
+ * ADR-0005's original design). A nearer ancestor's file replaces a further
+ * ancestor's (or global's) same section wholly (ADR-0004's per-section
+ * cascade, now extended across N ancestor layers instead of just one),
+ * while a section that nearer file doesn't define falls through to the
+ * next ancestor that does, and only then to global. `existsFn` is
+ * injectable (default `existsSync`) so a test asserting "nothing found
+ * anywhere" doesn't have to walk the real filesystem to its root, which
+ * would risk a false match against whatever the test-running machine's
+ * real ancestor directories happen to contain. */
 export function loadGdlcConfig(
   projectRoot: string = process.cwd(),
   env: NodeJS.ProcessEnv = process.env,
   existsFn: (path: string) => boolean = existsSync,
 ): GdlcConfig {
   const global = loadConfigFile(resolveConfigPath(resolveGlobalConfigRoot(env)));
-  const projectPath = resolveProjectConfigPath(projectRoot, existsFn, env);
-  const project = projectPath === null ? {} : loadConfigFile(projectPath);
-  return mergeConfigs(global, project);
+  const projectPaths = findAllProjectConfigPaths(projectRoot, existsFn, env);
+  // Furthest-first, so a nearer ancestor's mergeConfigs call runs last and
+  // wins per-section over both the global layer and every further ancestor.
+  return projectPaths.reduceRight((acc, path) => mergeConfigs(acc, loadConfigFile(path)), global);
 }
 
 /** Resolve board coordinates from explicit tool-call arguments or config,

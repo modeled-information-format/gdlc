@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   resolveConfigPath,
@@ -9,6 +9,7 @@ import {
   mergeConfigs,
   loadGdlcConfig,
   findProjectConfigRoot,
+  findAllProjectConfigPaths,
   resolveProjectConfigPath,
   resolveBoardCoordinates,
   resolveDestinationRepo,
@@ -271,6 +272,104 @@ describe('loadGdlcConfig', () => {
 
     const config = loadGdlcConfig(nestedCwd, { XDG_CONFIG_HOME: tmpDir() });
     expect(config).toEqual({ destination: { repo: 'acme/central' } });
+  });
+
+  // ADR-0008 / gdlc#227: a nearer ancestor's config.yml that defines only
+  // board: (no packs:/prLifecycle: at all) must not shadow those sections
+  // set at a FURTHER ancestor -- the merge has to keep climbing past the
+  // board-only file instead of stopping there and falling straight through
+  // to the global layer. This is this repo's own real topology
+  // (repos/gdlc/.config/gdlc/config.yml defines only board:).
+  it('merges a further ancestor project layer for sections a nearer ancestor board-only file omits', () => {
+    const outerRoot = tmpDir();
+    writeConfig(join(outerRoot, '.config'), ['packs:', '  hooks: true', ''].join('\n'));
+    const innerRoot = join(outerRoot, 'repos', 'gdlc');
+    mkdirSync(innerRoot, { recursive: true });
+    writeConfig(join(innerRoot, '.config'), ['board:', '  projectOwnerLogin: acme', '  projectNumber: 1', ''].join('\n'));
+
+    const config = loadGdlcConfig(innerRoot, { XDG_CONFIG_HOME: tmpDir() });
+    expect(config).toEqual({
+      board: { projectOwnerLogin: 'acme', projectNumber: 1 },
+      packs: { hooks: true },
+    });
+  });
+
+  // ADR-0008: the sharper case -- a nearer ancestor's file DOES have the
+  // section's header, but it resolves to zero valid parsed content (a
+  // comment-only body, or every key malformed). This must ALSO not shadow
+  // a further ancestor's real value. This is the specific trigger an
+  // earlier reverted fix attempt got wrong (a header-regex-only presence
+  // predicate treated "header present" as "section defined here", which
+  // disagreed with normalizeConfig's real presence check).
+  it('does not let a nearer ancestor with a present-but-empty packs: header shadow a further ancestor', () => {
+    const outerRoot = tmpDir();
+    writeConfig(join(outerRoot, '.config'), ['packs:', '  hooks: true', ''].join('\n'));
+    const innerRoot = join(outerRoot, 'repos', 'gdlc');
+    mkdirSync(innerRoot, { recursive: true });
+    // packs: header present, but the only child line is a comment -- zero
+    // keys parse, so normalizeConfig omits `packs` from this layer entirely.
+    writeConfig(join(innerRoot, '.config'), ['packs:', '  # nothing configured yet', ''].join('\n'));
+
+    const config = loadGdlcConfig(innerRoot, { XDG_CONFIG_HOME: tmpDir() });
+    expect(config).toEqual({ packs: { hooks: true } });
+  });
+
+  it('a nearer ancestor section still wins over the same section at a further ancestor', () => {
+    const outerRoot = tmpDir();
+    writeConfig(join(outerRoot, '.config'), ['board:', '  projectOwnerLogin: from-outer', '  projectNumber: 9', ''].join('\n'));
+    const innerRoot = join(outerRoot, 'repos', 'gdlc');
+    mkdirSync(innerRoot, { recursive: true });
+    writeConfig(join(innerRoot, '.config'), ['board:', '  projectOwnerLogin: from-inner', '  projectNumber: 1', ''].join('\n'));
+
+    const config = loadGdlcConfig(innerRoot, { XDG_CONFIG_HOME: tmpDir() });
+    expect(config).toEqual({ board: { projectOwnerLogin: 'from-inner', projectNumber: 1 } });
+  });
+
+  it('still falls through to global when NO ancestor at all defines a section, board-only files included', () => {
+    const outerRoot = tmpDir();
+    const globalRoot = join(outerRoot, 'global-config');
+    writeConfig(globalRoot, ['packs:', '  hooks: true', ''].join('\n'));
+    const innerRoot = join(outerRoot, 'repos', 'gdlc');
+    mkdirSync(innerRoot, { recursive: true });
+    writeConfig(join(innerRoot, '.config'), ['board:', '  projectOwnerLogin: acme', '  projectNumber: 1', ''].join('\n'));
+
+    const config = loadGdlcConfig(innerRoot, { XDG_CONFIG_HOME: globalRoot });
+    expect(config).toEqual({
+      board: { projectOwnerLogin: 'acme', projectNumber: 1 },
+      packs: { hooks: true },
+    });
+  });
+});
+
+describe('findAllProjectConfigPaths', () => {
+  it('returns every ancestor with a config file, nearest first', () => {
+    const outerRoot = tmpDir();
+    writeConfig(join(outerRoot, '.config'), 'packs:\n  hooks: true\n');
+    const innerRoot = join(outerRoot, 'repos', 'gdlc');
+    mkdirSync(innerRoot, { recursive: true });
+    writeConfig(join(innerRoot, '.config'), 'board:\n  projectOwnerLogin: acme\n  projectNumber: 1\n');
+
+    const paths = findAllProjectConfigPaths(innerRoot, existsSync, { XDG_CONFIG_HOME: tmpDir() });
+    expect(paths).toEqual([resolveConfigPath(join(innerRoot, '.config')), resolveConfigPath(join(outerRoot, '.config'))]);
+  });
+
+  it("excludes a match that is literally the global layer's own path, but keeps climbing past it", () => {
+    // Same collision simulation as resolveProjectConfigPath's own test: the
+    // upward search legitimately passes through the global config root for
+    // any cwd under it, so the guard has to exclude an exact path match
+    // without stopping the climb there.
+    const collisionRoot = '/collision-root';
+    const globalConfigDir = join(collisionRoot, '.config');
+    const furtherAncestorConfigDir = join(dirname(collisionRoot), '.config');
+    const existsFn = (p: string) => p === resolveConfigPath(globalConfigDir) || p === resolveConfigPath(furtherAncestorConfigDir);
+    const startDir = join(collisionRoot, 'a', 'b');
+
+    const paths = findAllProjectConfigPaths(startDir, existsFn, { XDG_CONFIG_HOME: globalConfigDir });
+    expect(paths).toEqual([resolveConfigPath(furtherAncestorConfigDir)]);
+  });
+
+  it('returns [] when no ancestor has a config file', () => {
+    expect(findAllProjectConfigPaths(tmpDir(), () => false, { XDG_CONFIG_HOME: tmpDir() })).toEqual([]);
   });
 });
 
