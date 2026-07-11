@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env node
 import { createRequire } from 'module'; const require = createRequire(import.meta.url);
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -7815,7 +7815,9 @@ function parseArgs() {
   const repo = repoArg ?? process.env.REPO;
   const pullNumberRaw = prArg ?? process.env.PR;
   if (!owner || !repo || !pullNumberRaw) {
-    process.stderr.write("Usage: npm run pr-readiness -- <owner> <repo> <pullNumber>  (or OWNER/REPO/PR env vars)\n");
+    process.stderr.write(
+      "Usage: npm run pr-readiness -- <owner> <repo> <pullNumber>  (or OWNER/REPO/PR env vars)\n   or: node dist/pr-readiness.js <owner> <repo> <pullNumber>  (or: tsx scripts/pr-readiness.ts ...)\n"
+    );
     process.exit(2);
   }
   const pullNumber = Number(pullNumberRaw);
