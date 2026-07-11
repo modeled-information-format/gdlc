@@ -7,14 +7,14 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" && esbuild scripts/pr-readiness.ts --bundle --platform=node --format=esm --outfile=dist/pr-readiness.js --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.scripts.json",
     "lint": "eslint src test scripts --max-warnings 0",
     "verify:live": "tsx scripts/verify-live.ts",
-    "pr-readiness": "tsx scripts/pr-readiness.ts"
+    "pr-readiness": "node dist/pr-readiness.js"
   },
   "dependencies": {
     "@github-sdlc-plugins/github-sdlc-planning-mcp-server": "file:../../github-sdlc-planning/mcp-server",

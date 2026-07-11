@@ -12,10 +12,21 @@
  * exits 0 when settled, 1 when not yet settled, 2 on a real error -- so a
  * bash poll loop can check the exit code directly:
  *
- *   until tsx scripts/pr-readiness.ts acme widgets 42; do sleep 30; done
+ *   until npm run pr-readiness -- acme widgets 42; do sleep 30; done
  *
- * Usage: tsx scripts/pr-readiness.ts <owner> <repo> <pullNumber>
- *   or:  OWNER=acme REPO=widgets PR=42 tsx scripts/pr-readiness.ts
+ * Issue #226: this source file is the `tsx`-run dev entry point (works in
+ * this monorepo checkout only, where npm workspaces symlinks resolve the
+ * `@github-sdlc-plugins/github-sdlc-planning-mcp-server` import below). The
+ * `pr-readiness` npm script instead runs the esbuild-bundled
+ * `dist/pr-readiness.js` (built alongside `dist/index.js` by `npm run
+ * build`), which inlines that cross-package import at build time so it also
+ * works from an installed plugin cache, which has no such symlink. Run this
+ * file directly with `tsx` only for local iteration on the script itself;
+ * everything else (the documented CLI usage, a Monitor poll loop) should go
+ * through `npm run pr-readiness --` or the built `dist/pr-readiness.js`.
+ *
+ * Usage: npm run pr-readiness -- <owner> <repo> <pullNumber>
+ *   or:  OWNER=acme REPO=widgets PR=42 npm run pr-readiness
  */
 import { checkPrReadiness } from '../src/tools/pr-readiness.js';
 
@@ -25,7 +36,7 @@ function parseArgs(): { owner: string; repo: string; pullNumber: number } {
   const repo = repoArg ?? process.env.REPO;
   const pullNumberRaw = prArg ?? process.env.PR;
   if (!owner || !repo || !pullNumberRaw) {
-    process.stderr.write('Usage: tsx scripts/pr-readiness.ts <owner> <repo> <pullNumber>  (or OWNER/REPO/PR env vars)\n');
+    process.stderr.write('Usage: npm run pr-readiness -- <owner> <repo> <pullNumber>  (or OWNER/REPO/PR env vars)\n');
     process.exit(2);
   }
   const pullNumber = Number(pullNumberRaw);
