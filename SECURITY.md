@@ -165,8 +165,10 @@ For a narrative walkthrough of consumer verification, see
   mutable tag or branch. The `pin-check` CI job enforces this on every push
   and PR and is a required status check.
 - Every plugin source in `marketplace.json`'s `plugins[]` array (this repo's
-  own 7 vendored plugins) is pinned to a 40-char `sha`; the
-  **manifest-review** gate fails closed if any is not. The `mif-docs`
+  own 7 vendored plugins) is pinned to a 40-char `sha`; **catalog-admission**
+  fails closed (exits non-zero, blocking merge) if any is not — the
+  quality-gates **manifest-review** job also reports on this but is
+  soft-fail (SARIF findings only, never blocks the job). The `mif-docs`
   cross-marketplace dependency is a separate, unpinned mechanism: a semver
   range resolved against upstream git tags, gated by `catalog-admission`'s
   `allowCrossMarketplaceDependenciesOn` allowlist instead of a `sha`.
