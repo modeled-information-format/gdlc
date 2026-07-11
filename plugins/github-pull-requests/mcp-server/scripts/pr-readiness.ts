@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env node
 /**
  * CLI entry point for check_pr_readiness's core logic (issue #185/#188) --
  * the thing a Monitor poll loop should call BY NAME instead of an agent
@@ -12,10 +12,31 @@
  * exits 0 when settled, 1 when not yet settled, 2 on a real error -- so a
  * bash poll loop can check the exit code directly:
  *
- *   until tsx scripts/pr-readiness.ts acme widgets 42; do sleep 30; done
+ *   until npm run pr-readiness -- acme widgets 42; do sleep 30; done
  *
- * Usage: tsx scripts/pr-readiness.ts <owner> <repo> <pullNumber>
- *   or:  OWNER=acme REPO=widgets PR=42 tsx scripts/pr-readiness.ts
+ * Issue #226: this source file is not itself executable (no `+x`) and is
+ * never run via its own shebang -- local dev iteration invokes it
+ * explicitly with `tsx scripts/pr-readiness.ts <args>`. The shebang above
+ * is `node`, not `tsx`, because esbuild copies it verbatim into the built
+ * `dist/pr-readiness.js` (which IS `+x`): a `tsx` shebang there would try
+ * to invoke `tsx` as the interpreter for a plain, already-bundled JS file,
+ * which fails in an installed plugin cache with no `tsx` devDependency.
+ * `node` is correct for both the source's actual runtime (via `tsx`, which
+ * only cares about file content, not the shebang) and the bundled output's
+ * real runtime.
+ *
+ * The `pr-readiness` npm script runs the esbuild-bundled `dist/pr-readiness.js`
+ * (built alongside `dist/index.js` by `npm run build`), which inlines the
+ * `@github-sdlc-plugins/github-sdlc-planning-mcp-server` cross-package
+ * import at build time -- unlike this source file, which resolves that
+ * import via npm workspaces symlinks and therefore only runs correctly
+ * inside this monorepo checkout, never from an installed plugin cache.
+ *
+ * Three equivalent ways to invoke this CLI, in order of preference:
+ *   npm run pr-readiness -- <owner> <repo> <pullNumber>   (recommended)
+ *   node dist/pr-readiness.js <owner> <repo> <pullNumber>  (after npm run build)
+ *   tsx scripts/pr-readiness.ts <owner> <repo> <pullNumber>  (monorepo dev only)
+ *   or, with any of the three: OWNER=acme REPO=widgets PR=42 <command>
  */
 import { checkPrReadiness } from '../src/tools/pr-readiness.js';
 
@@ -25,7 +46,10 @@ function parseArgs(): { owner: string; repo: string; pullNumber: number } {
   const repo = repoArg ?? process.env.REPO;
   const pullNumberRaw = prArg ?? process.env.PR;
   if (!owner || !repo || !pullNumberRaw) {
-    process.stderr.write('Usage: tsx scripts/pr-readiness.ts <owner> <repo> <pullNumber>  (or OWNER/REPO/PR env vars)\n');
+    process.stderr.write(
+      'Usage: npm run pr-readiness -- <owner> <repo> <pullNumber>  (or OWNER/REPO/PR env vars)\n' +
+        '   or: node dist/pr-readiness.js <owner> <repo> <pullNumber>  (or: tsx scripts/pr-readiness.ts ...)\n',
+    );
     process.exit(2);
   }
   const pullNumber = Number(pullNumberRaw);
