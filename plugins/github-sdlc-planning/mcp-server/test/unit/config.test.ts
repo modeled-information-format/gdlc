@@ -105,7 +105,7 @@ describe('loadConfigFile', () => {
     expect(loadConfigFile(resolveConfigPath(root))).toEqual({});
   });
 
-  it('drops unrecognized targeting/destination/board fields rather than throwing', () => {
+  it('drops unrecognized targeting/destination fields rather than throwing, but keeps a present-but-invalid board: as an empty marker', () => {
     const root = tmpDir();
     writeConfig(
       root,
@@ -121,7 +121,11 @@ describe('loadConfigFile', () => {
         '',
       ].join('\n'),
     );
-    expect(loadConfigFile(resolveConfigPath(root))).toEqual({});
+    // board: {} here, not {} for the whole config -- see the Copilot review
+    // finding above (PR #238): the board: header existing at all means
+    // "present" and stops the cascade, even with zero valid children,
+    // matching the hooks-layer reader's documented behavior.
+    expect(loadConfigFile(resolveConfigPath(root))).toEqual({ board: {} });
   });
 
   it('keeps an explicitly empty allowlist array (no restriction) distinct from an absent one', () => {
@@ -312,6 +316,50 @@ describe('loadGdlcConfig', () => {
 
     const config = loadGdlcConfig(innerRoot, { XDG_CONFIG_HOME: tmpDir() });
     expect(config).toEqual({ packs: { hooks: true } });
+  });
+
+  // Copilot review finding on PR #238: board:'s presence rule is
+  // deliberately the OPPOSITE of packs:/prLifecycle:'s above -- the header
+  // line existing at all (even with zero valid children) means "present",
+  // and a present-but-invalid board: section STOPS the cascade there
+  // (resolves to an empty/partial board, not the further ancestor's real
+  // value), matching the hooks-layer readBoardConfig's documented
+  // behavior. The original normalizeConfig only set config.board when at
+  // least one field validated, silently falling through instead -- fixed
+  // in the same commit as this test.
+  it('a nearer ancestor with a present-but-invalid board: header STOPS the cascade (opposite of packs:)', () => {
+    const outerRoot = tmpDir();
+    writeConfig(join(outerRoot, '.config'), ['board:', '  projectOwnerLogin: from-outer', '  projectNumber: 9', ''].join('\n'));
+    const innerRoot = join(outerRoot, 'repos', 'gdlc');
+    mkdirSync(innerRoot, { recursive: true });
+    // board: header present, but every child is malformed -- projectNumber
+    // isn't a valid positive integer, so no field validates.
+    writeConfig(join(innerRoot, '.config'), ['board:', '  projectNumber: "not-a-number"', ''].join('\n'));
+
+    const config = loadGdlcConfig(innerRoot, { XDG_CONFIG_HOME: tmpDir() });
+    expect(config).toEqual({ board: {} });
+  });
+
+  it('a bare board: key with nothing following also counts as present and stops the cascade', () => {
+    const outerRoot = tmpDir();
+    writeConfig(join(outerRoot, '.config'), ['board:', '  projectOwnerLogin: from-outer', '  projectNumber: 9', ''].join('\n'));
+    const innerRoot = join(outerRoot, 'repos', 'gdlc');
+    mkdirSync(innerRoot, { recursive: true });
+    writeConfig(join(innerRoot, '.config'), 'board:\n');
+
+    const config = loadGdlcConfig(innerRoot, { XDG_CONFIG_HOME: tmpDir() });
+    expect(config).toEqual({ board: {} });
+  });
+
+  it('an inline scalar board: value (not a header) does NOT count as present, matching the hooks regex', () => {
+    const outerRoot = tmpDir();
+    writeConfig(join(outerRoot, '.config'), ['board:', '  projectOwnerLogin: from-outer', '  projectNumber: 9', ''].join('\n'));
+    const innerRoot = join(outerRoot, 'repos', 'gdlc');
+    mkdirSync(innerRoot, { recursive: true });
+    writeConfig(join(innerRoot, '.config'), 'board: "not-a-map"\n');
+
+    const config = loadGdlcConfig(innerRoot, { XDG_CONFIG_HOME: tmpDir() });
+    expect(config).toEqual({ board: { projectOwnerLogin: 'from-outer', projectNumber: 9 } });
   });
 
   it('a nearer ancestor section still wins over the same section at a further ancestor', () => {

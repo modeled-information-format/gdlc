@@ -39243,8 +39243,9 @@ function normalizeConfig(parsed) {
   if (isPlainObject3(parsed.destination) && typeof parsed.destination.repo === "string") {
     config2.destination = { repo: parsed.destination.repo };
   }
-  if (isPlainObject3(parsed.board)) {
-    const { projectOwnerLogin, projectNumber, projectOwnerType } = parsed.board;
+  if (parsed.board === null || isPlainObject3(parsed.board)) {
+    const raw = isPlainObject3(parsed.board) ? parsed.board : {};
+    const { projectOwnerLogin, projectNumber, projectOwnerType } = raw;
     const board = {};
     if (typeof projectOwnerLogin === "string" && projectOwnerLogin !== "") board.projectOwnerLogin = projectOwnerLogin;
     if (typeof projectNumber === "number" || typeof projectNumber === "string") {
@@ -39252,7 +39253,7 @@ function normalizeConfig(parsed) {
       if (Number.isInteger(parsedNumber) && parsedNumber > 0) board.projectNumber = parsedNumber;
     }
     if (projectOwnerType === "organization" || projectOwnerType === "user") board.projectOwnerType = projectOwnerType;
-    if (Object.keys(board).length > 0) config2.board = board;
+    config2.board = board;
   }
   if (isPlainObject3(parsed.packs)) {
     const packs = {};

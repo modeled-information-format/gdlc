@@ -125,8 +125,28 @@ function normalizeConfig(parsed) {
     if (isPlainObject(parsed.destination) && typeof parsed.destination.repo === 'string') {
         config.destination = { repo: parsed.destination.repo };
     }
-    if (isPlainObject(parsed.board)) {
-        const { projectOwnerLogin, projectNumber, projectOwnerType } = parsed.board;
+    // ADR-0008 / Copilot review finding on PR #238: `board:`'s presence rule
+    // is deliberately narrower than `packs:`/`prLifecycle:`'s (see that ADR's
+    // Cascade section) -- the hooks-layer reader (`parseGdlcBoardSection`)
+    // treats the bare `board:` HEADER LINE existing as "present", regardless
+    // of whether any child field validates, so a present-but-invalid section
+    // stops the cascade there rather than falling through to a further
+    // ancestor or the global layer. The original `isPlainObject(parsed.board)`
+    // gate here, combined with only setting `config.board` when
+    // `Object.keys(board).length > 0`, instead treated a `board:` section
+    // with zero *valid* fields (comment-only body, or every key malformed) as
+    // absent -- silently falling through and diverging from the hooks-layer
+    // reader for the exact same file. `parsed.board === null` (a bare
+    // `board:` key, or one followed only by a stripped comment) also counts
+    // as the header being present, matching the hooks regex's `board:\s*$`
+    // match regardless of what (if anything) follows on subsequent lines. An
+    // inline scalar (`board: "not-a-map"`) or array value does NOT count --
+    // the hooks regex only recognizes the `key:` header form implying a
+    // nested block, not an inline assignment on the same line, so this stays
+    // absent on both sides. */
+    if (parsed.board === null || isPlainObject(parsed.board)) {
+        const raw = isPlainObject(parsed.board) ? parsed.board : {};
+        const { projectOwnerLogin, projectNumber, projectOwnerType } = raw;
         const board = {};
         if (typeof projectOwnerLogin === 'string' && projectOwnerLogin !== '')
             board.projectOwnerLogin = projectOwnerLogin;
@@ -142,8 +162,7 @@ function normalizeConfig(parsed) {
         }
         if (projectOwnerType === 'organization' || projectOwnerType === 'user')
             board.projectOwnerType = projectOwnerType;
-        if (Object.keys(board).length > 0)
-            config.board = board;
+        config.board = board;
     }
     if (isPlainObject(parsed.packs)) {
         const packs = {};
