@@ -110,5 +110,10 @@ resolution, transitive enable/disable, `range-conflict`/`dependency-unsatisfied`
 errors), not a documentation-only claim. `github-sdlc-planning` in turn
 declares a cross-marketplace dependency on `mif-docs@modeled-information-format`,
 gated by this catalog's own `allowCrossMarketplaceDependenciesOn` allowlist.
-Both edges are exercised by `catalog-admission` and by the install-time tests
-in this repo's test suite, not merely asserted.
+`catalog-admission` exercises the admission-time half of both edges: it
+resolves the same-marketplace dependency for real, and it enforces that the
+cross-marketplace entry's `marketplace` field is on the allowlist. It does
+not itself parse or validate the `version` range string — that resolution
+(semver-range-to-git-tag matching, `range-conflict`/`dependency-unsatisfied`
+errors) is Claude Code's own install-time behavior, and this repo's test
+suite does not currently exercise it directly.
