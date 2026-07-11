@@ -39392,6 +39392,14 @@ function withRequiredBoardCoordinates(fn) {
     return fn({ ...args, ...resolved });
   };
 }
+var hasWarnedNoOpBoard = false;
+function warnNoOpBoard(write = (line) => process.stderr.write(line)) {
+  if (hasWarnedNoOpBoard) return;
+  hasWarnedNoOpBoard = true;
+  write(
+    "[gdlc] No board configured for this session -- board-aware fields will be omitted. Set board: { projectOwnerLogin, projectNumber } in .config/gdlc/config.yml (or the global $XDG_CONFIG_HOME/gdlc/config.yml) to enable them.\n"
+  );
+}
 function withOptionalBoardCoordinates(fn) {
   return (args) => {
     const config2 = loadGdlcConfig();
@@ -39399,6 +39407,7 @@ function withOptionalBoardCoordinates(fn) {
       { projectOwnerLogin: args.projectOwnerLogin, projectNumber: args.projectNumber, projectOwnerType: args.projectOwnerType },
       config2
     );
+    if (!resolved) warnNoOpBoard();
     return fn(resolved ? { ...args, ...resolved } : args);
   };
 }
