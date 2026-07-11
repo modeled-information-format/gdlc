@@ -38810,19 +38810,28 @@ var CONFIG_RELPATH = ["gdlc", "config.yml"];
 function resolveConfigPath(root) {
   return join2(root, ...CONFIG_RELPATH);
 }
-function findProjectConfigRoot(startDir, existsFn = existsSync, ceiling = homedir2()) {
+function* walkAncestorDirs(startDir, ceiling) {
   const ceilingResolved = resolvePath(ceiling);
   let dir = resolvePath(startDir);
   for (; ; ) {
     if (dir === ceilingResolved)
-      return null;
-    if (existsFn(resolveConfigPath(join2(dir, ".config"))))
-      return dir;
+      return;
+    yield dir;
     const parent = dirname(dir);
     if (parent === dir)
-      return null;
+      return;
     dir = parent;
   }
+}
+function findAllProjectConfigPaths(startDir = process.cwd(), existsFn = existsSync, env = process.env, ceiling = homedir2()) {
+  const globalPath = resolveConfigPath(resolveGlobalConfigRoot(env));
+  const paths = [];
+  for (const dir of walkAncestorDirs(startDir, ceiling)) {
+    const candidate = resolveConfigPath(join2(dir, ".config"));
+    if (existsFn(candidate) && candidate !== globalPath)
+      paths.push(candidate);
+  }
+  return paths;
 }
 function isPlainObject3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -38906,18 +38915,10 @@ function loadConfigFile(path) {
 function mergeConfigs(global, project) {
   return { ...global, ...project };
 }
-function resolveProjectConfigPath(startDir = process.cwd(), existsFn = existsSync, env = process.env) {
-  const root = findProjectConfigRoot(startDir, existsFn);
-  if (root === null)
-    return null;
-  const path = resolveConfigPath(join2(root, ".config"));
-  return path === resolveConfigPath(resolveGlobalConfigRoot(env)) ? null : path;
-}
 function loadGdlcConfig(projectRoot = process.cwd(), env = process.env, existsFn = existsSync) {
   const global = loadConfigFile(resolveConfigPath(resolveGlobalConfigRoot(env)));
-  const projectPath = resolveProjectConfigPath(projectRoot, existsFn, env);
-  const project = projectPath === null ? {} : loadConfigFile(projectPath);
-  return mergeConfigs(global, project);
+  const projectPaths = findAllProjectConfigPaths(projectRoot, existsFn, env);
+  return projectPaths.reduceRight((acc, path) => mergeConfigs(acc, loadConfigFile(path)), global);
 }
 function resolveBoardCoordinates(explicit, config2) {
   const hasExplicitLogin = explicit.projectOwnerLogin !== void 0;
