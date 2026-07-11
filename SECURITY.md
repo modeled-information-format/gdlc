@@ -23,8 +23,13 @@ unverified plugin. Enforcement lives at four points instead:
 
 1. **Catalog admission** — a plugin SHA enters `marketplace.json` only after
    its attestations verify in CI (fail-closed at merge).
-2. **SHA-pinned catalog** — external plugin sources (currently `mif-docs`) are
-   pinned to a 40-char `sha`, so cataloged content is immutable.
+2. **SHA-pinned catalog** — every entry in `marketplace.json`'s `plugins[]`
+   array (this repo's own 7 vendored plugins) is pinned to a 40-char `sha`,
+   so cataloged content is immutable. The cross-marketplace `mif-docs`
+   dependency declared in `github-sdlc-planning`'s `plugin.json` is a
+   separate mechanism: a semver range resolved against upstream git tags,
+   not a `sha` pin — see
+   [docs/explanation/attested-marketplace.md](docs/explanation/attested-marketplace.md).
 3. **Cosign-signed catalog** — the `marketplace.json` blob is keyless-signed,
    so a consumer can prove the catalog they fetched is the one this repo
    published.
@@ -159,9 +164,14 @@ For a narrative walkthrough of consumer verification, see
 - Every GitHub Action is pinned to a full 40-character commit SHA — never a
   mutable tag or branch. The `pin-check` CI job enforces this on every push
   and PR and is a required status check.
-- Every external plugin source in `marketplace.json` (currently `mif-docs`) is
-  pinned to a 40-char `sha`; the **manifest-review** gate fails closed if any
-  is not.
+- Every plugin source in `marketplace.json`'s `plugins[]` array (this repo's
+  own 7 vendored plugins) is pinned to a 40-char `sha`; **catalog-admission**
+  fails closed (exits non-zero, blocking merge) if any is not — the
+  quality-gates **manifest-review** job also reports on this but is
+  soft-fail (SARIF findings only, never blocks the job). The `mif-docs`
+  cross-marketplace dependency is a separate, unpinned mechanism: a semver
+  range resolved against upstream git tags, gated by `catalog-admission`'s
+  `allowCrossMarketplaceDependenciesOn` allowlist instead of a `sha`.
 - The release pipeline is fail-closed: every attestation must verify before a
   plugin SHA is admitted to the catalog and before a release publishes. There
   is no path from build to publish that bypasses verification.
