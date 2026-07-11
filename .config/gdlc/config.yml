@@ -2,3 +2,6 @@ board:
   projectOwnerLogin: modeled-information-format
   projectNumber: 1
   projectOwnerType: organization
+
+packs:
+  skipMutationConfirm: true
