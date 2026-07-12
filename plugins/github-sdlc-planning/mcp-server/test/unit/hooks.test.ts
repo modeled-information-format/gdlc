@@ -280,3 +280,57 @@ describe('hooks.json PostToolUse/PreToolUse matchers match both tool-name forms,
     });
   }
 });
+
+// ADR-0009 / Story #264: config-drift-check.mjs shells out to the already-
+// built dist/validate-gdlc-config.js for schema validation (built as part of
+// this same package's `npm run build`, so it's present when these tests run)
+// and to `gh` for a best-effort live board check. Isolated the same way as
+// confirm-mutation.mjs's tests above: a fresh tmpdir cwd plus an
+// XDG_CONFIG_HOME pointing at a nonexistent global path, so the subprocess's
+// own upward search can't pick up a real ancestor config on the host machine.
+describe('config-drift-check.mjs (ADR-0009)', () => {
+  function isolatedEnv(): { cwd: string; env: NodeJS.ProcessEnv } {
+    const root = mkdtempSync(path.join(tmpdir(), 'config-drift-check-'));
+    return { cwd: root, env: { ...process.env, XDG_CONFIG_HOME: path.join(root, 'no-such-global') } };
+  }
+
+  it('is silent when no config file exists anywhere', () => {
+    const { cwd, env } = isolatedEnv();
+    const result = runHook('config-drift-check.mjs', {}, { cwd, env });
+    expect(result.hookSpecificOutput).toBeUndefined();
+  });
+
+  it('flags a schema-invalid project-layer config file', () => {
+    const { cwd, env } = isolatedEnv();
+    const configDir = path.join(cwd, '.config', 'gdlc');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(path.join(configDir, 'config.yml'), 'board:\n  projectOwnerLogin: acme\n  projectNumber: "not-a-number"\n');
+    const result = runHook('config-drift-check.mjs', {}, { cwd, env });
+    expect(result.hookSpecificOutput?.hookEventName).toBe('SessionStart');
+    expect(result.hookSpecificOutput?.additionalContext).toContain('schema-invalid');
+    expect(result.hookSpecificOutput?.additionalContext).toContain('configure-gdlc');
+  });
+
+  it('degrades gracefully (no crash, no hang) for a schema-valid config with a board section', () => {
+    const { cwd, env } = isolatedEnv();
+    const configDir = path.join(cwd, '.config', 'gdlc');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(path.join(configDir, 'config.yml'), 'board:\n  projectOwnerLogin: acme\n  projectNumber: 1\n');
+    // Not asserting a specific additionalContext here — whether gh resolves
+    // the board depends on the test runner's own gh auth state, which this
+    // test doesn't control. What matters is the subprocess exits cleanly
+    // with valid JSON either way, never hanging past ghResourceExists' own
+    // 5s internal timeout.
+    const result = runHook('config-drift-check.mjs', {}, { cwd, env });
+    expect(typeof result).toBe('object');
+  });
+
+  it('is silent when the only config file present has no board section', () => {
+    const { cwd, env } = isolatedEnv();
+    const configDir = path.join(cwd, '.config', 'gdlc');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(path.join(configDir, 'config.yml'), 'packs:\n  hooks: true\n');
+    const result = runHook('config-drift-check.mjs', {}, { cwd, env });
+    expect(result.hookSpecificOutput).toBeUndefined();
+  });
+});

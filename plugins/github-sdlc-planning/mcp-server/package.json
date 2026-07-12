@@ -12,17 +12,19 @@
     "./mif": "./dist/mif.js",
     "./project-profile": "./dist/project-profile.js",
     "./resolvers": "./dist/resolvers.js",
-    "./tools/projects": "./dist/tools/projects.js"
+    "./tools/projects": "./dist/tools/projects.js",
+    "./tools/config": "./dist/tools/config.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && npm run bundle",
-    "bundle": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
+    "bundle": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" && esbuild scripts/validate-gdlc-config.ts --bundle --platform=node --format=esm --outfile=dist/validate-gdlc-config.js --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.scripts.json",
     "lint": "eslint src test scripts --max-warnings 0",
-    "verify:live": "tsx scripts/verify-live.ts"
+    "verify:live": "tsx scripts/verify-live.ts",
+    "validate-gdlc-config": "node dist/validate-gdlc-config.js"
   },
   "dependencies": {
     "@github-sdlc-plugins/singleflight-cache": "file:../../../packages/singleflight-cache",

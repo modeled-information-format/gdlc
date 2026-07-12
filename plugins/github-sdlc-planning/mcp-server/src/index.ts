@@ -9,6 +9,7 @@ import { addItemToProject, setFieldValue, getProjectItems, getProjectStatusProfi
 import { createMilestone, listMilestones, assignMilestone } from './tools/milestones.js';
 import { createDiscussion, listDiscussions } from './tools/discussions.js';
 import { getSessionContext, getAgentCapabilities } from './tools/session.js';
+import { getGdlcConfig, writeGdlcConfig, GDLC_CONFIG_SECTION_SCHEMAS } from './tools/config.js';
 import { formatMifIssueBody, parseMifIssueBody, MIF_ISSUE_TYPES, type MifIssueType } from './mif.js';
 import { isPlanningError } from './errors.js';
 import { withRequiredBoardCoordinates, withOptionalBoardCoordinates, withIssueDestination } from './tool-defaults.js';
@@ -287,6 +288,47 @@ server.registerTool(
     },
   },
   wrap(withOptionalBoardCoordinates(getSessionContext)),
+);
+
+server.registerTool(
+  'get_gdlc_config',
+  {
+    title: 'Get gdlc config',
+    description:
+      'Resolved layered gdlc config (global + every ancestor project-layer file, ADR-0008\'s per-section cascade) ' +
+      'plus a diagnostics array: every layer path checked, whether it exists, and which top-level sections it ' +
+      'actually contributes -- a fuller picture than get_session_context\'s single projectConfigPath string.',
+    inputSchema: { startDir: z.string().optional() },
+  },
+  wrap(({ startDir }: { startDir?: string }) => getGdlcConfig({ startDir })),
+);
+
+server.registerTool(
+  'write_gdlc_config',
+  {
+    title: 'Write gdlc config',
+    description:
+      'Write one or more top-level sections of gdlc/config.yml (ADR-0009). Always takes an explicit layer ' +
+      '(\'project\'|\'global\') and, for \'project\', an explicit root (defaults to process.cwd() -- never an ' +
+      'ancestor-search result). Validates each section against its schema, mutates only the touched key(s) via ' +
+      'yaml.Document.set() (preserving every other section\'s formatting/comments byte-for-byte), and supports ' +
+      'dryRun to preview the resulting file content without writing.',
+    inputSchema: {
+      layer: z.enum(['project', 'global']),
+      root: z.string().optional(),
+      sections: z
+        .object({
+          targeting: GDLC_CONFIG_SECTION_SCHEMAS.targeting.optional(),
+          destination: GDLC_CONFIG_SECTION_SCHEMAS.destination.optional(),
+          board: GDLC_CONFIG_SECTION_SCHEMAS.board.optional(),
+          packs: GDLC_CONFIG_SECTION_SCHEMAS.packs.optional(),
+          prLifecycle: GDLC_CONFIG_SECTION_SCHEMAS.prLifecycle.optional(),
+        })
+        .strict(),
+      dryRun: z.boolean().optional(),
+    },
+  },
+  wrap(writeGdlcConfig),
 );
 
 server.registerTool(

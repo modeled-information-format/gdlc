@@ -40,7 +40,9 @@ describe('getAgentCapabilities', () => {
     expect(caps.mifConformance).toBe('L1');
     expect(caps.tools).toContain('create_issue');
     expect(caps.tools).toContain('get_session_context');
-    expect(caps.tools).toHaveLength(16);
+    expect(caps.tools).toContain('get_gdlc_config');
+    expect(caps.tools).toContain('write_gdlc_config');
+    expect(caps.tools).toHaveLength(18);
   });
 });
 

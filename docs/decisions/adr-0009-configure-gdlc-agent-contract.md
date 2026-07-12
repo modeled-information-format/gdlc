@@ -14,7 +14,7 @@ tags:
   - configuration
   - yaml
   - validation
-status: proposed
+status: accepted
 created: 2026-07-12
 updated: 2026-07-12
 author: MIF Maintainers
@@ -38,7 +38,7 @@ related:
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -480,6 +480,20 @@ every constraint in `schema/gdlc-config.schema.json`.
 **Summary:** Drafted with A3/B2/C2 recommended; the decision is not binding until status moves to accepted.
 
 **Action Required:** Maintainer review. On acceptance, Tasks #257/#258/#265 implement against this chosen contract.
+
+### 2026-07-12
+
+**Status:** Compliant
+
+**Findings:**
+
+| Finding | Files | Lines | Assessment |
+| --- | --- | --- | --- |
+| Maintainer accepted A3/B2/C2 via PR #268 (merged, Copilot-reviewed clean, no requested changes); no open objections to the write-preservation, write-target, or validation decisions | - | - | compliant |
+
+**Summary:** Maintainer review is complete; the decision is now binding. A3/B2/C2 stand as drafted, with no changes to the chosen contract.
+
+**Action Required:** None for this ADR. Tasks #257/#258/#265 now implement against this chosen contract.
 
 [adr-0004]: adr-0004-project-config-surface.md
 [adr-0005]: adr-0005-project-config-cwd-resolution.md

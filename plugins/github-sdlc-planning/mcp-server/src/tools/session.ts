@@ -98,6 +98,8 @@ export function getAgentCapabilities(): AgentCapabilities {
       'parse_mif_issue_body',
       'get_session_context',
       'get_agent_capabilities',
+      'get_gdlc_config',
+      'write_gdlc_config',
     ],
     mifConformance: 'L1',
     hooksSupported: false,

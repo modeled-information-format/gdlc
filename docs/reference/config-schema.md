@@ -3,14 +3,14 @@ id: 20d89b34-8277-4da6-bd0f-0c2888c7a680
 type: semantic
 created: 2026-07-06T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: '2026-07-12T03:20:00.023Z'
+modified: '2026-07-12T13:42:47.030Z'
 title: Layered config schema (global + project)
 diataxis_type: reference
 provenance:
   '@type': Provenance
   agent: claude-code/claude-sonnet-5
   wasGeneratedBy:
-    '@id': urn:mif:activity:claude-code-session:977e6b34-3d1d-414f-9745-a2925dde919f
+    '@id': urn:mif:activity:claude-code-session:6587ad77-f582-49d4-9e1b-44734dc4b70a
     '@type': prov:Activity
   trustLevel: user_stated
   agentVersion: 2.1.207
@@ -24,6 +24,18 @@ this page is the schema those two layers share (issues
 [#80](https://github.com/modeled-information-format/gdlc/issues/80) and
 [#81](https://github.com/modeled-information-format/gdlc/issues/81)).
 Machine-readable copy: [`schema/gdlc-config.schema.json`](../../schema/gdlc-config.schema.json).
+
+## Authoring this file
+
+Hand-editing the YAML directly against this page still works, but the
+recommended path is the `configure-gdlc` agent/skill
+([how-to](../how-to/configure-gdlc.md)), which reads the resolved state via
+`get_gdlc_config`, elicits an explicit write target and section values, and
+writes via `write_gdlc_config` — a schema-validated, CST-preserving write
+(only the touched top-level section changes; comments/ordering elsewhere in
+the file are untouched) rather than a full-file rewrite. See
+[ADR-0009](../decisions/adr-0009-configure-gdlc-agent-contract.md) for the
+write-path contract these two tools implement.
 
 ## Files and resolution
 
