@@ -3,9 +3,17 @@ id: 20d89b34-8277-4da6-bd0f-0c2888c7a680
 type: semantic
 created: 2026-07-06T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-11T00:00:00Z
+modified: '2026-07-12T03:20:00.023Z'
 title: Layered config schema (global + project)
 diataxis_type: reference
+provenance:
+  '@type': Provenance
+  agent: claude-code/claude-sonnet-5
+  wasGeneratedBy:
+    '@id': urn:mif:activity:claude-code-session:977e6b34-3d1d-414f-9745-a2925dde919f
+    '@type': prov:Activity
+  trustLevel: user_stated
+  agentVersion: 2.1.207
 ---
 
 Epic [#78](https://github.com/modeled-information-format/gdlc/issues/78)'s
@@ -61,7 +69,7 @@ packs:
   skipMutationConfirm: false  # boolean; unset = disabled (fail-closed).
 prLifecycle:
   enabled: false                                     # optional; default false (fail-closed)
-  localReviewer: "/code-review:code-review --fix"     # optional; default shown
+  localReviewer: "/code-review --fix"                 # optional; default shown
   requireLocalReview: true                            # optional; default true once enabled
   requireCopilotReview: true                          # optional; default true once enabled
   requireCleanCodeScanning: true                      # optional; default true once enabled
@@ -145,11 +153,18 @@ that has never heard of this feature sees no new prompts. `resolvePrLifecycleCon
 
 **`localReviewer` is read, never executed.** A hook can only spawn an OS
 process (`node`/`bash`) — it cannot invoke a Claude Code slash command or
-skill. `localReviewer`'s default, `/code-review:code-review --fix`, is a
+skill. `localReviewer`'s default, `/code-review --fix`, is a
 slash command; the pre-PR hook surfaces it as an instruction
 (`permissionDecisionReason`) the agent must act on, the same
 legible-confirmation pattern `github-sdlc-planning`'s `confirm-mutation.mjs`
 already uses, not a command the hook process runs itself.
+
+Note this is bare `/code-review` — Claude Code's own native, current-diff
+review command, which can run before a PR exists — not the plugin-qualified
+`/code-review:code-review`. That qualified form resolves to the separate
+`code-review@claude-plugins-official` marketplace plugin, which only reviews
+an already-open PR (`gh pr diff`/`gh pr view`) and has no `--fix` handling;
+naming it here would make this gate unsatisfiable pre-PR.
 
 ## History: the two retired markdown carriers
 

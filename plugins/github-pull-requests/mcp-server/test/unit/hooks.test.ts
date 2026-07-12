@@ -60,7 +60,7 @@ describe('pr-lifecycle-gate.mjs', () => {
     const result = runHook('pr-lifecycle-gate.mjs', PR_INPUT, { cwd: root, env });
     expect(result.hookSpecificOutput?.hookEventName).toBe('PreToolUse');
     expect(result.hookSpecificOutput?.permissionDecision).toBe('ask');
-    expect(result.hookSpecificOutput?.permissionDecisionReason).toContain('/code-review:code-review --fix');
+    expect(result.hookSpecificOutput?.permissionDecisionReason).toContain('/code-review --fix');
   });
 
   it('names a custom localReviewer command when configured', () => {

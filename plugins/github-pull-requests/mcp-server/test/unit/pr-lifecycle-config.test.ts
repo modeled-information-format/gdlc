@@ -154,7 +154,7 @@ describe('resolvePrLifecycle: defaults match config.ts resolvePrLifecycleConfig 
     const dir = tmpDir();
     expect(resolvePrLifecycle(dir, fakeEnv(join(dir, 'no-such-global')), () => false)).toEqual({
       enabled: false,
-      localReviewer: '/code-review:code-review --fix',
+      localReviewer: '/code-review --fix',
       requireLocalReview: true,
       requireCopilotReview: true,
       requireCleanCodeScanning: true,
@@ -167,7 +167,7 @@ describe('resolvePrLifecycle: defaults match config.ts resolvePrLifecycleConfig 
     writeProjectConfig(dir, 'prLifecycle:\n  enabled: true\n');
     expect(resolvePrLifecycle(dir, fakeEnv(join(dir, 'no-such-global')))).toEqual({
       enabled: true,
-      localReviewer: '/code-review:code-review --fix',
+      localReviewer: '/code-review --fix',
       requireLocalReview: true,
       requireCopilotReview: true,
       requireCleanCodeScanning: true,

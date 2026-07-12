@@ -3,9 +3,17 @@ id: 25a40c7f-52a4-4b36-bc2d-9a21f5786b43
 type: semantic
 created: 2026-07-03T00:00:00Z
 namespace: github-sdlc-plugins/github-pull-requests
-modified: 2026-07-03T00:00:00Z
+modified: '2026-07-12T03:19:47.202Z'
 title: github-pull-requests
 diataxis_type: reference
+provenance:
+  '@type': Provenance
+  agent: claude-code/claude-sonnet-5
+  wasGeneratedBy:
+    '@id': urn:mif:activity:claude-code-session:977e6b34-3d1d-414f-9745-a2925dde919f
+    '@type': prov:Activity
+  trustLevel: user_stated
+  agentVersion: 2.1.207
 ---
 # github-pull-requests
 
@@ -71,13 +79,20 @@ across the plugin boundary, matching this codebase's existing convention):
 **Neither hook can execute `localReviewer` itself.** A Claude Code hook can
 only spawn an OS process (`node`/`bash`); it has no mechanism to invoke a
 slash command or skill, and `localReviewer`'s default
-(`/code-review:code-review --fix`) is exactly that. `pr-lifecycle-gate.mjs`
+(`/code-review --fix`) is exactly that. `pr-lifecycle-gate.mjs`
 surfaces the command as an instruction the *agent* must act on — the same
 legible-confirmation pattern `github-sdlc-planning`'s `confirm-mutation.mjs`
 already uses for board mutations — it does not, and cannot, run local
 review on your behalf. Don't read "gate" here as "enforced by the hook
 sandbox"; read it as "the agent is told, loudly, before it can proceed
 silently."
+
+Note the default is bare `/code-review` (Claude Code's native, current-diff
+review command, which can run before a PR exists) — not the plugin-qualified
+`/code-review:code-review`. That qualified name resolves to the separate
+`code-review@claude-plugins-official` marketplace plugin, which is
+PR-fetch-only (`gh pr diff`/`gh pr view`) and has no `--fix` handling; it
+cannot satisfy this pre-PR gate at all.
 
 Once a PR is open, `check_pr_readiness` (below) is the single source of
 truth for "is this PR actually ready" — checks, review state, review-thread

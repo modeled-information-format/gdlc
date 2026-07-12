@@ -24,7 +24,13 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 
 const GDLC_CONFIG_RELPATH = join('gdlc', 'config.yml');
-const DEFAULT_LOCAL_REVIEWER = '/code-review:code-review --fix';
+// Claude Code's native, current-diff-based review command (can run before a
+// PR exists) -- NOT `/code-review:code-review`, which is the plugin-qualified
+// name of the separate `code-review@claude-plugins-official` marketplace
+// plugin: that command is PR-fetch-only and has no `--fix` handling, so it
+// cannot satisfy this pre-PR gate. Kept in sync by hand with config.ts's
+// identical constant -- see that file's doc comment for the full rationale.
+const DEFAULT_LOCAL_REVIEWER = '/code-review --fix';
 
 function resolveGdlcConfigPath(root) {
   return join(root, GDLC_CONFIG_RELPATH);

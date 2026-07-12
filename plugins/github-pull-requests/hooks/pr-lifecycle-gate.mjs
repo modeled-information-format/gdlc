@@ -6,7 +6,7 @@
 // This hook does NOT and CANNOT literally run `localReviewer` itself: a
 // PreToolUse hook can only spawn an OS process (node/bash), it cannot
 // invoke a Claude Code slash command or skill, and `localReviewer`'s
-// default value (`/code-review:code-review --fix`) is exactly that -- a
+// default value (`/code-review --fix`) is exactly that -- a
 // slash command. So this asks explicitly, naming the exact command, the
 // same legible-confirmation contract confirm-mutation.mjs already
 // established for board mutations. See hooks/lib/pr-lifecycle-config.mjs's
