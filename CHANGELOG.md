@@ -5,6 +5,30 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.3] - 2026-07-12
+
+### Added
+
+- `github-sdlc-planning`: `get_gdlc_config`/`write_gdlc_config` MCP tools
+  implementing ADR-0009 — explicit-target writes (never inferred via
+  ancestor search), CST-preserving YAML writes via `yaml.Document`
+  (untouched sections keep their formatting/comments byte-for-byte),
+  zod-based per-section validation. A new `configure-gdlc` agent and
+  matching skill elicit and write `.config/gdlc/config.yml` through a
+  guided, confirm-before-write flow instead of hand-authored YAML (#253,
+  #256, #260).
+- `github-sdlc-planning`: automated config lifecycle hardening (#264) — a
+  CI job validating any `.config/gdlc/config.yml` against the schema on
+  every PR, and a non-blocking `SessionStart` hook that re-validates the
+  resolved config and best-effort spot-checks the configured board against
+  live GitHub state.
+
+The remaining six plugins (`github-bug-capture`, `github-insights`,
+`github-org-identity`, `github-packages`, `github-pull-requests`,
+`github-repo-config`) carry no functional changes in this release; their
+version bump is catalog-lockstep consistency only, per this repo's
+version-discipline convention (issue #49).
+
 ## [0.10.2] - 2026-07-12
 
 ### Fixed
