@@ -1,7 +1,7 @@
 {
   "name": "github-sdlc-planning",
   "displayName": "GitHub SDLC Planning",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "Issues, native sub-issues, Projects v2, Milestones, and Discussions behind a portable MCP core plus a Claude Code progressive-enhancement layer. Every issue/discussion body carries MIF-conformant frontmatter authored via mif-docs.",
   "author": {
     "name": "modeled-information-format"
@@ -20,6 +20,10 @@
     "planning"
   ],
   "dependencies": [
-    { "name": "mif-docs", "marketplace": "modeled-information-format", "version": ">=0.3.1 <1.0.0" }
+    {
+      "name": "mif-docs",
+      "marketplace": "modeled-information-format",
+      "version": ">=0.3.1 <1.0.0"
+    }
   ]
 }
