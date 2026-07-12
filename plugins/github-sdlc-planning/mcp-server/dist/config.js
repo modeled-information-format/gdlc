@@ -50,8 +50,14 @@ export function findProjectConfigRoot(startDir, existsFn = existsSync, ceiling =
  * -- one generator, so a correctness fix to the walk itself (ceiling
  * handling, filesystem-root termination) only has one place to land instead
  * of two copies that must be kept in sync by hand. Yields `startDir` itself
- * first, then each ancestor toward `ceiling` (exclusive), nearest first. */
-function* walkAncestorDirs(startDir, ceiling) {
+ * first, then each ancestor toward `ceiling` (exclusive), nearest first.
+ * Exported so `get_gdlc_config` (tools/config.ts) can report every ancestor
+ * it checked -- not just the ones with a file -- without a second,
+ * divergent walk implementation (Copilot review finding on PR #269: the
+ * original `getGdlcConfig` only surfaced existing project layers via
+ * `findAllProjectConfigPaths`'s own existence filter, silently omitting
+ * checked-but-absent candidates its own description claimed to report). */
+export function* walkAncestorDirs(startDir, ceiling) {
     const ceilingResolved = resolvePath(ceiling);
     let dir = resolvePath(startDir);
     for (;;) {

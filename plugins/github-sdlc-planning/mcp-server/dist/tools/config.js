@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { Document, parseDocument } from 'yaml';
 import { z } from 'zod';
-import { resolveConfigPath, resolveGlobalConfigRoot, loadConfigFile, loadGdlcConfig, findAllProjectConfigPaths, } from '../config.js';
+import { resolveConfigPath, resolveGlobalConfigRoot, loadConfigFile, loadGdlcConfig, walkAncestorDirs, } from '../config.js';
 import { PlanningError } from '../errors.js';
 /** ADR-0009: get_gdlc_config/write_gdlc_config. get_gdlc_config is a thin
  * diagnostics-carrying wrapper over config.ts's existing read-side cascade
@@ -58,15 +59,25 @@ export const GDLC_CONFIG_SECTION_SCHEMAS = {
 function isKnownSection(key) {
     return Object.prototype.hasOwnProperty.call(GDLC_CONFIG_SECTION_SCHEMAS, key);
 }
-/** Wraps loadGdlcConfig/findAllProjectConfigPaths with a per-layer
- * diagnostics array -- every layer path checked, whether it exists, and
- * which top-level sections it actually contributes -- so a caller (the
- * configure-gdlc agent) can show a user exactly which file set what,
- * closing the "which file actually set this" gap get_session_context's
- * single projectConfigPath string only partially covers. */
+/** Wraps loadGdlcConfig with a per-layer diagnostics array -- every layer
+ * path checked, whether it exists, and which top-level sections it
+ * actually contributes -- so a caller (the configure-gdlc agent) can show
+ * a user exactly which file set what, closing the "which file actually set
+ * this" gap get_session_context's single projectConfigPath string only
+ * partially covers.
+ *
+ * Deliberately walks every ancestor directly via walkAncestorDirs rather
+ * than reusing findAllProjectConfigPaths (Copilot review finding on PR
+ * #269): that function filters to existing files only, the right contract
+ * for loadGdlcConfig's read cascade, but it silently hid checked-but-absent
+ * candidates from this diagnostics-focused caller -- exactly the "every
+ * layer path checked, whether it exists" this function's own doc comment
+ * promises. loadGdlcConfig (the resolved-config half of this result) still
+ * goes through the existing cascade unchanged. */
 export function getGdlcConfig(input = {}, deps = {}) {
     const existsFn = deps.existsFn ?? existsSync;
     const env = deps.env ?? process.env;
+    const ceiling = deps.ceiling ?? homedir();
     const startDir = input.startDir ?? process.cwd();
     const globalPath = resolveConfigPath(resolveGlobalConfigRoot(env));
     const globalExists = existsFn(globalPath);
@@ -78,8 +89,17 @@ export function getGdlcConfig(input = {}, deps = {}) {
             sections: globalExists ? Object.keys(loadConfigFile(globalPath)) : [],
         },
     ];
-    for (const path of findAllProjectConfigPaths(startDir, existsFn, env)) {
-        layers.push({ layer: 'project', path, exists: true, sections: Object.keys(loadConfigFile(path)) });
+    // Same collision guard as config.ts's own resolveProjectConfigPath/
+    // findAllProjectConfigPaths: skip (don't stop climbing at) a candidate
+    // whose resolved path is literally the global layer's own file, so a
+    // customized XDG_CONFIG_HOME that the upward search legitimately passes
+    // through is never double-reported as a "project" layer too.
+    for (const dir of walkAncestorDirs(startDir, ceiling)) {
+        const path = resolveConfigPath(join(dir, '.config'));
+        if (path === globalPath)
+            continue;
+        const exists = existsFn(path);
+        layers.push({ layer: 'project', path, exists, sections: exists ? Object.keys(loadConfigFile(path)) : [] });
     }
     return { resolved: loadGdlcConfig(startDir, env, existsFn), layers };
 }
@@ -113,7 +133,10 @@ export function writeGdlcConfig(input, deps = {}) {
     const env = deps.env ?? process.env;
     validateSections(input.sections);
     const root = input.layer === 'global' ? resolveGlobalConfigRoot(env) : (input.root ?? process.cwd());
-    const configDirRoot = input.layer === 'global' ? root : `${root}/.config`;
+    // Copilot review finding on PR #269: string concatenation ("${root}/.config")
+    // produces incorrect paths on Windows (mixed separators) and behaves oddly
+    // when root already ends in a separator -- path.join handles both.
+    const configDirRoot = input.layer === 'global' ? root : join(root, '.config');
     const path = resolveConfigPath(configDirRoot);
     const exists = existsFn(path);
     const doc = exists ? parseDocument(readFileFn(path)) : new Document();

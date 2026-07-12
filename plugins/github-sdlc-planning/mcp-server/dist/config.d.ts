@@ -82,6 +82,19 @@ export declare function resolveConfigPath(root: string): string;
  * project-always-wins semantics, would outrank the real, intentionally
  * configured global layer. */
 export declare function findProjectConfigRoot(startDir: string, existsFn?: (path: string) => boolean, ceiling?: string): string | null;
+/** ADR-0008: the ancestor-directory sequence both `findProjectConfigRoot`
+ * (single nearest match) and `findAllProjectConfigPaths` (every match) walk
+ * -- one generator, so a correctness fix to the walk itself (ceiling
+ * handling, filesystem-root termination) only has one place to land instead
+ * of two copies that must be kept in sync by hand. Yields `startDir` itself
+ * first, then each ancestor toward `ceiling` (exclusive), nearest first.
+ * Exported so `get_gdlc_config` (tools/config.ts) can report every ancestor
+ * it checked -- not just the ones with a file -- without a second,
+ * divergent walk implementation (Copilot review finding on PR #269: the
+ * original `getGdlcConfig` only surfaced existing project layers via
+ * `findAllProjectConfigPaths`'s own existence filter, silently omitting
+ * checked-but-absent candidates its own description claimed to report). */
+export declare function walkAncestorDirs(startDir: string, ceiling: string): Generator<string>;
 /** ADR-0008: every ancestor of `startDir` (up to `ceiling`, exclusive)
  * whose `.config/gdlc/config.yml` exists, nearest first, EXCLUDING (but not
  * stopping the climb at) a candidate that collides with the global layer's

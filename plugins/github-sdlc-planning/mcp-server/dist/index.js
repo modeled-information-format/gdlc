@@ -39380,7 +39380,8 @@ function getAgentCapabilities() {
 // src/tools/config.ts
 var import_yaml2 = __toESM(require_dist2(), 1);
 import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync3, writeFileSync as writeFileSync2 } from "node:fs";
-import { dirname as dirname3 } from "node:path";
+import { homedir as homedir3 } from "node:os";
+import { dirname as dirname3, join as join4 } from "node:path";
 var orgRepoPattern = /^[^/\s]+\/[^/\s]+$/;
 var orgPattern = /^[^/\s]+$/;
 var targetingSectionSchema = external_exports.object({
@@ -39417,6 +39418,7 @@ function isKnownSection(key) {
 function getGdlcConfig(input = {}, deps = {}) {
   const existsFn = deps.existsFn ?? existsSync3;
   const env = deps.env ?? process.env;
+  const ceiling = deps.ceiling ?? homedir3();
   const startDir = input.startDir ?? process.cwd();
   const globalPath = resolveConfigPath(resolveGlobalConfigRoot(env));
   const globalExists = existsFn(globalPath);
@@ -39428,8 +39430,11 @@ function getGdlcConfig(input = {}, deps = {}) {
       sections: globalExists ? Object.keys(loadConfigFile(globalPath)) : []
     }
   ];
-  for (const path of findAllProjectConfigPaths(startDir, existsFn, env)) {
-    layers.push({ layer: "project", path, exists: true, sections: Object.keys(loadConfigFile(path)) });
+  for (const dir of walkAncestorDirs(startDir, ceiling)) {
+    const path = resolveConfigPath(join4(dir, ".config"));
+    if (path === globalPath) continue;
+    const exists = existsFn(path);
+    layers.push({ layer: "project", path, exists, sections: exists ? Object.keys(loadConfigFile(path)) : [] });
   }
   return { resolved: loadGdlcConfig(startDir, env, existsFn), layers };
 }
@@ -39456,7 +39461,7 @@ function writeGdlcConfig(input, deps = {}) {
   const env = deps.env ?? process.env;
   validateSections(input.sections);
   const root = input.layer === "global" ? resolveGlobalConfigRoot(env) : input.root ?? process.cwd();
-  const configDirRoot = input.layer === "global" ? root : `${root}/.config`;
+  const configDirRoot = input.layer === "global" ? root : join4(root, ".config");
   const path = resolveConfigPath(configDirRoot);
   const exists = existsFn(path);
   const doc = exists ? (0, import_yaml2.parseDocument)(readFileFn(path)) : new import_yaml2.Document();

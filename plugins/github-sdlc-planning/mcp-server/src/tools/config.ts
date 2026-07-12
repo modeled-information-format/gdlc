@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { Document, parseDocument } from 'yaml';
 import { z } from 'zod';
 
@@ -8,7 +9,7 @@ import {
   resolveGlobalConfigRoot,
   loadConfigFile,
   loadGdlcConfig,
-  findAllProjectConfigPaths,
+  walkAncestorDirs,
   type GdlcConfig,
 } from '../config.js';
 import { PlanningError } from '../errors.js';
@@ -97,17 +98,32 @@ export interface GetGdlcConfigResult {
 export interface GdlcConfigFsDeps {
   existsFn?: (path: string) => boolean;
   env?: NodeJS.ProcessEnv;
+  /** Bounds the ancestor walk (exclusive), same semantics as config.ts's
+   * own ceiling parameters -- defaults to homedir(). Exposed mainly for
+   * deterministic tests; production callers should rarely need to override
+   * the real home-directory boundary. */
+  ceiling?: string;
 }
 
-/** Wraps loadGdlcConfig/findAllProjectConfigPaths with a per-layer
- * diagnostics array -- every layer path checked, whether it exists, and
- * which top-level sections it actually contributes -- so a caller (the
- * configure-gdlc agent) can show a user exactly which file set what,
- * closing the "which file actually set this" gap get_session_context's
- * single projectConfigPath string only partially covers. */
+/** Wraps loadGdlcConfig with a per-layer diagnostics array -- every layer
+ * path checked, whether it exists, and which top-level sections it
+ * actually contributes -- so a caller (the configure-gdlc agent) can show
+ * a user exactly which file set what, closing the "which file actually set
+ * this" gap get_session_context's single projectConfigPath string only
+ * partially covers.
+ *
+ * Deliberately walks every ancestor directly via walkAncestorDirs rather
+ * than reusing findAllProjectConfigPaths (Copilot review finding on PR
+ * #269): that function filters to existing files only, the right contract
+ * for loadGdlcConfig's read cascade, but it silently hid checked-but-absent
+ * candidates from this diagnostics-focused caller -- exactly the "every
+ * layer path checked, whether it exists" this function's own doc comment
+ * promises. loadGdlcConfig (the resolved-config half of this result) still
+ * goes through the existing cascade unchanged. */
 export function getGdlcConfig(input: GetGdlcConfigInput = {}, deps: GdlcConfigFsDeps = {}): GetGdlcConfigResult {
   const existsFn = deps.existsFn ?? existsSync;
   const env = deps.env ?? process.env;
+  const ceiling = deps.ceiling ?? homedir();
   const startDir = input.startDir ?? process.cwd();
 
   const globalPath = resolveConfigPath(resolveGlobalConfigRoot(env));
@@ -121,8 +137,16 @@ export function getGdlcConfig(input: GetGdlcConfigInput = {}, deps: GdlcConfigFs
     },
   ];
 
-  for (const path of findAllProjectConfigPaths(startDir, existsFn, env)) {
-    layers.push({ layer: 'project', path, exists: true, sections: Object.keys(loadConfigFile(path)) });
+  // Same collision guard as config.ts's own resolveProjectConfigPath/
+  // findAllProjectConfigPaths: skip (don't stop climbing at) a candidate
+  // whose resolved path is literally the global layer's own file, so a
+  // customized XDG_CONFIG_HOME that the upward search legitimately passes
+  // through is never double-reported as a "project" layer too.
+  for (const dir of walkAncestorDirs(startDir, ceiling)) {
+    const path = resolveConfigPath(join(dir, '.config'));
+    if (path === globalPath) continue;
+    const exists = existsFn(path);
+    layers.push({ layer: 'project', path, exists, sections: exists ? Object.keys(loadConfigFile(path)) : [] });
   }
 
   return { resolved: loadGdlcConfig(startDir, env, existsFn), layers };
@@ -188,7 +212,10 @@ export function writeGdlcConfig(input: WriteGdlcConfigInput, deps: WriteGdlcConf
   validateSections(input.sections);
 
   const root = input.layer === 'global' ? resolveGlobalConfigRoot(env) : (input.root ?? process.cwd());
-  const configDirRoot = input.layer === 'global' ? root : `${root}/.config`;
+  // Copilot review finding on PR #269: string concatenation ("${root}/.config")
+  // produces incorrect paths on Windows (mixed separators) and behaves oddly
+  // when root already ends in a separator -- path.join handles both.
+  const configDirRoot = input.layer === 'global' ? root : join(root, '.config');
   const path = resolveConfigPath(configDirRoot);
 
   const exists = existsFn(path);

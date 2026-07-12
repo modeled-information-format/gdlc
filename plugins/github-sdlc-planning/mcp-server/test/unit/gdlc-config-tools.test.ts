@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { getGdlcConfig, writeGdlcConfig, GDLC_CONFIG_SECTION_SCHEMAS } from '../../src/tools/config.js';
 import { isPlanningError } from '../../src/errors.js';
@@ -34,13 +34,18 @@ describe('getGdlcConfig', () => {
     const startDir = tmpDir();
     const result = getGdlcConfig({ startDir });
     expect(result.layers.some((l) => l.layer === 'global')).toBe(true);
-    expect(result.layers.filter((l) => l.layer === 'project')).toEqual([]);
+    const projectLayers = result.layers.filter((l) => l.layer === 'project');
+    expect(projectLayers.length).toBeGreaterThan(0);
+    expect(projectLayers.every((l) => l.exists === false)).toBe(true);
   });
 
   it('reports the global layer as not-existing with no sections when absent', () => {
     const startDir = tmpDir();
     const env = { XDG_CONFIG_HOME: join(tmpDir(), 'xdg') };
-    const result = getGdlcConfig({ startDir }, { env });
+    // ceiling: startDir bounds the ancestor walk to zero entries, isolating
+    // this assertion to the global layer only (project-layer enumeration is
+    // covered by the tests below).
+    const result = getGdlcConfig({ startDir }, { env, ceiling: startDir });
     expect(result.resolved).toEqual({});
     expect(result.layers).toEqual([{ layer: 'global', path: expect.stringContaining('config.yml'), exists: false, sections: [] }]);
   });
@@ -52,7 +57,7 @@ describe('getGdlcConfig', () => {
     writeConfig(join(projectRoot, '.config'), 'packs:\n  hooks: true\n');
     const env = { XDG_CONFIG_HOME: xdgRoot };
 
-    const result = getGdlcConfig({ startDir: projectRoot }, { env });
+    const result = getGdlcConfig({ startDir: projectRoot }, { env, ceiling: dirname(projectRoot) });
 
     expect(result.resolved).toEqual({
       board: { projectOwnerLogin: 'acme', projectNumber: 1 },
@@ -72,11 +77,30 @@ describe('getGdlcConfig', () => {
     writeConfig(join(child, '.config'), 'board:\n  projectOwnerLogin: acme\n  projectNumber: 1\n');
     const env = { XDG_CONFIG_HOME: join(tmpDir(), 'xdg') };
 
-    const result = getGdlcConfig({ startDir: child }, { env });
+    const result = getGdlcConfig({ startDir: child }, { env, ceiling: dirname(grandparent) });
 
     const projectLayers = result.layers.filter((l) => l.layer === 'project');
     expect(projectLayers).toEqual([
       { layer: 'project', path: join(child, '.config', 'gdlc', 'config.yml'), exists: true, sections: ['board'] },
+      { layer: 'project', path: join(grandparent, '.config', 'gdlc', 'config.yml'), exists: true, sections: ['packs'] },
+    ]);
+  });
+
+  it('Copilot review fix (PR #269): reports a checked-but-absent ancestor between an existing one and the ceiling', () => {
+    const grandparent = tmpDir();
+    writeConfig(join(grandparent, '.config'), 'packs:\n  hooks: true\n');
+    const middle = join(grandparent, 'middle'); // no config.yml here at all
+    mkdirSync(middle, { recursive: true });
+    const child = join(middle, 'nested');
+    mkdirSync(child, { recursive: true });
+    const env = { XDG_CONFIG_HOME: join(tmpDir(), 'xdg') };
+
+    const result = getGdlcConfig({ startDir: child }, { env, ceiling: dirname(grandparent) });
+
+    const projectLayers = result.layers.filter((l) => l.layer === 'project');
+    expect(projectLayers).toEqual([
+      { layer: 'project', path: join(child, '.config', 'gdlc', 'config.yml'), exists: false, sections: [] },
+      { layer: 'project', path: join(middle, '.config', 'gdlc', 'config.yml'), exists: false, sections: [] },
       { layer: 'project', path: join(grandparent, '.config', 'gdlc', 'config.yml'), exists: true, sections: ['packs'] },
     ]);
   });

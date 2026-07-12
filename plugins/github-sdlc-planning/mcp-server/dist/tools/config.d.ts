@@ -71,13 +71,27 @@ export interface GetGdlcConfigResult {
 export interface GdlcConfigFsDeps {
     existsFn?: (path: string) => boolean;
     env?: NodeJS.ProcessEnv;
+    /** Bounds the ancestor walk (exclusive), same semantics as config.ts's
+     * own ceiling parameters -- defaults to homedir(). Exposed mainly for
+     * deterministic tests; production callers should rarely need to override
+     * the real home-directory boundary. */
+    ceiling?: string;
 }
-/** Wraps loadGdlcConfig/findAllProjectConfigPaths with a per-layer
- * diagnostics array -- every layer path checked, whether it exists, and
- * which top-level sections it actually contributes -- so a caller (the
- * configure-gdlc agent) can show a user exactly which file set what,
- * closing the "which file actually set this" gap get_session_context's
- * single projectConfigPath string only partially covers. */
+/** Wraps loadGdlcConfig with a per-layer diagnostics array -- every layer
+ * path checked, whether it exists, and which top-level sections it
+ * actually contributes -- so a caller (the configure-gdlc agent) can show
+ * a user exactly which file set what, closing the "which file actually set
+ * this" gap get_session_context's single projectConfigPath string only
+ * partially covers.
+ *
+ * Deliberately walks every ancestor directly via walkAncestorDirs rather
+ * than reusing findAllProjectConfigPaths (Copilot review finding on PR
+ * #269): that function filters to existing files only, the right contract
+ * for loadGdlcConfig's read cascade, but it silently hid checked-but-absent
+ * candidates from this diagnostics-focused caller -- exactly the "every
+ * layer path checked, whether it exists" this function's own doc comment
+ * promises. loadGdlcConfig (the resolved-config half of this result) still
+ * goes through the existing cascade unchanged. */
 export declare function getGdlcConfig(input?: GetGdlcConfigInput, deps?: GdlcConfigFsDeps): GetGdlcConfigResult;
 export interface WriteGdlcConfigInput {
     layer: 'project' | 'global';
