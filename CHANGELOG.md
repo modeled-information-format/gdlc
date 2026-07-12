@@ -13,10 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   implementing ADR-0009 — explicit-target writes (never inferred via
   ancestor search), CST-preserving YAML writes via `yaml.Document`
   (untouched sections keep their formatting/comments byte-for-byte),
-  zod-based per-section validation. A new `configure-gdlc` agent + skill
-  elicit and write `.config/gdlc/config.yml` through a guided,
-  confirm-before-write flow instead of hand-authored YAML (#253, #256,
-  #260).
+  zod-based per-section validation. A new `configure-gdlc` agent and
+  matching skill elicit and write `.config/gdlc/config.yml` through a
+  guided, confirm-before-write flow instead of hand-authored YAML (#253,
+  #256, #260).
 - `github-sdlc-planning`: automated config lifecycle hardening (#264) — a
   CI job validating any `.config/gdlc/config.yml` against the schema on
   every PR, and a non-blocking `SessionStart` hook that re-validates the
