@@ -60,7 +60,7 @@
         "localReviewer": {
           "type": "string",
           "minLength": 1,
-          "default": "/code-review:code-review --fix",
+          "default": "/code-review --fix",
           "description": "Command template surfaced to the agent as the local-review gate. Never executed by a hook directly -- a hook can only spawn an OS process, not invoke a Claude Code slash command/skill; this is read and shown as an instruction, not run."
         },
         "requireLocalReview": { "type": "boolean", "default": true },
