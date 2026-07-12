@@ -65,7 +65,12 @@
         },
         "requireLocalReview": { "type": "boolean", "default": true },
         "requireCopilotReview": { "type": "boolean", "default": true },
-        "requireCleanCodeScanning": { "type": "boolean", "default": true }
+        "requireCleanCodeScanning": { "type": "boolean", "default": true },
+        "gateNewWorkOnUnresolvedThreads": {
+          "type": "boolean",
+          "default": true,
+          "description": "gdlc#202/#211: gate starting new branch/worktree work on any PR opened this session still having unresolved review threads."
+        }
       }
     }
   }
