@@ -10269,7 +10269,7 @@ var require_Document = __commonJS({
     var applyReviver = require_applyReviver();
     var createNode = require_createNode();
     var directives = require_directives();
-    var Document = class _Document {
+    var Document2 = class _Document {
       constructor(value, replacer, options) {
         this.commentBefore = null;
         this.comment = null;
@@ -10559,7 +10559,7 @@ var require_Document = __commonJS({
         return true;
       throw new Error("Expected a YAML collection as document contents");
     }
-    exports.Document = Document;
+    exports.Document = Document2;
   }
 });
 
@@ -11923,13 +11923,13 @@ var require_compose_node = __commonJS({
 var require_compose_doc = __commonJS({
   "node_modules/yaml/dist/compose/compose-doc.js"(exports) {
     "use strict";
-    var Document = require_Document();
+    var Document2 = require_Document();
     var composeNode = require_compose_node();
     var resolveEnd = require_resolve_end();
     var resolveProps = require_resolve_props();
     function composeDoc(options, directives, { offset, start, value, end }, onError) {
       const opts = Object.assign({ _directives: directives }, options);
-      const doc = new Document.Document(void 0, opts);
+      const doc = new Document2.Document(void 0, opts);
       const ctx = {
         atKey: false,
         atRoot: true,
@@ -11968,7 +11968,7 @@ var require_composer = __commonJS({
     "use strict";
     var node_process = __require("process");
     var directives = require_directives();
-    var Document = require_Document();
+    var Document2 = require_Document();
     var errors = require_errors2();
     var identity = require_identity();
     var composeDoc = require_compose_doc();
@@ -12157,7 +12157,7 @@ ${end.comment}` : end.comment;
           this.doc = null;
         } else if (forceDoc) {
           const opts = Object.assign({ _directives: this.directives }, this.options);
-          const doc = new Document.Document(void 0, opts);
+          const doc = new Document2.Document(void 0, opts);
           if (this.atDirectives)
             this.onError(endOffset, "MISSING_CHAR", "Missing directives-end indicator line");
           doc.range = [0, endOffset, endOffset];
@@ -14079,7 +14079,7 @@ var require_public_api = __commonJS({
   "node_modules/yaml/dist/public-api.js"(exports) {
     "use strict";
     var composer = require_composer();
-    var Document = require_Document();
+    var Document2 = require_Document();
     var errors = require_errors2();
     var log = require_log();
     var identity = require_identity();
@@ -14104,7 +14104,7 @@ var require_public_api = __commonJS({
         return docs;
       return Object.assign([], { empty: true }, composer$1.streamInfo());
     }
-    function parseDocument(source, options = {}) {
+    function parseDocument2(source, options = {}) {
       const { lineCounter: lineCounter2, prettyErrors } = parseOptions(options);
       const parser$1 = new parser.Parser(lineCounter2?.addNewLine);
       const composer$1 = new composer.Composer(options);
@@ -14130,7 +14130,7 @@ var require_public_api = __commonJS({
       } else if (options === void 0 && reviver && typeof reviver === "object") {
         options = reviver;
       }
-      const doc = parseDocument(src, options);
+      const doc = parseDocument2(src, options);
       if (!doc)
         return null;
       doc.warnings.forEach((warning) => log.warn(doc.options.logLevel, warning));
@@ -14162,11 +14162,11 @@ var require_public_api = __commonJS({
       }
       if (identity.isDocument(value) && !_replacer)
         return value.toString(options);
-      return new Document.Document(value, _replacer, options).toString(options);
+      return new Document2.Document(value, _replacer, options).toString(options);
     }
     exports.parse = parse4;
     exports.parseAllDocuments = parseAllDocuments;
-    exports.parseDocument = parseDocument;
+    exports.parseDocument = parseDocument2;
     exports.stringify = stringify;
   }
 });
@@ -14176,7 +14176,7 @@ var require_dist2 = __commonJS({
   "node_modules/yaml/dist/index.js"(exports) {
     "use strict";
     var composer = require_composer();
-    var Document = require_Document();
+    var Document2 = require_Document();
     var Schema = require_Schema();
     var errors = require_errors2();
     var Alias = require_Alias();
@@ -14192,7 +14192,7 @@ var require_dist2 = __commonJS({
     var publicApi = require_public_api();
     var visit = require_visit();
     exports.Composer = composer.Composer;
-    exports.Document = Document.Document;
+    exports.Document = Document2.Document;
     exports.Schema = Schema.Schema;
     exports.YAMLError = errors.YAMLError;
     exports.YAMLParseError = errors.YAMLParseError;
@@ -39368,11 +39368,113 @@ function getAgentCapabilities() {
       "format_mif_issue_body",
       "parse_mif_issue_body",
       "get_session_context",
-      "get_agent_capabilities"
+      "get_agent_capabilities",
+      "get_gdlc_config",
+      "write_gdlc_config"
     ],
     mifConformance: "L1",
     hooksSupported: false
   };
+}
+
+// src/tools/config.ts
+var import_yaml2 = __toESM(require_dist2(), 1);
+import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { homedir as homedir3 } from "node:os";
+import { dirname as dirname3, join as join4 } from "node:path";
+var orgRepoPattern = /^[^/\s]+\/[^/\s]+$/;
+var orgPattern = /^[^/\s]+$/;
+var targetingSectionSchema = external_exports.object({
+  allowRepos: external_exports.array(external_exports.string().regex(orgRepoPattern)).optional(),
+  allowOrgs: external_exports.array(external_exports.string().regex(orgPattern)).optional()
+}).strict();
+var destinationSectionSchema = external_exports.object({
+  repo: external_exports.string().regex(orgRepoPattern)
+}).strict();
+var boardSectionSchema = external_exports.object({
+  projectOwnerLogin: external_exports.string().min(1),
+  projectNumber: external_exports.number().int().min(1),
+  projectOwnerType: external_exports.enum(["organization", "user"]).optional()
+}).strict();
+var packsSectionSchema = external_exports.record(external_exports.string(), external_exports.boolean());
+var prLifecycleSectionSchema = external_exports.object({
+  enabled: external_exports.boolean().optional(),
+  localReviewer: external_exports.string().min(1).optional(),
+  requireLocalReview: external_exports.boolean().optional(),
+  requireCopilotReview: external_exports.boolean().optional(),
+  requireCleanCodeScanning: external_exports.boolean().optional(),
+  gateNewWorkOnUnresolvedThreads: external_exports.boolean().optional()
+}).strict();
+var GDLC_CONFIG_SECTION_SCHEMAS = {
+  targeting: targetingSectionSchema,
+  destination: destinationSectionSchema,
+  board: boardSectionSchema,
+  packs: packsSectionSchema,
+  prLifecycle: prLifecycleSectionSchema
+};
+function isKnownSection(key) {
+  return Object.prototype.hasOwnProperty.call(GDLC_CONFIG_SECTION_SCHEMAS, key);
+}
+function getGdlcConfig(input = {}, deps = {}) {
+  const existsFn = deps.existsFn ?? existsSync3;
+  const env = deps.env ?? process.env;
+  const ceiling = deps.ceiling ?? homedir3();
+  const startDir = input.startDir ?? process.cwd();
+  const globalPath = resolveConfigPath(resolveGlobalConfigRoot(env));
+  const globalExists = existsFn(globalPath);
+  const layers = [
+    {
+      layer: "global",
+      path: globalPath,
+      exists: globalExists,
+      sections: globalExists ? Object.keys(loadConfigFile(globalPath)) : []
+    }
+  ];
+  for (const dir of walkAncestorDirs(startDir, ceiling)) {
+    const path = resolveConfigPath(join4(dir, ".config"));
+    if (path === globalPath) continue;
+    const exists = existsFn(path);
+    layers.push({ layer: "project", path, exists, sections: exists ? Object.keys(loadConfigFile(path)) : [] });
+  }
+  return { resolved: loadGdlcConfig(startDir, env, existsFn), layers };
+}
+function validateSections(sections) {
+  for (const [key, value] of Object.entries(sections)) {
+    if (!isKnownSection(key)) {
+      throw new PlanningError("invalid_config", `Unknown config section: ${key}`, { section: key });
+    }
+    const schema = GDLC_CONFIG_SECTION_SCHEMAS[key];
+    const result = schema.safeParse(value);
+    if (!result.success) {
+      throw new PlanningError("invalid_config", `Section "${key}" failed validation`, {
+        section: key,
+        issues: result.error.issues
+      });
+    }
+  }
+}
+function writeGdlcConfig(input, deps = {}) {
+  const existsFn = deps.existsFn ?? existsSync3;
+  const readFileFn = deps.readFileFn ?? ((path2) => readFileSync3(path2, "utf8"));
+  const writeFileFn = deps.writeFileFn ?? ((path2, content2) => writeFileSync2(path2, content2));
+  const mkdirFn = deps.mkdirFn ?? ((path2) => mkdirSync2(path2, { recursive: true }));
+  const env = deps.env ?? process.env;
+  validateSections(input.sections);
+  const root = input.layer === "global" ? resolveGlobalConfigRoot(env) : input.root ?? process.cwd();
+  const configDirRoot = input.layer === "global" ? root : join4(root, ".config");
+  const path = resolveConfigPath(configDirRoot);
+  const exists = existsFn(path);
+  const doc = exists ? (0, import_yaml2.parseDocument)(readFileFn(path)) : new import_yaml2.Document();
+  for (const [key, value] of Object.entries(input.sections)) {
+    doc.set(key, value);
+  }
+  const content = doc.toString({ flowCollectionPadding: false });
+  if (input.dryRun) {
+    return { path, dryRun: true, written: false, content };
+  }
+  mkdirFn(dirname3(path));
+  writeFileFn(path, content);
+  return { path, dryRun: false, written: true, content };
 }
 
 // src/tool-defaults.ts
@@ -39677,6 +39779,35 @@ server.registerTool(
     }
   },
   wrap(withOptionalBoardCoordinates(getSessionContext))
+);
+server.registerTool(
+  "get_gdlc_config",
+  {
+    title: "Get gdlc config",
+    description: "Resolved layered gdlc config (global + every ancestor project-layer file, ADR-0008's per-section cascade) plus a diagnostics array: every layer path checked, whether it exists, and which top-level sections it actually contributes -- a fuller picture than get_session_context's single projectConfigPath string.",
+    inputSchema: { startDir: external_exports.string().optional() }
+  },
+  wrap(({ startDir }) => getGdlcConfig({ startDir }))
+);
+server.registerTool(
+  "write_gdlc_config",
+  {
+    title: "Write gdlc config",
+    description: "Write one or more top-level sections of gdlc/config.yml (ADR-0009). Always takes an explicit layer ('project'|'global') and, for 'project', an explicit root (defaults to process.cwd() -- never an ancestor-search result). Validates each section against its schema, mutates only the touched key(s) via yaml.Document.set() (preserving every other section's formatting/comments byte-for-byte), and supports dryRun to preview the resulting file content without writing.",
+    inputSchema: {
+      layer: external_exports.enum(["project", "global"]),
+      root: external_exports.string().optional(),
+      sections: external_exports.object({
+        targeting: GDLC_CONFIG_SECTION_SCHEMAS.targeting.optional(),
+        destination: GDLC_CONFIG_SECTION_SCHEMAS.destination.optional(),
+        board: GDLC_CONFIG_SECTION_SCHEMAS.board.optional(),
+        packs: GDLC_CONFIG_SECTION_SCHEMAS.packs.optional(),
+        prLifecycle: GDLC_CONFIG_SECTION_SCHEMAS.prLifecycle.optional()
+      }).strict(),
+      dryRun: external_exports.boolean().optional()
+    }
+  },
+  wrap(writeGdlcConfig)
 );
 server.registerTool(
   "get_agent_capabilities",

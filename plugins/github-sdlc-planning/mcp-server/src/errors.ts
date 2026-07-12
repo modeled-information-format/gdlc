@@ -9,7 +9,8 @@ export type PlanningErrorCode =
   | 'confirmation_required'
   | 'missing_board_config'
   | 'missing_destination'
-  | 'repo_not_allowed';
+  | 'repo_not_allowed'
+  | 'invalid_config';
 
 export interface PlanningErrorDetails {
   [key: string]: unknown;

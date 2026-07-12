@@ -3,9 +3,17 @@ id: 8b5d1e73-6a2f-4c08-b9d4-2f7e9a1c6d52
 type: procedural
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-09T00:00:00Z
+modified: '2026-07-12T13:43:27.975Z'
 title: Plan and track work with the planning and PR plugins
 diataxis_type: how-to
+provenance:
+  '@type': Provenance
+  agent: claude-code/claude-sonnet-5
+  wasGeneratedBy:
+    '@id': urn:mif:activity:claude-code-session:6587ad77-f582-49d4-9e1b-44734dc4b70a
+    '@type': prov:Activity
+  trustLevel: user_stated
+  agentVersion: 2.1.207
 ---
 
 Run a plan-to-merge cycle: decompose a goal into issues, board them, open
@@ -56,7 +64,10 @@ explicit or defaulted -- is checked against it.
 Configure the board mapping once per consuming project in
 `.config/gdlc/config.yml` (committed, team-shared -- see
 [the layered config schema](../reference/config-schema.md) for the full
-shape and how a project value overrides a global default):
+shape and how a project value overrides a global default). The recommended
+way to set it is the [configure-gdlc agent](configure-gdlc.md), which reads
+the current state, elicits the values, and writes a schema-validated file;
+hand-editing the shape below directly still works too:
 
 ```yaml
 board:

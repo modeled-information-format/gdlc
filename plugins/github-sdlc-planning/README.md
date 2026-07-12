@@ -3,9 +3,17 @@ id: c867194d-1baa-48c1-869e-5c8d43362ff7
 type: semantic
 created: 2026-07-03T00:00:00Z
 namespace: github-sdlc-plugins/github-sdlc-planning
-modified: 2026-07-09T00:00:00Z
+modified: '2026-07-12T13:50:27.338Z'
 title: github-sdlc-planning
 diataxis_type: reference
+provenance:
+  '@type': Provenance
+  agent: claude-code/claude-sonnet-5
+  wasGeneratedBy:
+    '@id': urn:mif:activity:claude-code-session:6587ad77-f582-49d4-9e1b-44734dc4b70a
+    '@type': prov:Activity
+  trustLevel: user_stated
+  agentVersion: 2.1.207
 ---
 # github-sdlc-planning
 
@@ -47,6 +55,7 @@ required for every Projects v2 write. Fine-grained PAT equivalent: Issues
 | `create_discussion` / `list_discussions` | Discussions |
 | `get_session_context` / `get_agent_capabilities` | Non-Claude-Code fallback floor |
 | `format_mif_issue_body` / `parse_mif_issue_body` | MIF L1 frontmatter (de)serialization |
+| `get_gdlc_config` / `write_gdlc_config` | Read/write the layered `.config/gdlc/config.yml` (ADR-0009); writes are schema-validated and CST-preserving |
 
 ## Skills
 
@@ -61,22 +70,29 @@ required for every Projects v2 write. Fine-grained PAT equivalent: Issues
   `epic-decomposition`, `github-pull-requests`, `github-bug-capture`,
   `github-repo-config`, `github-insights`, `github-packages`, and
   `github-org-identity` end to end instead of hand-rolled `gh`/GraphQL calls
+- `configure-gdlc` — "configure gdlc", "set up gdlc config", "elicit config",
+  "configure this project for gdlc"
 
-## Agent
+## Agents
 
-`project-setup` — six-stage pipeline: classify intent → resolve template
-(`copyProjectV2` or blank `createProjectV2`, never a `templateId`) → configure
-fields → seed draft issues → wire automations → report.
+- `project-setup` — six-stage pipeline: classify intent → resolve template
+  (`copyProjectV2` or blank `createProjectV2`, never a `templateId`) →
+  configure fields → seed draft issues → wire automations → report.
+- `configure-gdlc` — six-stage pipeline: show current layered config state →
+  elicit an explicit write target (never inferred, ADR-0009) → elicit
+  section values via `AskUserQuestion` → preview via `write_gdlc_config`
+  `dryRun` → confirm and write for real → report exactly what changed.
 
 ## Hooks
 
-Four hooks make up the Claude-Code-specific enhancement layer. Each is
+Five hooks make up the Claude-Code-specific enhancement layer. Each is
 additive over the portable MCP core (a hook-less host gets the same
 behavior via an explicit tool call, never a degraded one):
 
 | Hook | Event / matcher | What it does |
 | --- | --- | --- |
 | `session-start.mjs` | `SessionStart` (`startup`) | Fetches the repo's open milestones via `gh api` and injects them as session context — the Claude Code equivalent of calling `get_session_context`. |
+| `config-drift-check.mjs` | `SessionStart` (`startup`) | Non-blocking gdlc config-drift check (ADR-0009): re-validates the resolved config against the schema and best-effort spot-checks the configured board against live GitHub state, silent when nothing is wrong. See [the how-to](../../docs/how-to/gdlc-config-lifecycle-hardening.md). |
 | `confirm-mutation.mjs` | `PreToolUse`, `mcp__github-sdlc-planning__.*` | Asks for confirmation before any mutating tool call, naming exactly what will change (issue/repo/project) so the prompt is legible instead of a bare tool name. A hook-returned `ask` outranks any `permissions.allow` entry (Claude Code's precedence is deny > ask > allow across every source), so this cannot be silenced from `.claude/settings.json` — opt out per-project instead with the `skipMutationConfirm` pack (below). |
 | `validate-mif.mjs` | `PostToolUse`, `mcp__github-sdlc-planning__.*` (only acts on `create_issue`/`update_issue`) | Checks the created/updated issue body for a conformant MIF comment block; on failure, returns a correction instruction via `additionalContext`. Discussions are not checked — MIF frontmatter is an issue-body convention only. |
 | `set-in-progress.mjs` | `PostToolUse`, `^mcp__github-sdlc-planning__(add_sub_issue|update_issue)$` | Closes the one gap GitHub's native Projects v2 workflows leave (see [ADR-0003](../../docs/decisions/adr-0003-board-status-hygiene.md)): marking an issue In Progress before a PR exists. |

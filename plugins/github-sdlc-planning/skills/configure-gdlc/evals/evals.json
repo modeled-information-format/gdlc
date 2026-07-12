@@ -1,0 +1,81 @@
+{
+  "skill_name": "configure-gdlc",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Set the board mapping for acme/widgets to org acme, project 3.",
+      "expected_output": "The agent calls get_gdlc_config to show current state, explicitly asks which layer/root to write to rather than assuming one, elicits the board section values, previews via write_gdlc_config with dryRun before writing, and reports the file path actually written.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "get_gdlc_config",
+          "description": "Reads current resolved state before writing anything"
+        },
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "dryRun",
+          "description": "Previews the write before applying it for real"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "findProjectConfigRoot",
+          "description": "Never has the agent itself call the ancestor-search resolver to pick a write target"
+        }
+      ],
+      "expectations": [
+        "Calls get_gdlc_config before any write",
+        "Explicitly elicits the write target (layer/root) rather than assuming the nearest ancestor file or cwd silently",
+        "Calls write_gdlc_config with dryRun before the real write",
+        "Reports the exact file path written and which section changed"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Enable the hooks and triage-skills packs for this project.",
+      "expected_output": "The agent elicits the packs section with current values pre-filled as keep-as-is options, previews the change, confirms, writes, and reports only the packs section as changed.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "packs",
+          "description": "Discusses the packs section specifically"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "board:",
+          "description": "Does not touch the board section for a packs-only request"
+        }
+      ],
+      "expectations": [
+        "Only writes the packs section, leaving board/destination/targeting/prLifecycle untouched",
+        "Previews via dryRun before writing for real",
+        "Reports which packs were enabled"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "An ancestor directory already has a .config/gdlc/config.yml setting packs. Configure the board mapping for the current project directory instead.",
+      "expected_output": "The agent surfaces the ancestor file's existence as information, then explicitly asks whether to edit that file or create a new project-local file at the current directory, rather than silently choosing one.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "regex_match",
+          "file": "transcript.md",
+          "pattern": "ancestor|already sets|already exists",
+          "description": "Surfaces the existing ancestor file as information"
+        }
+      ],
+      "expectations": [
+        "Surfaces the ancestor file's existing sections as information, not as an assumed write target",
+        "Explicitly asks the user to choose between editing the ancestor file and creating a new project-local file",
+        "Never infers the write target from the ancestor-search result"
+      ]
+    }
+  ]
+}

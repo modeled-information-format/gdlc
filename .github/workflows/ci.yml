@@ -167,3 +167,46 @@ jobs:
             fi
           done
           exit "$status"
+
+  # ADR-0009 / Story #264: catches a schema-invalid .config/gdlc/config.yml
+  # (this repo's own dogfooded file, or any test fixture under a plugin's
+  # test tree) before merge — the same validator write_gdlc_config uses
+  # (GDLC_CONFIG_SECTION_SCHEMAS), invoked via the already-committed,
+  # self-contained dist/validate-gdlc-config.js bundle (no npm ci/build
+  # needed here; quality-gates.yml's own dist-freshness check is what keeps
+  # that bundle honest). Closes the exact gap that let #247/#248's
+  # schema/loader drift land unnoticed.
+  gdlc-config-validate:
+    name: gdlc-config-validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up Node (24)
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '24'
+      - name: Validate every .config/gdlc/config.yml against the schema
+        run: |
+          set -uo pipefail
+          status=0
+          validator=plugins/github-sdlc-planning/mcp-server/dist/validate-gdlc-config.js
+          if [ ! -f "$validator" ]; then
+            echo "::error file=$validator::missing — run 'npm run build' in plugins/github-sdlc-planning/mcp-server and commit dist/"
+            exit 1
+          fi
+          found=0
+          while IFS= read -r -d '' f; do
+            found=1
+            echo "Validating $f"
+            if ! node "$validator" "$f"; then
+              echo "::error file=$f::failed schema validation against schema/gdlc-config.schema.json"
+              status=1
+            fi
+          done < <(find . -path './node_modules' -prune -o -path '*/node_modules' -prune -o -path '*/.config/gdlc/config.yml' -print0)
+          if [ "$found" -eq 0 ]; then
+            echo "No .config/gdlc/config.yml files found — nothing to validate."
+          fi
+          exit "$status"
