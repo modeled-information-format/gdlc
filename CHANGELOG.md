@@ -5,6 +5,28 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2026-07-12
+
+### Fixed
+
+- `github-sdlc-planning` and `github-pull-requests`: `prLifecycle.localReviewer`
+  defaulted to `/code-review:code-review --fix`, the plugin-qualified command
+  from the `code-review@claude-plugins-official` marketplace plugin, which is
+  PR-fetch-only and has no `--fix` handling -- the pre-PR local-review gate
+  was asking agents to run something structurally incapable of running
+  before a PR exists (#246). Default now points at native `/code-review
+  --fix`, which reviews the current diff and can genuinely run pre-PR.
+- `schema/gdlc-config.schema.json` (not inside any single plugin's
+  directory): `prLifecycle` was missing the `gateNewWorkOnUnresolvedThreads`
+  property, which the loader has supported since PR #193/#211 -- any config
+  setting that field would be rejected by schema-validating tooling (#247,
+  #250).
+
+The remaining five plugins (`github-bug-capture`, `github-insights`,
+`github-org-identity`, `github-packages`, `github-repo-config`) carry no
+functional changes in this release; their version bump is catalog-lockstep
+consistency only, per this repo's version-discipline convention (issue #49).
+
 ## [0.10.1] - 2026-07-11
 
 ### Changed
