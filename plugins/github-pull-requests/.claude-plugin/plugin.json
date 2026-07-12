@@ -1,7 +1,7 @@
 {
   "name": "github-pull-requests",
   "displayName": "GitHub Pull Requests",
-  "version": "0.10.2",
+  "version": "0.10.3",
   "description": "Full pull-request lifecycle control: create, classify (type/size/risk labels), review-route, link to issues, and couple to Projects v2. Reuses github-sdlc-planning's MIF comment-block reader and Projects v2 tools rather than duplicating that logic.",
   "author": {
     "name": "modeled-information-format"
