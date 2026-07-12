@@ -7668,7 +7668,7 @@ function loadGdlcConfig(projectRoot = process.cwd(), env = process.env, existsFn
   const projectPaths = findAllProjectConfigPaths(projectRoot, existsFn, env);
   return projectPaths.reduceRight((acc, path) => mergeConfigs(acc, loadConfigFile(path)), global);
 }
-var DEFAULT_LOCAL_REVIEWER = "/code-review:code-review --fix";
+var DEFAULT_LOCAL_REVIEWER = "/code-review --fix";
 function resolvePrLifecycleConfig(config) {
   const raw = config.prLifecycle ?? {};
   return {

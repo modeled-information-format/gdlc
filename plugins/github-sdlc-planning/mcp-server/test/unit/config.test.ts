@@ -675,7 +675,7 @@ describe('resolvePrLifecycleConfig', () => {
   it('is fail-closed (enabled: false) when no prLifecycle section is configured, matching every other opt-in surface', () => {
     expect(resolvePrLifecycleConfig({})).toEqual({
       enabled: false,
-      localReviewer: '/code-review:code-review --fix',
+      localReviewer: '/code-review --fix',
       requireLocalReview: true,
       requireCopilotReview: true,
       requireCleanCodeScanning: true,
@@ -690,7 +690,7 @@ describe('resolvePrLifecycleConfig', () => {
   it('defaults every require* toggle and localReviewer to the strictest behavior once enabled', () => {
     expect(resolvePrLifecycleConfig({ prLifecycle: { enabled: true } })).toEqual({
       enabled: true,
-      localReviewer: '/code-review:code-review --fix',
+      localReviewer: '/code-review --fix',
       requireLocalReview: true,
       requireCopilotReview: true,
       requireCleanCodeScanning: true,

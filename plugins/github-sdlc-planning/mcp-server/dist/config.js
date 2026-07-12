@@ -342,16 +342,22 @@ export function isRepoAllowed(config, owner, repo) {
 export function isPackEnabled(config, pack) {
     return config.packs?.[pack] === true;
 }
-const DEFAULT_LOCAL_REVIEWER = '/code-review:code-review --fix';
+const DEFAULT_LOCAL_REVIEWER = '/code-review --fix';
 /** Applies defaults to the raw `prLifecycle` section (issue #185/#186).
  * `enabled` defaults to `false` -- an absent or malformed section means the
  * feature is off, matching every other opt-in surface in this codebase
  * (`packs`, `skipMutationConfirm`): a repo that has never heard of this
  * feature does not suddenly get new hook prompts. Once `enabled: true`, the
  * three `require*` sub-toggles each default to `true` (enforce everything)
- * and `localReviewer` defaults to the org's own `/code-review:code-review
- * --fix` convention -- opting in without naming every field gets the
- * strictest sane behavior, not a silently-partial one.
+ * and `localReviewer` defaults to `/code-review --fix` -- Claude Code's own
+ * native, current-diff-based review command, which can run before a PR
+ * exists. This is NOT the same as the plugin-qualified
+ * `/code-review:code-review`, which resolves to the separate
+ * `code-review@claude-plugins-official` marketplace plugin: that command is
+ * PR-fetch-only (`gh pr diff`/`gh pr view`) and has no `--fix` handling, so
+ * it cannot satisfy this pre-PR gate at all -- opting in without naming
+ * every field gets the strictest sane behavior, not a silently-unsatisfiable
+ * one.
  *
  * Important: `localReviewer` is a value a *hook* reads and surfaces to the
  * agent as an instruction (`permissionDecisionReason`) -- a hook can only
