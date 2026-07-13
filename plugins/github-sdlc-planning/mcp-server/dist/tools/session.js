@@ -14,7 +14,7 @@ export async function getSessionContext(input, deps = {}) {
     return {
         openMilestones: milestones.map((m) => ({ number: m.number, title: m.title, url: m.html_url, dueOn: m.due_on })),
         projectBoard,
-        projectConfigPath: findAllProjectConfigPaths()[0] ?? null,
+        projectConfigPath: findAllProjectConfigPaths(input.startDir)[0] ?? null,
     };
 }
 export function getAgentCapabilities() {

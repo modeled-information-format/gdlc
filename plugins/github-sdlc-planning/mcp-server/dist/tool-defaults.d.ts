@@ -8,6 +8,27 @@ export interface BoardArgs {
     projectOwnerLogin?: string;
     projectNumber?: number;
     projectOwnerType?: 'organization' | 'user';
+    /** Issue #274: `loadGdlcConfig` resolves the project-layer cascade from
+     * this directory, defaulting to `process.cwd()` when omitted -- the MCP
+     * SERVER PROCESS's own cwd, which has no necessary relationship to the
+     * repo a tool call's `owner`/`repo` arguments describe. A caller that
+     * knows the target repo's checkout path should pass it here (same
+     * pattern `get_gdlc_config`'s own `startDir` param already uses) so
+     * board resolution reads THAT repo's config instead of whatever the
+     * server process happens to be sitting in -- otherwise a caller with no
+     * explicit `projectOwnerLogin`/`projectNumber` silently gets an
+     * unrelated repo's board with no error and no diagnostic (the exact
+     * failure #274 reported: `get_session_context` for `attested-delivery/
+     * go-htmx` returned board items from `modeled-information-format/gdlc`
+     * instead). Honored by BOTH `withOptionalBoardCoordinates` and
+     * `withRequiredBoardCoordinates` below, since `BoardArgs` is their shared
+     * bound -- a fix to only one wrapper would leave the mutating tools
+     * behind `withRequiredBoardCoordinates` (`add_item_to_project`,
+     * `set_field_value`, `get_project_items`, `get_project_status_profile`)
+     * exposed to the identical wrong-board risk, which is the higher-severity
+     * case #274 itself names (corrupting an unrelated org's board via a
+     * mutating call, not just reading one). */
+    startDir?: string;
 }
 /** Fill board coordinates from config; explicit arguments always win, and
  * are taken as a pair with config -- see `resolveBoardCoordinates` for why

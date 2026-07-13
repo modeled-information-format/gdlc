@@ -93,4 +93,21 @@ describe('getSessionContext', () => {
 
     expect(ctx.projectConfigPath).toBeNull();
   });
+
+  // Issue #274: calling get_session_context(owner, repo) with no explicit
+  // startDir resolved projectConfigPath (and, via withOptionalBoardCoordinates,
+  // board coordinates) from the MCP server process's own cwd -- unrelated to
+  // whichever owner/repo the call was actually about. A caller that knows the
+  // target repo's checkout path can now pass startDir to get that repo's own
+  // config instead of whatever the server process happens to be sitting in.
+  it('issue #274: resolves projectConfigPath from startDir, not process.cwd(), when startDir is given', async () => {
+    const cwdRoot = tmpProjectWith(null); // cwd itself has no project-layer config
+    const otherRoot = tmpProjectWith('destination:\n  repo: "acme/widgets"\n');
+    isolate(cwdRoot);
+    mockRest('get', '/repos/acme/widgets/milestones', []);
+
+    const ctx = await getSessionContext({ owner: 'acme', repo: 'widgets', startDir: otherRoot });
+
+    expect(ctx.projectConfigPath).toBe(join(otherRoot, '.config', 'gdlc', 'config.yml'));
+  });
 });

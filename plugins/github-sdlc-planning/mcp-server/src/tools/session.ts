@@ -12,6 +12,15 @@ export interface GetSessionContextInput {
   projectOwnerLogin?: string;
   projectNumber?: number;
   projectOwnerType?: ProjectOwnerType;
+  /** Issue #274: same purpose as `get_gdlc_config`'s own `startDir` param --
+   * the filesystem path `withOptionalBoardCoordinates`/`loadGdlcConfig` and
+   * `findAllProjectConfigPaths` below resolve the project-layer config
+   * cascade from. Defaults to the MCP server process's own `process.cwd()`
+   * when omitted, which is NOT necessarily related to `owner`/`repo` --
+   * pass the target repo's actual checkout path to get correct,
+   * config-cascade-aware board resolution instead of whatever unrelated
+   * board the server process happens to be sitting in. */
+  startDir?: string;
 }
 
 interface RestMilestoneSummary {
@@ -64,7 +73,7 @@ export async function getSessionContext(input: GetSessionContextInput, deps: Git
   return {
     openMilestones: milestones.map((m) => ({ number: m.number, title: m.title, url: m.html_url, dueOn: m.due_on })),
     projectBoard,
-    projectConfigPath: findAllProjectConfigPaths()[0] ?? null,
+    projectConfigPath: findAllProjectConfigPaths(input.startDir)[0] ?? null,
   };
 }
 

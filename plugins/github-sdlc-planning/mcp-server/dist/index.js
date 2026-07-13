@@ -39347,7 +39347,7 @@ async function getSessionContext(input, deps = {}) {
   return {
     openMilestones: milestones.map((m) => ({ number: m.number, title: m.title, url: m.html_url, dueOn: m.due_on })),
     projectBoard,
-    projectConfigPath: findAllProjectConfigPaths()[0] ?? null
+    projectConfigPath: findAllProjectConfigPaths(input.startDir)[0] ?? null
   };
 }
 function getAgentCapabilities() {
@@ -39480,7 +39480,7 @@ function writeGdlcConfig(input, deps = {}) {
 // src/tool-defaults.ts
 function withRequiredBoardCoordinates(fn) {
   return (args) => {
-    const config2 = loadGdlcConfig();
+    const config2 = loadGdlcConfig(args.startDir);
     const resolved = resolveBoardCoordinates(
       { projectOwnerLogin: args.projectOwnerLogin, projectNumber: args.projectNumber, projectOwnerType: args.projectOwnerType },
       config2
@@ -39504,7 +39504,7 @@ function warnNoOpBoard(write = (line) => process.stderr.write(line)) {
 }
 function withOptionalBoardCoordinates(fn) {
   return (args) => {
-    const config2 = loadGdlcConfig();
+    const config2 = loadGdlcConfig(args.startDir);
     const resolved = resolveBoardCoordinates(
       { projectOwnerLogin: args.projectOwnerLogin, projectNumber: args.projectNumber, projectOwnerType: args.projectOwnerType },
       config2
@@ -39630,14 +39630,15 @@ server.registerTool(
   "add_item_to_project",
   {
     title: "Add item to project",
-    description: "Add an issue to a Projects v2 board via addProjectV2ItemById, resolving node IDs first. Idempotent: if the issue already has an item on the target project (e.g. added by a native auto-add workflow), returns that item with existed: true instead of creating a duplicate. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted.",
+    description: "Add an issue to a Projects v2 board via addProjectV2ItemById, resolving node IDs first. Idempotent: if the issue already has an item on the target project (e.g. added by a native auto-add workflow), returns that item with existed: true instead of creating a duplicate. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted, resolved from startDir if given (issue #274) rather than the MCP server process's own cwd.",
     inputSchema: {
       owner: external_exports.string(),
       repo: external_exports.string(),
       issueNumber: external_exports.number().int(),
       projectOwnerLogin: external_exports.string().optional(),
       projectNumber: external_exports.number().int().optional(),
-      projectOwnerType: projectOwnerTypeSchema.optional()
+      projectOwnerType: projectOwnerTypeSchema.optional(),
+      startDir: external_exports.string().optional()
     }
   },
   wrap(withRequiredBoardCoordinates(addItemToProject))
@@ -39646,7 +39647,7 @@ server.registerTool(
   "set_field_value",
   {
     title: "Set project field value",
-    description: "Set a Projects v2 item field value via updateProjectV2ItemFieldValue. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted.",
+    description: "Set a Projects v2 item field value via updateProjectV2ItemFieldValue. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted, resolved from startDir if given (issue #274) rather than the MCP server process's own cwd.",
     inputSchema: {
       projectOwnerLogin: external_exports.string().optional(),
       projectNumber: external_exports.number().int().optional(),
@@ -39659,7 +39660,8 @@ server.registerTool(
         external_exports.object({ kind: external_exports.literal("date"), date: external_exports.string() }),
         external_exports.object({ kind: external_exports.literal("singleSelect"), optionId: external_exports.string() }),
         external_exports.object({ kind: external_exports.literal("iteration"), iterationId: external_exports.string() })
-      ])
+      ]),
+      startDir: external_exports.string().optional()
     }
   },
   wrap(withRequiredBoardCoordinates(setFieldValue))
@@ -39668,11 +39670,12 @@ server.registerTool(
   "get_project_items",
   {
     title: "Get project items",
-    description: "List a Projects v2 board's items and their field values. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted.",
+    description: "List a Projects v2 board's items and their field values. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted, resolved from startDir if given (issue #274) rather than the MCP server process's own cwd.",
     inputSchema: {
       projectOwnerLogin: external_exports.string().optional(),
       projectNumber: external_exports.number().int().optional(),
-      projectOwnerType: projectOwnerTypeSchema.optional()
+      projectOwnerType: projectOwnerTypeSchema.optional(),
+      startDir: external_exports.string().optional()
     }
   },
   wrap(withRequiredBoardCoordinates(getProjectItems))
@@ -39681,11 +39684,12 @@ server.registerTool(
   "get_project_status_profile",
   {
     title: "Get project Status-field profile",
-    description: "Read the durable, XDG-cached profile of a project's real Status field (option IDs/names) and which documented CLAUDE.md lifecycle stages (Backlog/Ready/In Progress/In Review/Done) have no matching board option, refreshing from a live GraphQL query only when the cache is missing or past its 1-hour TTL. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted.",
+    description: "Read the durable, XDG-cached profile of a project's real Status field (option IDs/names) and which documented CLAUDE.md lifecycle stages (Backlog/Ready/In Progress/In Review/Done) have no matching board option, refreshing from a live GraphQL query only when the cache is missing or past its 1-hour TTL. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted, resolved from startDir if given (issue #274) rather than the MCP server process's own cwd.",
     inputSchema: {
       projectOwnerLogin: external_exports.string().optional(),
       projectNumber: external_exports.number().int().optional(),
-      projectOwnerType: projectOwnerTypeSchema.optional()
+      projectOwnerType: projectOwnerTypeSchema.optional(),
+      startDir: external_exports.string().optional()
     }
   },
   wrap(withRequiredBoardCoordinates(getProjectStatusProfile))
@@ -39769,13 +39773,14 @@ server.registerTool(
   "get_session_context",
   {
     title: "Get session context",
-    description: "Fetch open milestones and (optionally) Projects v2 board state \u2014 the non-Claude-Code SessionStart equivalent. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted; still optional overall, since a repo with no board configured anywhere is a valid state (projectBoard: null).",
+    description: "Fetch open milestones and (optionally) Projects v2 board state \u2014 the non-Claude-Code SessionStart equivalent. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted; still optional overall, since a repo with no board configured anywhere is a valid state (projectBoard: null). Config-based defaulting resolves from startDir (same param as get_gdlc_config), NOT from owner/repo -- pass the target repo's actual checkout path when it differs from the MCP server process's own cwd, or this can silently default to an unrelated repo's board with no error (issue #274).",
     inputSchema: {
       owner: external_exports.string(),
       repo: external_exports.string(),
       projectOwnerLogin: external_exports.string().optional(),
       projectNumber: external_exports.number().int().optional(),
-      projectOwnerType: projectOwnerTypeSchema.optional()
+      projectOwnerType: projectOwnerTypeSchema.optional(),
+      startDir: external_exports.string().optional()
     }
   },
   wrap(withOptionalBoardCoordinates(getSessionContext))

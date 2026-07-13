@@ -18,7 +18,7 @@ import { PlanningError } from './errors.js';
  * function throws first. */
 export function withRequiredBoardCoordinates(fn) {
     return (args) => {
-        const config = loadGdlcConfig();
+        const config = loadGdlcConfig(args.startDir);
         const resolved = resolveBoardCoordinates({ projectOwnerLogin: args.projectOwnerLogin, projectNumber: args.projectNumber, projectOwnerType: args.projectOwnerType }, config);
         if (!resolved) {
             throw new PlanningError('missing_board_config', 'projectOwnerLogin and projectNumber must both be given together, or both omitted so they can be ' +
@@ -57,7 +57,7 @@ export function resetNoOpBoardWarning() {
  * configure it, rather than a completely silent fallback. */
 export function withOptionalBoardCoordinates(fn) {
     return (args) => {
-        const config = loadGdlcConfig();
+        const config = loadGdlcConfig(args.startDir);
         const resolved = resolveBoardCoordinates({ projectOwnerLogin: args.projectOwnerLogin, projectNumber: args.projectNumber, projectOwnerType: args.projectOwnerType }, config);
         if (!resolved)
             warnNoOpBoard();
