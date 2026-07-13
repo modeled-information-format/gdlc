@@ -39458,7 +39458,7 @@ function createLiveReadinessDeps(deps = {}) {
   };
 }
 async function checkPrReadiness(ref, deps = {}) {
-  const config2 = resolvePrLifecycleConfig(loadGdlcConfig());
+  const config2 = resolvePrLifecycleConfig(loadGdlcConfig(ref.startDir));
   return assessPrReadiness(ref, createLiveReadinessDeps(deps), { requireCleanCodeScanning: config2.requireCleanCodeScanning });
 }
 
@@ -39592,8 +39592,8 @@ server.registerTool(
   "check_pr_readiness",
   {
     title: "Check PR readiness",
-    description: "Single settled/not-settled verdict for a pull request: status checks (pending/failing block), review state (at least one non-pending review required), review-thread resolution (any unresolved thread blocks), and GitHub Advanced Security code-scanning alerts (any open alert blocks). Replaces ad hoc hand-written status-polling scripts -- call this repeatedly (e.g. from a Monitor loop) instead of re-deriving the check yourself.",
-    inputSchema: pullRequestRefSchema
+    description: "Single settled/not-settled verdict for a pull request: status checks (pending/failing block), review state (at least one non-pending review required), review-thread resolution (any unresolved thread blocks), and GitHub Advanced Security code-scanning alerts (any open alert blocks). Replaces ad hoc hand-written status-polling scripts -- call this repeatedly (e.g. from a Monitor loop) instead of re-deriving the check yourself. requireCleanCodeScanning's prLifecycle config is resolved from startDir if given (issue #281) rather than the MCP server process's own cwd.",
+    inputSchema: { ...pullRequestRefSchema, startDir: external_exports.string().optional() }
   },
   wrap(checkPrReadiness)
 );

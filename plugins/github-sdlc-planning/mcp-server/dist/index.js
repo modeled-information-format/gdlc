@@ -39515,7 +39515,7 @@ function withOptionalBoardCoordinates(fn) {
 }
 function withIssueDestination(fn) {
   return (args) => {
-    const config2 = loadGdlcConfig();
+    const config2 = loadGdlcConfig(args.startDir);
     const hasOwner = args.owner !== void 0;
     const hasRepo = args.repo !== void 0;
     let owner;
@@ -39568,7 +39568,7 @@ server.registerTool(
   "create_issue",
   {
     title: "Create issue",
-    description: "Create a GitHub issue via the GraphQL createIssue mutation, prepending a MIF frontmatter comment block to the body before returning. owner/repo default to the configured destination.repo (issue #82) when omitted, and are always checked against the configured targeting allowlist, if any (issue #83). When issueType is omitted, it is derived from mif.type (Task->Task, Bug->Bug, everything else->Feature); an org without that native type defined degrades to no type instead of failing (issue #108).",
+    description: "Create a GitHub issue via the GraphQL createIssue mutation, prepending a MIF frontmatter comment block to the body before returning. owner/repo default to the configured destination.repo (issue #82) when omitted, and are always checked against the configured targeting allowlist, if any (issue #83), resolved from startDir if given (issue #281) rather than the MCP server process's own cwd. When issueType is omitted, it is derived from mif.type (Task->Task, Bug->Bug, everything else->Feature); an org without that native type defined degrades to no type instead of failing (issue #108).",
     inputSchema: {
       owner: external_exports.string().optional(),
       repo: external_exports.string().optional(),
@@ -39578,7 +39578,8 @@ server.registerTool(
       assignees: external_exports.array(external_exports.string()).optional(),
       milestoneNumber: external_exports.number().int().optional(),
       issueType: external_exports.string().optional(),
-      mif: external_exports.object({ id: external_exports.string(), type: mifTypeSchema, namespace: external_exports.string() })
+      mif: external_exports.object({ id: external_exports.string(), type: mifTypeSchema, namespace: external_exports.string() }),
+      startDir: external_exports.string().optional()
     }
   },
   wrap(withIssueDestination(createIssue))

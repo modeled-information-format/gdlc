@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, it, expect } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '../setup.js';
 import { mockGraphQL, mockRest } from '../helpers.js';
@@ -382,5 +385,62 @@ describe('checkPrReadiness', () => {
     const result = await checkPrReadiness({ owner: 'acme', repo: 'widgets', pullNumber: 1 });
     expect(result.settled).toBe(true);
     expect(result.codeScanningAlerts.total).toBe(0);
+  });
+
+  // Issue #281: same root cause as gdlc#274/#280 -- checkPrReadiness's
+  // resolvePrLifecycleConfig(loadGdlcConfig()) call ignored startDir
+  // entirely and always read process.cwd(), unrelated to whichever repo a
+  // tool call concerns.
+  describe('startDir resolution', () => {
+    const originalCwd = process.cwd();
+    const originalXdg = process.env.XDG_CONFIG_HOME;
+
+    afterEach(() => {
+      process.chdir(originalCwd);
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdg;
+    });
+
+    function tmpProjectWith(contents: string): string {
+      const dir = mkdtempSync(join(tmpdir(), 'pr-readiness-startdir-'));
+      const gdlcDir = join(dir, '.config', 'gdlc');
+      mkdirSync(gdlcDir, { recursive: true });
+      writeFileSync(join(gdlcDir, 'config.yml'), contents);
+      return dir;
+    }
+
+    it('resolves prLifecycle config from startDir, not process.cwd(), when startDir is given', async () => {
+      const cwdRoot = mkdtempSync(join(tmpdir(), 'pr-readiness-cwd-')); // no config here
+      const otherRoot = tmpProjectWith('prLifecycle:\n  requireCleanCodeScanning: false\n');
+      process.chdir(cwdRoot);
+      process.env.XDG_CONFIG_HOME = mkdtempSync(join(tmpdir(), 'pr-readiness-empty-global-'));
+
+      mockGraphQL(() => ({
+        repository: {
+          pullRequest: {
+            headRefName: 'main',
+            commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [{ __typename: 'CheckRun', name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' }] } } } }] },
+            reviews: { nodes: [{ author: { login: 'x' }, state: 'APPROVED' }] },
+            reviewThreads: { nodes: [] },
+          },
+        },
+      }));
+      let codeScanningCalled = false;
+      server.use(
+        http.get('https://api.github.com/repos/acme/widgets/code-scanning/alerts', () => {
+          codeScanningCalled = true;
+          return HttpResponse.json([]);
+        }),
+      );
+
+      const result = await checkPrReadiness({ owner: 'acme', repo: 'widgets', pullNumber: 1, startDir: otherRoot });
+
+      // requireCleanCodeScanning: false in the startDir config means the
+      // code-scanning fetch should never run at all -- if this test instead
+      // read process.cwd() (no config there), the default true would apply
+      // and codeScanningCalled would flip to true.
+      expect(codeScanningCalled).toBe(false);
+      expect(result.settled).toBe(true);
+    });
   });
 });

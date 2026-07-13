@@ -259,4 +259,21 @@ describe('withIssueDestination', () => {
     const fn = withIssueDestination((args: { owner: string; repo: string }) => args);
     expect(await fn({ owner: 'acme', repo: 'widgets' })).toEqual({ owner: 'acme', repo: 'widgets' });
   });
+
+  // Issue #281: same root cause as #274 (withOptionalBoardCoordinates) and
+  // #280 (withRequiredBoardCoordinates) -- withIssueDestination's config
+  // resolution ignored startDir entirely and always read process.cwd().
+  it('issue #281: resolves destination.repo from startDir, not process.cwd(), when startDir is given', async () => {
+    const cwdRoot = tmpProjectWith(null); // cwd itself has no destination configured
+    const otherRoot = tmpProjectWith('destination:\n  repo: "from-startdir/widgets"\n');
+    isolate(cwdRoot, tmpGlobalWith(null));
+    const fn = withIssueDestination((args: { owner: string; repo: string; startDir?: string }) => args);
+    expect(await fn({ startDir: otherRoot })).toEqual({ owner: 'from-startdir', repo: 'widgets', startDir: otherRoot });
+  });
+
+  it('issue #281: still resolves from process.cwd() when startDir is omitted (backward compatible)', async () => {
+    isolate(tmpProjectWith('destination:\n  repo: "from-cwd/widgets"\n'), tmpGlobalWith(null));
+    const fn = withIssueDestination((args: { owner: string; repo: string }) => args);
+    expect(await fn({})).toEqual({ owner: 'from-cwd', repo: 'widgets' });
+  });
 });

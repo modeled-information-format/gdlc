@@ -79,7 +79,7 @@ export function withOptionalBoardCoordinates(fn) {
  * rather than `TArgs`. */
 export function withIssueDestination(fn) {
     return (args) => {
-        const config = loadGdlcConfig();
+        const config = loadGdlcConfig(args.startDir);
         const hasOwner = args.owner !== undefined;
         const hasRepo = args.repo !== undefined;
         let owner;

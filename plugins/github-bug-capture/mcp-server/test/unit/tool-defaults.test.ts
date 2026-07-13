@@ -79,4 +79,30 @@ describe('withRequiredBoardCoordinates', () => {
     }
     expect(threw).toBe(true);
   });
+
+  // Issue #281: same root cause as gdlc#274/#280 -- this plugin's own
+  // withRequiredBoardCoordinates ignored startDir entirely and always read
+  // process.cwd(), unrelated to whichever repo a tool call concerns.
+  it('issue #281: resolves board coordinates from startDir, not process.cwd(), when startDir is given', async () => {
+    const cwdRoot = tmpProjectWith(null); // cwd itself has NO board configured
+    const otherRoot = tmpProjectWith(['board:', '  projectOwnerLogin: from-startdir', '  projectNumber: 9', ''].join('\n'));
+    isolate(cwdRoot, tmpProjectWith(null));
+    const fn = withRequiredBoardCoordinates(
+      (args: { projectOwnerLogin: string; projectNumber: number; startDir?: string }) => args,
+    );
+    expect(await fn({ startDir: otherRoot })).toEqual({
+      projectOwnerLogin: 'from-startdir',
+      projectNumber: 9,
+      startDir: otherRoot,
+    });
+  });
+
+  it('issue #281: still resolves from process.cwd() when startDir is omitted (backward compatible)', async () => {
+    isolate(
+      tmpProjectWith(['board:', '  projectOwnerLogin: from-cwd', '  projectNumber: 3', ''].join('\n')),
+      tmpProjectWith(null),
+    );
+    const fn = withRequiredBoardCoordinates((args: { projectOwnerLogin: string; projectNumber: number }) => args);
+    expect(await fn({})).toEqual({ projectOwnerLogin: 'from-cwd', projectNumber: 3 });
+  });
 });
