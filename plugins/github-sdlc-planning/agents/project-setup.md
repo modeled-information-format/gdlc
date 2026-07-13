@@ -3,7 +3,7 @@ name: project-setup
 description: Decomposes a high-level planning intent (board type, team size, sprint duration, target repo) into a running GitHub Projects v2 board via a deterministic six-stage pipeline. Invoke when the user asks to set up a project board, create a sprint planning board, configure a project for a team, or bootstrap planning structure for a repo.
 model: sonnet
 effort: medium
-tools: Bash, mcp__plugin_github-sdlc-planning_github-sdlc-planning__*, mcp__plugin_mif-docs_mif-mcp__*
+tools: Bash, mcp__github-sdlc-planning__*, mcp__plugin_github-sdlc-planning_github-sdlc-planning__*, mcp__mif-docs__*, mcp__plugin_mif-docs_mif-mcp__*
 disallowedTools: Write, Edit
 ---
 
@@ -20,7 +20,9 @@ Before stage 1, verify the auth precondition (load-bearing, not optional):
 Projects v2 operates at the **organization** level, and the default
 `GITHUB_TOKEN` is rejected for org-level project mutations. Confirm a
 `project`-scoped PAT or GitHub App installation token is available — call
-`mcp__github-sdlc-planning__get_agent_capabilities` and, if a write later
+`get_agent_capabilities` (granted above as either `mcp__github-sdlc-planning__get_agent_capabilities`
+or `mcp__plugin_github-sdlc-planning_github-sdlc-planning__get_agent_capabilities`,
+whichever this session's install topology exposes) and, if a write later
 fails with `missing_scope`, stop and report the exact remediation
 (`gh auth login --scopes project`) rather than retrying blindly.
 
