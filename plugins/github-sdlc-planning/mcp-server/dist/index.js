@@ -38936,30 +38936,18 @@ var ADD_ITEM_MUTATION = `
     }
   }
 `;
-var ISSUE_PROJECT_ITEMS_QUERY = `
-  query($owner: String!, $repo: String!, $number: Int!) {
-    repository(owner: $owner, name: $repo) {
-      issue(number: $number) {
-        projectItems(first: 100) {
-          nodes { id project { id } }
-        }
-      }
-    }
-  }
-`;
+function findExistingItem(nodes, owner, repo, issueNumber) {
+  const target = `${owner}/${repo}`.toLowerCase();
+  return nodes.find((n) => n.content?.number === issueNumber && n.content?.repository?.nameWithOwner?.toLowerCase() === target);
+}
 async function addItemToProject(input, deps = {}) {
   await assertProjectScope(deps.fetchImpl);
   const [contentId, projectId] = await Promise.all([
     resolveIssueNodeId(input.owner, input.repo, input.issueNumber, deps),
     resolveProjectNodeId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? "organization", deps)
   ]);
-  const itemsData = await githubGraphQL(
-    ISSUE_PROJECT_ITEMS_QUERY,
-    { owner: input.owner, repo: input.repo, number: input.issueNumber },
-    {},
-    deps
-  );
-  const existingItem = (itemsData.repository?.issue?.projectItems?.nodes ?? []).find((n) => n.project.id === projectId);
+  const nodes = await fetchAllProjectItemNodes(projectId, deps);
+  const existingItem = findExistingItem(nodes, input.owner, input.repo, input.issueNumber);
   if (existingItem) {
     return { itemId: existingItem.id, existed: true };
   }

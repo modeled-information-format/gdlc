@@ -8,17 +8,24 @@ const ADD_ITEM_MUTATION = `
     }
   }
 `;
-const ISSUE_PROJECT_ITEMS_QUERY = `
-  query($owner: String!, $repo: String!, $number: Int!) {
-    repository(owner: $owner, name: $repo) {
-      issue(number: $number) {
-        projectItems(first: 100) {
-          nodes { id project { id } }
-        }
-      }
-    }
-  }
-`;
+/** gdlc#282: this existing-item check used to query the issue's own
+ * `projectItems` connection (`repository(owner,repo){issue(number){
+ * projectItems{...}}}`), the same issue-side lookup #273/#283 already
+ * proved unreliable -- confirmed live to silently omit items on a project
+ * owned by a different entity than the issue's own repo (`totalCount: 1`
+ * on the issue side, listing only one project, while the other project's
+ * item demonstrably existed via a direct `ProjectV2.items` query). That
+ * made this idempotency check fail to find an item that was already there,
+ * so a second `add_item_to_project` call for the same issue/project always
+ * returned `existed: false` and created a duplicate. Now reuses
+ * `fetchAllProjectItemNodes` (the project-side scan `getProjectItems`
+ * below already uses correctly), matching by content number + repository,
+ * case-insensitively (gdlc#283's Copilot finding: GraphQL accepts
+ * mixed-case owner/repo but `nameWithOwner` returns canonical casing). */
+function findExistingItem(nodes, owner, repo, issueNumber) {
+    const target = `${owner}/${repo}`.toLowerCase();
+    return nodes.find((n) => n.content?.number === issueNumber && n.content?.repository?.nameWithOwner?.toLowerCase() === target);
+}
 /** AC-3: resolve node IDs (issue, project) before mutating, never a numeric
  * issue/project number. AC-4: fail with a named `project`-scope error, not
  * GitHub's raw GraphQL permission error. ADR-0003: query whether the issue
@@ -30,8 +37,8 @@ export async function addItemToProject(input, deps = {}) {
         resolveIssueNodeId(input.owner, input.repo, input.issueNumber, deps),
         resolveProjectNodeId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? 'organization', deps),
     ]);
-    const itemsData = await githubGraphQL(ISSUE_PROJECT_ITEMS_QUERY, { owner: input.owner, repo: input.repo, number: input.issueNumber }, {}, deps);
-    const existingItem = (itemsData.repository?.issue?.projectItems?.nodes ?? []).find((n) => n.project.id === projectId);
+    const nodes = await fetchAllProjectItemNodes(projectId, deps);
+    const existingItem = findExistingItem(nodes, input.owner, input.repo, input.issueNumber);
     if (existingItem) {
         return { itemId: existingItem.id, existed: true };
     }
