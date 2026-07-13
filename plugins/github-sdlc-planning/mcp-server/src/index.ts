@@ -278,13 +278,17 @@ server.registerTool(
     description:
       'Fetch open milestones and (optionally) Projects v2 board state — the non-Claude-Code SessionStart equivalent. ' +
       'projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted; still ' +
-      'optional overall, since a repo with no board configured anywhere is a valid state (projectBoard: null).',
+      'optional overall, since a repo with no board configured anywhere is a valid state (projectBoard: null). ' +
+      'Config-based defaulting resolves from startDir (same param as get_gdlc_config), NOT from owner/repo -- ' +
+      'pass the target repo\'s actual checkout path when it differs from the MCP server process\'s own cwd, or ' +
+      'this can silently default to an unrelated repo\'s board with no error (issue #274).',
     inputSchema: {
       owner: z.string(),
       repo: z.string(),
       projectOwnerLogin: z.string().optional(),
       projectNumber: z.number().int().optional(),
       projectOwnerType: projectOwnerTypeSchema.optional(),
+      startDir: z.string().optional(),
     },
   },
   wrap(withOptionalBoardCoordinates(getSessionContext)),

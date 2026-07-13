@@ -39347,7 +39347,7 @@ async function getSessionContext(input, deps = {}) {
   return {
     openMilestones: milestones.map((m) => ({ number: m.number, title: m.title, url: m.html_url, dueOn: m.due_on })),
     projectBoard,
-    projectConfigPath: findAllProjectConfigPaths()[0] ?? null
+    projectConfigPath: findAllProjectConfigPaths(input.startDir)[0] ?? null
   };
 }
 function getAgentCapabilities() {
@@ -39504,7 +39504,7 @@ function warnNoOpBoard(write = (line) => process.stderr.write(line)) {
 }
 function withOptionalBoardCoordinates(fn) {
   return (args) => {
-    const config2 = loadGdlcConfig();
+    const config2 = loadGdlcConfig(args.startDir);
     const resolved = resolveBoardCoordinates(
       { projectOwnerLogin: args.projectOwnerLogin, projectNumber: args.projectNumber, projectOwnerType: args.projectOwnerType },
       config2
@@ -39769,13 +39769,14 @@ server.registerTool(
   "get_session_context",
   {
     title: "Get session context",
-    description: "Fetch open milestones and (optionally) Projects v2 board state \u2014 the non-Claude-Code SessionStart equivalent. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted; still optional overall, since a repo with no board configured anywhere is a valid state (projectBoard: null).",
+    description: "Fetch open milestones and (optionally) Projects v2 board state \u2014 the non-Claude-Code SessionStart equivalent. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted; still optional overall, since a repo with no board configured anywhere is a valid state (projectBoard: null). Config-based defaulting resolves from startDir (same param as get_gdlc_config), NOT from owner/repo -- pass the target repo's actual checkout path when it differs from the MCP server process's own cwd, or this can silently default to an unrelated repo's board with no error (issue #274).",
     inputSchema: {
       owner: external_exports.string(),
       repo: external_exports.string(),
       projectOwnerLogin: external_exports.string().optional(),
       projectNumber: external_exports.number().int().optional(),
-      projectOwnerType: projectOwnerTypeSchema.optional()
+      projectOwnerType: projectOwnerTypeSchema.optional(),
+      startDir: external_exports.string().optional()
     }
   },
   wrap(withOptionalBoardCoordinates(getSessionContext))

@@ -57,7 +57,7 @@ export function resetNoOpBoardWarning() {
  * configure it, rather than a completely silent fallback. */
 export function withOptionalBoardCoordinates(fn) {
     return (args) => {
-        const config = loadGdlcConfig();
+        const config = loadGdlcConfig(args.startDir);
         const resolved = resolveBoardCoordinates({ projectOwnerLogin: args.projectOwnerLogin, projectNumber: args.projectNumber, projectOwnerType: args.projectOwnerType }, config);
         if (!resolved)
             warnNoOpBoard();
