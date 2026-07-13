@@ -2,7 +2,7 @@
 description: Break a high-level goal into an Epic with Story/Task sub-issues using GitHub's native sub-issue hierarchy and MIF-conformant issue bodies. Use when the user asks to "break this down", "decompose this epic", "create sub-issues for", or "turn this into a work plan".
 when_to_use: Trigger on "break this down into tasks", "decompose this epic", "create sub-issues", "turn this goal into issues", or when planning work that clearly spans multiple issues.
 argument-hint: "[owner/repo] [goal description]"
-allowed-tools: Bash, mcp__github-sdlc-planning__*, mcp__mif-docs__*
+allowed-tools: Bash, mcp__github-sdlc-planning__*, mcp__plugin_github-sdlc-planning_github-sdlc-planning__*, mcp__mif-docs__*, mcp__plugin_mif-docs_mif-mcp__*
 ---
 
 # Epic decomposition

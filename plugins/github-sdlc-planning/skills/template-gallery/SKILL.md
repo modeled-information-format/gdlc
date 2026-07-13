@@ -2,7 +2,7 @@
 description: List and instantiate curated GitHub Projects v2 templates (Sprint Board, OKR Roadmap, Bug-Triage Board, Feature Pipeline) from the template manifest catalog. Use when the user asks "what templates are available", "show me project templates", or names a template by conversational cue like "we do two-week sprints".
 when_to_use: Trigger on "what project templates do you have", "show me the template gallery", "we do two-week sprints" (maps to Sprint Board), "we track OKRs" (maps to OKR Roadmap), or similar conversational cues naming a work style.
 argument-hint: "[owner/repo] [template name, optional]"
-allowed-tools: Bash, mcp__github-sdlc-planning__*, Read
+allowed-tools: Bash, mcp__github-sdlc-planning__*, mcp__plugin_github-sdlc-planning_github-sdlc-planning__*, Read
 ---
 
 # Template gallery

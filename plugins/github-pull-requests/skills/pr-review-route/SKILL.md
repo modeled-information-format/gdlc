@@ -2,7 +2,7 @@
 description: Suggest reviewers for a pull request from a CODEOWNERS-style heuristic and request them on confirmation. Use when the user asks to "route this PR for review", "who should review this", or "request reviewers".
 when_to_use: Trigger on "who should review this PR", "route this for review", "request reviewers for #N", or right after opening a PR when the user asks for review routing.
 argument-hint: "[owner/repo] [pr number]"
-allowed-tools: Bash, Read, mcp__github-pull-requests__*
+allowed-tools: Bash, Read, mcp__github-pull-requests__*, mcp__plugin_github-pull-requests_github-pull-requests__*
 ---
 
 # PR review routing
