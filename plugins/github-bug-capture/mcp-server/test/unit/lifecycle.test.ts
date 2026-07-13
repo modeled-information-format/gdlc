@@ -25,76 +25,63 @@ function routeProject(body: GraphQLRequestBody): unknown | undefined {
 
 describe('getLifecycleState', () => {
   const INPUT = { owner: 'acme', repo: 'widgets', issueNumber: 9, ...COORDS };
+  const ON_BOARD_ITEM = { id: 'PVTI_9', content: { number: 9, repository: { nameWithOwner: 'acme/widgets' } }, fieldValueByName: { name: 'In Progress' } };
 
-  it('reports native state and Status value when the issue is on the board', async () => {
+  function mockState(overrides: {
+    state?: 'OPEN' | 'CLOSED';
+    issueExists?: boolean;
+    items?: Array<{ id: string; content: { number: number; repository: { nameWithOwner: string } }; fieldValueByName?: { name: string } | null }>;
+  }): void {
     mockGraphQL((body) => {
       const routed = routeProject(body);
       if (routed) return routed;
-      return {
-        repository: {
-          issue: {
-            state: 'OPEN',
-            projectItems: {
-              nodes: [{ project: { id: 'PVT_1' }, fieldValueByName: { name: 'In Progress' } }],
-            },
-          },
-        },
-      };
+      if (body.query.includes('issue(number: $number) { state }')) {
+        return overrides.issueExists === false ? { repository: { issue: null } } : { repository: { issue: { state: overrides.state ?? 'OPEN' } } };
+      }
+      if (body.query.includes('items(first: 100, after')) {
+        return { node: { items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: overrides.items ?? [] } } };
+      }
+      throw new Error(`unexpected query: ${body.query}`);
     });
+  }
 
+  it('reports native state and Status value when the issue is on the board', async () => {
+    mockState({ items: [ON_BOARD_ITEM] });
     const result = await getLifecycleState(INPUT);
-
     expect(result).toEqual({ issueNumber: 9, nativeState: 'open', onBoard: true, status: 'In Progress' });
   });
 
   it('reports closed native state', async () => {
-    mockGraphQL((body) => {
-      const routed = routeProject(body);
-      if (routed) return routed;
-      return { repository: { issue: { state: 'CLOSED', projectItems: { nodes: [] } } } };
-    });
-
+    mockState({ state: 'CLOSED', items: [] });
     const result = await getLifecycleState(INPUT);
     expect(result.nativeState).toBe('closed');
   });
 
   it('reports onBoard: false and status: null when the issue has no item on this project', async () => {
-    mockGraphQL((body) => {
-      const routed = routeProject(body);
-      if (routed) return routed;
-      return {
-        repository: {
-          issue: { state: 'OPEN', projectItems: { nodes: [{ project: { id: 'PVT_other' }, fieldValueByName: null }] } },
-        },
-      };
-    });
-
+    mockState({ items: [{ id: 'PVTI_other', content: { number: 99, repository: { nameWithOwner: 'acme/widgets' } } }] });
     const result = await getLifecycleState(INPUT);
     expect(result).toEqual({ issueNumber: 9, nativeState: 'open', onBoard: false, status: null });
   });
 
   it('reports status: null when the issue is on the board but the Status field has no value (or does not exist)', async () => {
-    mockGraphQL((body) => {
-      const routed = routeProject(body);
-      if (routed) return routed;
-      return {
-        repository: {
-          issue: { state: 'OPEN', projectItems: { nodes: [{ project: { id: 'PVT_1' }, fieldValueByName: null }] } },
-        },
-      };
-    });
-
+    mockState({ items: [{ id: 'PVTI_9', content: { number: 9, repository: { nameWithOwner: 'acme/widgets' } }, fieldValueByName: null }] });
     const result = await getLifecycleState(INPUT);
     expect(result).toEqual({ issueNumber: 9, nativeState: 'open', onBoard: true, status: null });
   });
 
   it('fails with resolve_issue_id when the issue does not exist', async () => {
-    mockGraphQL((body) => {
-      const routed = routeProject(body);
-      if (routed) return routed;
-      return { repository: { issue: null } };
-    });
+    mockState({ issueExists: false });
     await expect(getLifecycleState(INPUT)).rejects.toMatchObject({ code: 'resolve_issue_id' });
+  });
+
+  // Issue #273: board membership/status used to be read off the issue's own
+  // projectItems connection, confirmed to silently omit items on a project
+  // owned by a different entity than the issue's repo. Regression guard for
+  // the fix (project-side item scan instead).
+  it('reports onBoard: true for an item on a user-owned project (issue #273 regression)', async () => {
+    mockState({ items: [ON_BOARD_ITEM] });
+    const result = await getLifecycleState({ ...INPUT, projectOwnerType: 'user' });
+    expect(result.onBoard).toBe(true);
   });
 });
 
@@ -104,19 +91,22 @@ describe('setLifecycleState', () => {
   beforeEach(() => mockUserScopes(['repo', 'project']));
 
   const INPUT = { owner: 'acme', repo: 'widgets', issueNumber: 9, ...COORDS, status: 'Done' };
+  const DEFAULT_ITEM = { id: 'PVTI_9', content: { number: 9, repository: { nameWithOwner: 'acme/widgets' } }, fieldValueByName: null };
 
   function mockBoard(overrides: {
-    projectItems?: Array<{ id: string; project: { id: string } }>;
+    items?: Array<{ id: string; content: { number: number; repository: { nameWithOwner: string } }; fieldValueByName?: { name: string } | null }>;
     fields?: unknown[];
-    issue?: null;
+    issueExists?: boolean;
     onUpdate?: (vars: Record<string, unknown>) => void;
   }): void {
     mockGraphQL((body) => {
       const routed = routeProject(body);
       if (routed) return routed;
-      if (body.query.includes('projectItems(first')) {
-        if (overrides.issue === null) return { repository: { issue: null } };
-        return { repository: { issue: { projectItems: { nodes: overrides.projectItems ?? [{ id: 'PVTI_9', project: { id: 'PVT_1' } }] } } } };
+      if (body.query.includes('issue(number: $number) { id }')) {
+        return overrides.issueExists === false ? { repository: { issue: null } } : { repository: { issue: { id: 'I_9' } } };
+      }
+      if (body.query.includes('items(first: 100, after')) {
+        return { node: { items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: overrides.items ?? [DEFAULT_ITEM] } } };
       }
       if (body.query.includes('fields(first')) {
         return {
@@ -162,12 +152,12 @@ describe('setLifecycleState', () => {
   });
 
   it('fails with resolve_issue_id when the issue does not exist', async () => {
-    mockBoard({ issue: null });
+    mockBoard({ issueExists: false });
     await expect(setLifecycleState(INPUT)).rejects.toMatchObject({ code: 'resolve_issue_id' });
   });
 
   it('fails with issue_not_on_board when the issue has no item on this project', async () => {
-    mockBoard({ projectItems: [{ id: 'PVTI_other', project: { id: 'PVT_other' } }] });
+    mockBoard({ items: [{ id: 'PVTI_other', content: { number: 99, repository: { nameWithOwner: 'acme/widgets' } } }] });
     await expect(setLifecycleState(INPUT)).rejects.toMatchObject({ code: 'issue_not_on_board' });
   });
 
@@ -184,6 +174,15 @@ describe('setLifecycleState', () => {
       code: 'missing_option',
       details: expect.objectContaining({ available: ['Todo'] }),
     });
+  });
+
+  // Issue #273 regression guard, mirroring triage-board.test.ts's equivalent.
+  it('resolves the board item even when it lives on a user-owned project (issue #273 regression)', async () => {
+    let updateVars: Record<string, unknown> | undefined;
+    mockBoard({ items: [DEFAULT_ITEM], onUpdate: (vars) => { updateVars = vars; } });
+    const result = await setLifecycleState({ ...INPUT, projectOwnerType: 'user' });
+    expect(result.itemId).toBe('PVTI_9');
+    expect(updateVars?.itemId).toBe('PVTI_9');
   });
 });
 

@@ -38571,38 +38571,82 @@ async function getFieldByName(projectId, name, deps = {}) {
   const nodes = data.node?.fields?.nodes ?? [];
   return nodes.find((n) => n.name === name);
 }
-var ISSUE_PROJECT_ITEMS_QUERY = `
-  query($owner: String!, $repo: String!, $number: Int!) {
-    repository(owner: $owner, name: $repo) {
-      issue(number: $number) {
-        projectItems(first: 100) {
-          nodes { id project { id } }
+var PROJECT_ITEMS_BY_CONTENT_QUERY = `
+  query($projectId: ID!, $after: String) {
+    node(id: $projectId) {
+      ... on ProjectV2 {
+        items(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            id
+            content {
+              ... on Issue { number repository { nameWithOwner } }
+              ... on PullRequest { number repository { nameWithOwner } }
+            }
+            fieldValueByName(name: "Status") {
+              ... on ProjectV2ItemFieldSingleSelectValue { name }
+            }
+          }
         }
       }
     }
   }
 `;
-async function resolveProjectItem(coords, projectId, owner, repo, issueNumber, deps = {}) {
-  const itemsData = await githubGraphQL(
-    ISSUE_PROJECT_ITEMS_QUERY,
-    { owner, repo, number: issueNumber },
-    deps
-  );
-  const issue2 = itemsData.repository?.issue;
-  if (!issue2) {
+var MAX_PAGES = 1e3;
+async function findProjectItemForContent(projectId, owner, repo, issueNumber, deps = {}) {
+  const target = `${owner}/${repo}`.toLowerCase();
+  let after = null;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const data = await githubGraphQL(
+      PROJECT_ITEMS_BY_CONTENT_QUERY,
+      { projectId, after },
+      deps
+    );
+    const items = data.node?.items;
+    if (items === void 0) return null;
+    const match = (items?.nodes ?? []).find(
+      (n) => n.content?.number === issueNumber && n.content?.repository?.nameWithOwner?.toLowerCase() === target
+    );
+    if (match) return { itemId: match.id, statusName: match.fieldValueByName?.name ?? null };
+    if (items.pageInfo === void 0) {
+      throw new Error(`findProjectItemForContent: malformed response -- items present but pageInfo missing (projectId=${projectId})`);
+    }
+    if (!items.pageInfo.hasNextPage) return null;
+    if (items.pageInfo.endCursor === after) {
+      throw new Error(
+        `findProjectItemForContent: malformed response -- hasNextPage true but endCursor did not advance (projectId=${projectId})`
+      );
+    }
+    after = items.pageInfo.endCursor;
+  }
+  throw new Error(`findProjectItemForContent: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);
+}
+var ISSUE_EXISTS_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) { id }
+    }
+  }
+`;
+async function assertIssueExists(owner, repo, issueNumber, deps = {}) {
+  const data = await githubGraphQL(ISSUE_EXISTS_QUERY, { owner, repo, number: issueNumber }, deps);
+  if (!data.repository?.issue) {
     throw new BugCaptureError("resolve_issue_id", `Issue ${owner}/${repo}#${issueNumber} not found`, {
       lookupStep: "resolve_issue_id"
     });
   }
-  const item = issue2.projectItems.nodes.find((n) => n.project.id === projectId);
-  if (!item) {
+}
+async function resolveProjectItem(coords, projectId, owner, repo, issueNumber, deps = {}) {
+  await assertIssueExists(owner, repo, issueNumber, deps);
+  const found = await findProjectItemForContent(projectId, owner, repo, issueNumber, deps);
+  if (!found) {
     throw new BugCaptureError(
       "issue_not_on_board",
       `Issue ${owner}/${repo}#${issueNumber} is not an item on ${coords.projectOwnerLogin} project #${coords.projectNumber}; add it to the board first (github-sdlc-planning's add_item_to_project)`,
       { issueNumber, projectNumber: coords.projectNumber }
     );
   }
-  return { itemId: item.id };
+  return { itemId: found.itemId };
 }
 var UPDATE_FIELD_VALUE_MUTATION = `
   mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
@@ -38689,42 +38733,32 @@ async function setSeverity(input, deps = {}) {
 
 // src/tools/lifecycle.ts
 var STATUS_FIELD_NAME = "Status";
-var ISSUE_LIFECYCLE_QUERY = `
+var ISSUE_STATE_QUERY = `
   query($owner: String!, $repo: String!, $number: Int!) {
     repository(owner: $owner, name: $repo) {
-      issue(number: $number) {
-        state
-        projectItems(first: 100) {
-          nodes {
-            project { id }
-            fieldValueByName(name: "Status") {
-              ... on ProjectV2ItemFieldSingleSelectValue { name }
-            }
-          }
-        }
-      }
+      issue(number: $number) { state }
     }
   }
 `;
 async function getLifecycleState(input, deps = {}) {
   const projectId = await resolveProjectNodeId(input, deps);
-  const data = await githubGraphQL(
-    ISSUE_LIFECYCLE_QUERY,
+  const stateData = await githubGraphQL(
+    ISSUE_STATE_QUERY,
     { owner: input.owner, repo: input.repo, number: input.issueNumber },
     deps
   );
-  const issue2 = data.repository?.issue;
+  const issue2 = stateData.repository?.issue;
   if (!issue2) {
     throw new BugCaptureError("resolve_issue_id", `Issue ${input.owner}/${input.repo}#${input.issueNumber} not found`, {
       lookupStep: "resolve_issue_id"
     });
   }
-  const item = issue2.projectItems.nodes.find((n) => n.project.id === projectId);
+  const found = await findProjectItemForContent(projectId, input.owner, input.repo, input.issueNumber, deps);
   return {
     issueNumber: input.issueNumber,
     nativeState: issue2.state === "CLOSED" ? "closed" : "open",
-    onBoard: item !== void 0,
-    status: item?.fieldValueByName?.name ?? null
+    onBoard: found !== null,
+    status: found?.statusName ?? null
   };
 }
 async function setLifecycleState(input, deps = {}) {
