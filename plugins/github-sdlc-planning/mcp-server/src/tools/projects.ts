@@ -32,22 +32,91 @@ interface AddItemResponse {
   addProjectV2ItemById: { item: { id: string } };
 }
 
-const ISSUE_PROJECT_ITEMS_QUERY = `
-  query($owner: String!, $repo: String!, $number: Int!) {
-    repository(owner: $owner, name: $repo) {
-      issue(number: $number) {
-        projectItems(first: 100) {
-          nodes { id project { id } }
+const FIND_ITEM_BY_CONTENT_QUERY = `
+  query($projectId: ID!, $after: String) {
+    node(id: $projectId) {
+      ... on ProjectV2 {
+        items(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            id
+            content {
+              ... on Issue { number repository { nameWithOwner } }
+              ... on PullRequest { number repository { nameWithOwner } }
+            }
+          }
         }
       }
     }
   }
 `;
 
-interface IssueProjectItemsResponse {
-  repository?: {
-    issue?: { projectItems: { nodes: Array<{ id: string; project: { id: string } }> } } | null;
-  } | null;
+interface FindItemNode {
+  id: string;
+  content: { number?: number; repository?: { nameWithOwner?: string } } | null;
+}
+
+interface FindItemByContentResponse {
+  node: { items?: { pageInfo?: { hasNextPage: boolean; endCursor: string | null }; nodes: FindItemNode[] } } | null;
+}
+
+/** gdlc#282: this existing-item check used to query the issue's own
+ * `projectItems` connection (`repository(owner,repo){issue(number){
+ * projectItems{...}}}`), the same issue-side lookup #273/#283 already
+ * proved unreliable -- confirmed live to silently omit items on a project
+ * owned by a different entity than the issue's own repo (`totalCount: 1`
+ * on the issue side, listing only one project, while the other project's
+ * item demonstrably existed via a direct `ProjectV2.items` query). That
+ * made this idempotency check fail to find an item that was already there,
+ * so a second `add_item_to_project` call for the same issue/project always
+ * returned `existed: false` and created a duplicate.
+ *
+ * Copilot review finding: an earlier revision reused `getProjectItems`'s
+ * `fetchAllProjectItemNodes` (which fetches every item's `fieldValues` and
+ * always collects the whole board before returning) -- wasteful for an
+ * idempotency check that only needs `content.number`/`repository` and can
+ * stop as soon as it finds a match. This is its own dedicated,
+ * fieldValues-free, stop-on-first-match paginated scan instead, mirroring
+ * github-bug-capture's `findProjectItemForContent` (gdlc#273/#283) rather
+ * than `getProjectItems`'s collect-everything shape. Matches
+ * case-insensitively (gdlc#283's Copilot finding: GraphQL accepts
+ * mixed-case owner/repo but `nameWithOwner` returns canonical casing), and
+ * carries the same `MAX_PAGES`-bounded, stuck-cursor-guarded, malformed-
+ * response handling as `fetchAllProjectItemNodes` below, for the same
+ * reason: a malformed or looping GraphQL response must throw loudly, not
+ * hang or silently truncate. */
+async function findExistingItemId(
+  projectId: string,
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  deps: GithubClientDeps,
+): Promise<string | null> {
+  const target = `${owner}/${repo}`.toLowerCase();
+  let after: string | null = null;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const data: FindItemByContentResponse = await githubGraphQL<FindItemByContentResponse>(
+      FIND_ITEM_BY_CONTENT_QUERY,
+      { projectId, after },
+      {},
+      deps,
+    );
+    const items = data.node?.items;
+    if (items === undefined) return null; // no `items` at all: project not found / no access
+    const match = (items.nodes ?? []).find(
+      (n) => n.content?.number === issueNumber && n.content?.repository?.nameWithOwner?.toLowerCase() === target,
+    );
+    if (match) return match.id;
+    if (items.pageInfo === undefined) {
+      throw new Error(`findExistingItemId: malformed response -- items present but pageInfo missing (projectId=${projectId})`);
+    }
+    if (!items.pageInfo.hasNextPage) return null;
+    if (items.pageInfo.endCursor === after) {
+      throw new Error(`findExistingItemId: malformed response -- hasNextPage true but endCursor did not advance (projectId=${projectId})`);
+    }
+    after = items.pageInfo.endCursor;
+  }
+  throw new Error(`findExistingItemId: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);
 }
 
 /** AC-3: resolve node IDs (issue, project) before mutating, never a numeric
@@ -62,15 +131,9 @@ export async function addItemToProject(input: AddItemToProjectInput, deps: Githu
     resolveProjectNodeId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? 'organization', deps),
   ]);
 
-  const itemsData = await githubGraphQL<IssueProjectItemsResponse>(
-    ISSUE_PROJECT_ITEMS_QUERY,
-    { owner: input.owner, repo: input.repo, number: input.issueNumber },
-    {},
-    deps,
-  );
-  const existingItem = (itemsData.repository?.issue?.projectItems?.nodes ?? []).find((n) => n.project.id === projectId);
-  if (existingItem) {
-    return { itemId: existingItem.id, existed: true };
+  const existingItemId = await findExistingItemId(projectId, input.owner, input.repo, input.issueNumber, deps);
+  if (existingItemId) {
+    return { itemId: existingItemId, existed: true };
   }
 
   const data = await githubGraphQL<AddItemResponse>(ADD_ITEM_MUTATION, { projectId, contentId }, {}, deps);
@@ -271,6 +334,16 @@ async function fetchAllProjectItemNodes(projectId: string, deps: GithubClientDep
       throw new Error(`fetchAllProjectItemNodes: malformed response -- items present but pageInfo missing (projectId=${projectId})`);
     }
     if (!items.pageInfo.hasNextPage) return allNodes;
+    // gdlc#283 round-2 finding (back-ported here since #282 gives this
+    // function a second caller): hasNextPage:true with a null or unchanged
+    // endCursor would otherwise re-fetch the same page until MAX_PAGES is
+    // hit, burning API quota instead of surfacing the malformed response
+    // immediately. A legitimate next page always advances the cursor.
+    if (items.pageInfo.endCursor === after) {
+      throw new Error(
+        `fetchAllProjectItemNodes: malformed response -- hasNextPage true but endCursor did not advance (projectId=${projectId})`,
+      );
+    }
     after = items.pageInfo.endCursor;
   }
   throw new Error(`fetchAllProjectItemNodes: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);

@@ -39107,6 +39107,9 @@ async function fetchAllProjectItemNodes(projectId, deps) {
     }
     if (!items.pageInfo.hasNextPage)
       return allNodes;
+    if (items.pageInfo.endCursor === after) {
+      throw new Error(`fetchAllProjectItemNodes: malformed response -- hasNextPage true but endCursor did not advance (projectId=${projectId})`);
+    }
     after = items.pageInfo.endCursor;
   }
   throw new Error(`fetchAllProjectItemNodes: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);

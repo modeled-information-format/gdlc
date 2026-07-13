@@ -38936,32 +38936,60 @@ var ADD_ITEM_MUTATION = `
     }
   }
 `;
-var ISSUE_PROJECT_ITEMS_QUERY = `
-  query($owner: String!, $repo: String!, $number: Int!) {
-    repository(owner: $owner, name: $repo) {
-      issue(number: $number) {
-        projectItems(first: 100) {
-          nodes { id project { id } }
+var FIND_ITEM_BY_CONTENT_QUERY = `
+  query($projectId: ID!, $after: String) {
+    node(id: $projectId) {
+      ... on ProjectV2 {
+        items(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            id
+            content {
+              ... on Issue { number repository { nameWithOwner } }
+              ... on PullRequest { number repository { nameWithOwner } }
+            }
+          }
         }
       }
     }
   }
 `;
+async function findExistingItemId(projectId, owner, repo, issueNumber, deps) {
+  const target = `${owner}/${repo}`.toLowerCase();
+  let after = null;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const data = await githubGraphQL(
+      FIND_ITEM_BY_CONTENT_QUERY,
+      { projectId, after },
+      {},
+      deps
+    );
+    const items = data.node?.items;
+    if (items === void 0) return null;
+    const match = (items.nodes ?? []).find(
+      (n) => n.content?.number === issueNumber && n.content?.repository?.nameWithOwner?.toLowerCase() === target
+    );
+    if (match) return match.id;
+    if (items.pageInfo === void 0) {
+      throw new Error(`findExistingItemId: malformed response -- items present but pageInfo missing (projectId=${projectId})`);
+    }
+    if (!items.pageInfo.hasNextPage) return null;
+    if (items.pageInfo.endCursor === after) {
+      throw new Error(`findExistingItemId: malformed response -- hasNextPage true but endCursor did not advance (projectId=${projectId})`);
+    }
+    after = items.pageInfo.endCursor;
+  }
+  throw new Error(`findExistingItemId: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);
+}
 async function addItemToProject(input, deps = {}) {
   await assertProjectScope(deps.fetchImpl);
   const [contentId, projectId] = await Promise.all([
     resolveIssueNodeId(input.owner, input.repo, input.issueNumber, deps),
     resolveProjectNodeId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? "organization", deps)
   ]);
-  const itemsData = await githubGraphQL(
-    ISSUE_PROJECT_ITEMS_QUERY,
-    { owner: input.owner, repo: input.repo, number: input.issueNumber },
-    {},
-    deps
-  );
-  const existingItem = (itemsData.repository?.issue?.projectItems?.nodes ?? []).find((n) => n.project.id === projectId);
-  if (existingItem) {
-    return { itemId: existingItem.id, existed: true };
+  const existingItemId = await findExistingItemId(projectId, input.owner, input.repo, input.issueNumber, deps);
+  if (existingItemId) {
+    return { itemId: existingItemId, existed: true };
   }
   const data = await githubGraphQL(ADD_ITEM_MUTATION, { projectId, contentId }, {}, deps);
   return { itemId: data.addProjectV2ItemById.item.id, existed: false };
@@ -39048,6 +39076,11 @@ async function fetchAllProjectItemNodes(projectId, deps) {
       throw new Error(`fetchAllProjectItemNodes: malformed response -- items present but pageInfo missing (projectId=${projectId})`);
     }
     if (!items.pageInfo.hasNextPage) return allNodes;
+    if (items.pageInfo.endCursor === after) {
+      throw new Error(
+        `fetchAllProjectItemNodes: malformed response -- hasNextPage true but endCursor did not advance (projectId=${projectId})`
+      );
+    }
     after = items.pageInfo.endCursor;
   }
   throw new Error(`fetchAllProjectItemNodes: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);

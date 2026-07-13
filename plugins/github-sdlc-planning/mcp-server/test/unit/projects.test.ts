@@ -13,8 +13,8 @@ describe('addItemToProject', () => {
     let capturedVars: Record<string, unknown> = {};
     mockGraphQL((body) => {
       if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
-      if (body.query.includes('projectItems')) {
-        return { repository: { issue: { projectItems: { nodes: [] } } } };
+      if (body.query.includes('items(first: 100, after')) {
+        return { node: { items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } };
       }
       capturedVars = body.variables;
       return { addProjectV2ItemById: { item: { id: 'PVTI_1' } } };
@@ -47,16 +47,15 @@ describe('addItemToProject', () => {
     let mutationCalls = 0;
     mockGraphQL((body) => {
       if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
-      if (body.query.includes('projectItems')) {
+      if (body.query.includes('items(first: 100, after')) {
         return {
-          repository: {
-            issue: {
-              projectItems: {
-                nodes: [
-                  { id: 'PVTI_other', project: { id: 'PVT_other' } },
-                  { id: 'PVTI_existing', project: { id: 'PVT_1' } },
-                ],
-              },
+          node: {
+            items: {
+              pageInfo: { hasNextPage: false, endCursor: null },
+              nodes: [
+                { id: 'PVTI_other', content: { number: 99, repository: { nameWithOwner: 'acme/widgets' } }, fieldValues: { nodes: [] } },
+                { id: 'PVTI_existing', content: { number: 9, repository: { nameWithOwner: 'acme/widgets' } }, fieldValues: { nodes: [] } },
+              ],
             },
           },
         };
@@ -77,13 +76,80 @@ describe('addItemToProject', () => {
     expect(mutationCalls).toBe(0);
   });
 
+  // Issue #282: the existing-item check used to query the issue's own
+  // projectItems connection, confirmed unreliable for a project owned by a
+  // different entity than the issue's repo (same root cause as #273/#283).
+  // Regression guard for the fix (project-side item scan instead).
+  it('issue #282: finds the existing item even when it lives on a user-owned project', async () => {
+    mockUserScopes(['repo', 'project']);
+    mockRest('get', '/repos/acme/widgets/issues/9', { node_id: 'I_9' });
+    let mutationCalls = 0;
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { user: { projectV2: { id: 'PVT_u' } } };
+      if (body.query.includes('items(first: 100, after')) {
+        return {
+          node: {
+            items: {
+              pageInfo: { hasNextPage: false, endCursor: null },
+              nodes: [{ id: 'PVTI_existing', content: { number: 9, repository: { nameWithOwner: 'acme/widgets' } }, fieldValues: { nodes: [] } }],
+            },
+          },
+        };
+      }
+      mutationCalls += 1;
+      return { addProjectV2ItemById: { item: { id: 'PVTI_should_not_happen' } } };
+    });
+
+    const result = await addItemToProject({
+      owner: 'acme',
+      repo: 'widgets',
+      issueNumber: 9,
+      projectOwnerLogin: 'acme',
+      projectNumber: 4,
+      projectOwnerType: 'user',
+    });
+
+    expect(result).toEqual({ itemId: 'PVTI_existing', existed: true });
+    expect(mutationCalls).toBe(0);
+  });
+
+  // Case-insensitivity regression, mirroring gdlc#283's Copilot finding.
+  it('issue #282: matches the existing item case-insensitively against owner/repo', async () => {
+    mockUserScopes(['repo', 'project']);
+    mockRest('get', '/repos/acme/widgets/issues/9', { node_id: 'I_9' });
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      if (body.query.includes('items(first: 100, after')) {
+        return {
+          node: {
+            items: {
+              pageInfo: { hasNextPage: false, endCursor: null },
+              nodes: [{ id: 'PVTI_existing', content: { number: 9, repository: { nameWithOwner: 'Acme/Widgets' } }, fieldValues: { nodes: [] } }],
+            },
+          },
+        };
+      }
+      return { addProjectV2ItemById: { item: { id: 'PVTI_should_not_happen' } } };
+    });
+
+    const result = await addItemToProject({
+      owner: 'acme',
+      repo: 'widgets',
+      issueNumber: 9,
+      projectOwnerLogin: 'acme',
+      projectNumber: 4,
+    });
+
+    expect(result).toEqual({ itemId: 'PVTI_existing', existed: true });
+  });
+
   it('ADR-0003: an issue not yet on the board still creates a new item (existed: false)', async () => {
     mockUserScopes(['repo', 'project']);
     mockRest('get', '/repos/acme/widgets/issues/9', { node_id: 'I_9' });
     mockGraphQL((body) => {
       if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
-      if (body.query.includes('projectItems')) {
-        return { repository: { issue: { projectItems: { nodes: [] } } } };
+      if (body.query.includes('items(first: 100, after')) {
+        return { node: { items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } };
       }
       return { addProjectV2ItemById: { item: { id: 'PVTI_new' } } };
     });
@@ -96,6 +162,96 @@ describe('addItemToProject', () => {
       projectNumber: 4,
     });
 
+    expect(result).toEqual({ itemId: 'PVTI_new', existed: false });
+  });
+
+  it('gdlc#282: paginates past a 100-item first page to find a match on a later page', async () => {
+    mockUserScopes(['repo', 'project']);
+    mockRest('get', '/repos/acme/widgets/issues/9', { node_id: 'I_9' });
+    const page1 = Array.from({ length: 100 }, (_, i) => ({ id: `PVTI_other_${i}`, content: { number: 1000 + i, repository: { nameWithOwner: 'acme/widgets' } } }));
+    let pageQueries = 0;
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      if (body.query.includes('items(first: 100, after')) {
+        pageQueries += 1;
+        if (body.variables.after === undefined || body.variables.after === null) {
+          return { node: { items: { pageInfo: { hasNextPage: true, endCursor: 'CURSOR_PAGE_2' }, nodes: page1 } } };
+        }
+        expect(body.variables.after).toBe('CURSOR_PAGE_2');
+        return { node: { items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [{ id: 'PVTI_9', content: { number: 9, repository: { nameWithOwner: 'acme/widgets' } } }] } } };
+      }
+      throw new Error(`unexpected query: ${body.query}`);
+    });
+
+    const result = await addItemToProject({ owner: 'acme', repo: 'widgets', issueNumber: 9, projectOwnerLogin: 'acme', projectNumber: 4 });
+    expect(pageQueries).toBe(2);
+    expect(result).toEqual({ itemId: 'PVTI_9', existed: true });
+  });
+
+  it('gdlc#282: throws rather than looping forever when hasNextPage never becomes false', async () => {
+    mockUserScopes(['repo', 'project']);
+    mockRest('get', '/repos/acme/widgets/issues/9', { node_id: 'I_9' });
+    let calls = 0;
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      if (body.query.includes('items(first: 100, after')) {
+        calls += 1;
+        return { node: { items: { pageInfo: { hasNextPage: true, endCursor: `CURSOR_${calls}` }, nodes: [] } } };
+      }
+      throw new Error(`unexpected query: ${body.query}`);
+    });
+
+    await expect(
+      addItemToProject({ owner: 'acme', repo: 'widgets', issueNumber: 9, projectOwnerLogin: 'acme', projectNumber: 4 }),
+    ).rejects.toThrow(/exceeded \d+ pages/);
+    expect(calls).toBe(1000);
+  });
+
+  it('gdlc#282: throws a clear error rather than a confusing TypeError when pageInfo is missing on a present items page', async () => {
+    mockUserScopes(['repo', 'project']);
+    mockRest('get', '/repos/acme/widgets/issues/9', { node_id: 'I_9' });
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      if (body.query.includes('items(first: 100, after')) {
+        return { node: { items: { nodes: [{ id: 'PVTI_1', content: null }] } } };
+      }
+      throw new Error(`unexpected query: ${body.query}`);
+    });
+
+    await expect(
+      addItemToProject({ owner: 'acme', repo: 'widgets', issueNumber: 9, projectOwnerLogin: 'acme', projectNumber: 4 }),
+    ).rejects.toThrow(/malformed response.*pageInfo missing/);
+  });
+
+  it('gdlc#282: throws immediately when hasNextPage is true but endCursor never advances', async () => {
+    mockUserScopes(['repo', 'project']);
+    mockRest('get', '/repos/acme/widgets/issues/9', { node_id: 'I_9' });
+    let calls = 0;
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      if (body.query.includes('items(first: 100, after')) {
+        calls += 1;
+        return { node: { items: { pageInfo: { hasNextPage: true, endCursor: null }, nodes: [] } } };
+      }
+      throw new Error(`unexpected query: ${body.query}`);
+    });
+
+    await expect(
+      addItemToProject({ owner: 'acme', repo: 'widgets', issueNumber: 9, projectOwnerLogin: 'acme', projectNumber: 4 }),
+    ).rejects.toThrow(/endCursor did not advance/);
+    expect(calls).toBe(1);
+  });
+
+  it('gdlc#282: does not throw when node.items itself is entirely absent (project not found / no access)', async () => {
+    mockUserScopes(['repo', 'project']);
+    mockRest('get', '/repos/acme/widgets/issues/9', { node_id: 'I_9' });
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      if (body.query.includes('items(first: 100, after')) return { node: {} };
+      return { addProjectV2ItemById: { item: { id: 'PVTI_new' } } };
+    });
+
+    const result = await addItemToProject({ owner: 'acme', repo: 'widgets', issueNumber: 9, projectOwnerLogin: 'acme', projectNumber: 4 });
     expect(result).toEqual({ itemId: 'PVTI_new', existed: false });
   });
 });
@@ -253,6 +409,20 @@ describe('getProjectItems', () => {
     });
 
     await expect(getProjectItems({ projectOwnerLogin: 'acme', projectNumber: 4 })).rejects.toThrow(/malformed response.*pageInfo missing/);
+  });
+
+  // gdlc#283 round-2 finding, back-ported here since gdlc#282 gives
+  // fetchAllProjectItemNodes a second caller (addItemToProject).
+  it('gdlc#283 round-2 finding: throws immediately when hasNextPage is true but endCursor never advances', async () => {
+    let calls = 0;
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      calls += 1;
+      return { node: { items: { pageInfo: { hasNextPage: true, endCursor: null }, nodes: [] } } };
+    });
+
+    await expect(getProjectItems({ projectOwnerLogin: 'acme', projectNumber: 4 })).rejects.toThrow(/endCursor did not advance/);
+    expect(calls).toBe(1);
   });
 
   it('does not throw when node.items itself is entirely absent (project not found / no access)', async () => {
