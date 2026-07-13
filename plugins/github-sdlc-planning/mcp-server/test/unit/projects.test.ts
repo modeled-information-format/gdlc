@@ -321,6 +321,20 @@ describe('getProjectItems', () => {
     await expect(getProjectItems({ projectOwnerLogin: 'acme', projectNumber: 4 })).rejects.toThrow(/malformed response.*pageInfo missing/);
   });
 
+  // gdlc#283 round-2 finding, back-ported here since gdlc#282 gives
+  // fetchAllProjectItemNodes a second caller (addItemToProject).
+  it('gdlc#283 round-2 finding: throws immediately when hasNextPage is true but endCursor never advances', async () => {
+    let calls = 0;
+    mockGraphQL((body) => {
+      if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };
+      calls += 1;
+      return { node: { items: { pageInfo: { hasNextPage: true, endCursor: null }, nodes: [] } } };
+    });
+
+    await expect(getProjectItems({ projectOwnerLogin: 'acme', projectNumber: 4 })).rejects.toThrow(/endCursor did not advance/);
+    expect(calls).toBe(1);
+  });
+
   it('does not throw when node.items itself is entirely absent (project not found / no access)', async () => {
     mockGraphQL((body) => {
       if (body.query.includes('projectV2(number')) return { organization: { projectV2: { id: 'PVT_1' } } };

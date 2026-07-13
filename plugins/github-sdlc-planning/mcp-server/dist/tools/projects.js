@@ -138,6 +138,14 @@ async function fetchAllProjectItemNodes(projectId, deps) {
         }
         if (!items.pageInfo.hasNextPage)
             return allNodes;
+        // gdlc#283 round-2 finding (back-ported here since #282 gives this
+        // function a second caller): hasNextPage:true with a null or unchanged
+        // endCursor would otherwise re-fetch the same page until MAX_PAGES is
+        // hit, burning API quota instead of surfacing the malformed response
+        // immediately. A legitimate next page always advances the cursor.
+        if (items.pageInfo.endCursor === after) {
+            throw new Error(`fetchAllProjectItemNodes: malformed response -- hasNextPage true but endCursor did not advance (projectId=${projectId})`);
+        }
         after = items.pageInfo.endCursor;
     }
     throw new Error(`fetchAllProjectItemNodes: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);
