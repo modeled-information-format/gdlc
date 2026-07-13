@@ -7805,7 +7805,7 @@ function createLiveReadinessDeps(deps = {}) {
   };
 }
 async function checkPrReadiness(ref, deps = {}) {
-  const config = resolvePrLifecycleConfig(loadGdlcConfig());
+  const config = resolvePrLifecycleConfig(loadGdlcConfig(ref.startDir));
   return assessPrReadiness(ref, createLiveReadinessDeps(deps), { requireCleanCodeScanning: config.requireCleanCodeScanning });
 }
 

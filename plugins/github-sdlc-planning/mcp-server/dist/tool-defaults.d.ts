@@ -64,6 +64,13 @@ export declare function withOptionalBoardCoordinates<TArgs extends BoardArgs, TR
 export interface IssueDestinationArgs {
     owner?: string;
     repo?: string;
+    /** Issue #281: same purpose as `BoardArgs.startDir` (#274) -- `loadGdlcConfig`
+     * resolves the project-layer cascade from this directory, defaulting to
+     * `process.cwd()` when omitted (the MCP server process's own cwd, unrelated
+     * to the repo a tool call concerns). Pass the target repo's checkout path
+     * so destination/allowlist resolution reads THAT repo's config instead of
+     * whatever the server process happens to be sitting in. */
+    startDir?: string;
 }
 /** Fill `owner`/`repo` from the configured `destination.repo` when the
  * caller omits both, then enforce the `targeting` allowlist against

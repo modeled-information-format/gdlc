@@ -12,6 +12,13 @@ export interface BoardArgs {
   projectOwnerLogin?: string;
   projectNumber?: number;
   projectOwnerType?: 'organization' | 'user';
+  /** Issue #281: same purpose as github-sdlc-planning's `BoardArgs.startDir`
+   * (#274) -- `loadGdlcConfig` resolves the project-layer cascade from this
+   * directory, defaulting to `process.cwd()` when omitted (the MCP server
+   * process's own cwd, unrelated to the repo a tool call concerns). Pass the
+   * target repo's checkout path so board resolution reads THAT repo's config
+   * instead of whatever the server process happens to be sitting in. */
+  startDir?: string;
 }
 
 /** Fill board coordinates from config; explicit arguments always win.
@@ -22,7 +29,7 @@ export interface BoardArgs {
  * Record<string, unknown>` rather than `TArgs` itself. */
 export function withRequiredBoardCoordinates<TArgs extends BoardArgs, TResult>(fn: (args: TArgs) => Promise<TResult> | TResult) {
   return (args: BoardArgs & Record<string, unknown>): Promise<TResult> | TResult => {
-    const config = loadGdlcConfig();
+    const config = loadGdlcConfig(args.startDir);
     const resolved = resolveBoardCoordinates(
       { projectOwnerLogin: args.projectOwnerLogin, projectNumber: args.projectNumber, projectOwnerType: args.projectOwnerType },
       config,

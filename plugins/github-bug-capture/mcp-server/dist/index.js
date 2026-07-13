@@ -38977,7 +38977,7 @@ function resolveBoardCoordinates(explicit, config2) {
 // src/tool-defaults.ts
 function withRequiredBoardCoordinates(fn) {
   return (args) => {
-    const config2 = loadGdlcConfig();
+    const config2 = loadGdlcConfig(args.startDir);
     const resolved = resolveBoardCoordinates(
       { projectOwnerLogin: args.projectOwnerLogin, projectNumber: args.projectNumber, projectOwnerType: args.projectOwnerType },
       config2
@@ -39027,11 +39027,12 @@ server.registerTool(
   "ensure_severity_field",
   {
     title: "Ensure Severity field",
-    description: 'Ensure the triage board (a Projects v2 board) has a "Severity" single-select field with options Critical/High/Medium/Low, creating it if absent. Idempotent: an existing field is returned with its option IDs without mutating. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted.',
+    description: `Ensure the triage board (a Projects v2 board) has a "Severity" single-select field with options Critical/High/Medium/Low, creating it if absent. Idempotent: an existing field is returned with its option IDs without mutating. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted, resolved from startDir if given (issue #281) rather than the MCP server process's own cwd.`,
     inputSchema: {
       projectOwnerLogin: external_exports.string().optional(),
       projectNumber: external_exports.number().int().optional(),
-      projectOwnerType: projectOwnerTypeSchema.optional()
+      projectOwnerType: projectOwnerTypeSchema.optional(),
+      startDir: external_exports.string().optional()
     }
   },
   wrap(withRequiredBoardCoordinates(ensureSeverityField))
@@ -39040,7 +39041,7 @@ server.registerTool(
   "set_severity",
   {
     title: "Set severity",
-    description: "Set an issue's Severity single-select value on the triage board. Fails with a typed error if the issue is not on the board or the Severity field/option is missing. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted.",
+    description: "Set an issue's Severity single-select value on the triage board. Fails with a typed error if the issue is not on the board or the Severity field/option is missing. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted, resolved from startDir if given (issue #281) rather than the MCP server process's own cwd.",
     inputSchema: {
       owner: external_exports.string(),
       repo: external_exports.string(),
@@ -39048,7 +39049,8 @@ server.registerTool(
       projectOwnerLogin: external_exports.string().optional(),
       projectNumber: external_exports.number().int().optional(),
       projectOwnerType: projectOwnerTypeSchema.optional(),
-      severity: external_exports.enum(SEVERITY_LEVELS)
+      severity: external_exports.enum(SEVERITY_LEVELS),
+      startDir: external_exports.string().optional()
     }
   },
   wrap(withRequiredBoardCoordinates(setSeverity))
@@ -39057,14 +39059,15 @@ server.registerTool(
   "get_lifecycle_state",
   {
     title: "Get lifecycle state",
-    description: "Read an issue's lifecycle state: native GitHub state (open/closed) plus the triage board's Status single-select value, if the issue is on that board. Never errors when the issue is off the board or the Status field/value is absent -- both report as a null status. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted.",
+    description: "Read an issue's lifecycle state: native GitHub state (open/closed) plus the triage board's Status single-select value, if the issue is on that board. Never errors when the issue is off the board or the Status field/value is absent -- both report as a null status. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted, resolved from startDir if given (issue #281) rather than the MCP server process's own cwd.",
     inputSchema: {
       owner: external_exports.string(),
       repo: external_exports.string(),
       issueNumber: external_exports.number().int(),
       projectOwnerLogin: external_exports.string().optional(),
       projectNumber: external_exports.number().int().optional(),
-      projectOwnerType: projectOwnerTypeSchema.optional()
+      projectOwnerType: projectOwnerTypeSchema.optional(),
+      startDir: external_exports.string().optional()
     }
   },
   wrap(withRequiredBoardCoordinates(getLifecycleState))
@@ -39073,7 +39076,7 @@ server.registerTool(
   "set_lifecycle_state",
   {
     title: "Set lifecycle state",
-    description: `Set an issue's Status single-select value on the triage board via the project's existing "Status" field (looked up by name, never created), optionally closing the underlying issue afterward when closeIfDone is true. Fails with a typed error if the issue is not on the board or the Status field/option is missing. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted.`,
+    description: `Set an issue's Status single-select value on the triage board via the project's existing "Status" field (looked up by name, never created), optionally closing the underlying issue afterward when closeIfDone is true. Fails with a typed error if the issue is not on the board or the Status field/option is missing. projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted, resolved from startDir if given (issue #281) rather than the MCP server process's own cwd.`,
     inputSchema: {
       owner: external_exports.string(),
       repo: external_exports.string(),
@@ -39082,7 +39085,8 @@ server.registerTool(
       projectNumber: external_exports.number().int().optional(),
       projectOwnerType: projectOwnerTypeSchema.optional(),
       status: external_exports.string(),
-      closeIfDone: external_exports.boolean().optional()
+      closeIfDone: external_exports.boolean().optional(),
+      startDir: external_exports.string().optional()
     }
   },
   wrap(withRequiredBoardCoordinates(setLifecycleState))

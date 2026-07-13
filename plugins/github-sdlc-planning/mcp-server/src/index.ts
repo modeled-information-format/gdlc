@@ -46,7 +46,7 @@ server.registerTool(
   {
     title: 'Create issue',
     description:
-      'Create a GitHub issue via the GraphQL createIssue mutation, prepending a MIF frontmatter comment block to the body before returning. owner/repo default to the configured destination.repo (issue #82) when omitted, and are always checked against the configured targeting allowlist, if any (issue #83). When issueType is omitted, it is derived from mif.type (Task->Task, Bug->Bug, everything else->Feature); an org without that native type defined degrades to no type instead of failing (issue #108).',
+      'Create a GitHub issue via the GraphQL createIssue mutation, prepending a MIF frontmatter comment block to the body before returning. owner/repo default to the configured destination.repo (issue #82) when omitted, and are always checked against the configured targeting allowlist, if any (issue #83), resolved from startDir if given (issue #281) rather than the MCP server process\'s own cwd. When issueType is omitted, it is derived from mif.type (Task->Task, Bug->Bug, everything else->Feature); an org without that native type defined degrades to no type instead of failing (issue #108).',
     inputSchema: {
       owner: z.string().optional(),
       repo: z.string().optional(),
@@ -57,6 +57,7 @@ server.registerTool(
       milestoneNumber: z.number().int().optional(),
       issueType: z.string().optional(),
       mif: z.object({ id: z.string(), type: mifTypeSchema, namespace: z.string() }),
+      startDir: z.string().optional(),
     },
   },
   wrap(withIssueDestination(createIssue)),

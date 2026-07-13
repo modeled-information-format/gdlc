@@ -22,6 +22,13 @@ export interface PrReadinessRef {
   owner: string;
   repo: string;
   pullNumber: number;
+  /** Issue #281: same purpose as github-sdlc-planning's `BoardArgs.startDir`
+   * (#274) -- `loadGdlcConfig` resolves the project-layer cascade from this
+   * directory, defaulting to `process.cwd()` when omitted (the MCP server
+   * process's own cwd, unrelated to the repo a tool call concerns). Only
+   * consumed by `checkPrReadiness` itself (for `resolvePrLifecycleConfig`);
+   * the live/test fetchers above never read it. */
+  startDir?: string;
 }
 
 export type CheckState = 'pending' | 'success' | 'failure';
@@ -319,6 +326,6 @@ export function createLiveReadinessDeps(deps: GithubClientDeps = {}): PrReadines
  * schema and documented it but never actually read it here, so it had no
  * effect on `check_pr_readiness`'s verdict regardless of how it was set. */
 export async function checkPrReadiness(ref: PrReadinessRef, deps: GithubClientDeps = {}): Promise<PrReadinessResult> {
-  const config = resolvePrLifecycleConfig(loadGdlcConfig());
+  const config = resolvePrLifecycleConfig(loadGdlcConfig(ref.startDir));
   return assessPrReadiness(ref, createLiveReadinessDeps(deps), { requireCleanCodeScanning: config.requireCleanCodeScanning });
 }
