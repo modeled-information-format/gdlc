@@ -43,7 +43,7 @@ function main() {
 
   const path = scratchFilePath(input.session_id);
   const entries = readScratchEntries(path);
-  const context = buildConsolidatedContext(entries);
+  const context = buildConsolidatedContext(entries, input.transcript_path);
 
   // Clear regardless of whether there was anything to report: a turn with
   // zero findings should not have its (empty-findings) entries re-read and

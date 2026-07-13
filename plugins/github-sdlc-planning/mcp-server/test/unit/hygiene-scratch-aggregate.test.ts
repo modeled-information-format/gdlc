@@ -137,3 +137,78 @@ describe('buildConsolidatedContext', () => {
     expect(text).toContain('1 GitHub touch this turn');
   });
 });
+
+// Issue #278: a lifecycle-comment finding recorded at PostToolUse time can
+// be stale by Stop time -- a later touch in the SAME turn may have already
+// posted the comment. buildConsolidatedContext must re-validate this one
+// finding kind against the turn's final transcript state rather than
+// replaying every scratch entry verbatim.
+describe('buildConsolidatedContext: issue #278 stale-finding re-validation', () => {
+  const RESOLVED = () => ({ resolved: true, found: true });
+  const STILL_MISSING = () => ({ resolved: true, found: false });
+  const LIFECYCLE_FINDING = 'acme/widgets#9: transitioned with no lifecycle comment found this turn -- consider posting one.';
+
+  it('drops a lifecycle-comment finding when a later same-turn action already resolved it', () => {
+    const text = buildConsolidatedContext([{ findings: [LIFECYCLE_FINDING] }], '/fake/transcript.jsonl', RESOLVED);
+    expect(text).toBeNull();
+  });
+
+  it('keeps a lifecycle-comment finding when the scan confirms it is still unresolved', () => {
+    const text = buildConsolidatedContext([{ findings: [LIFECYCLE_FINDING] }], '/fake/transcript.jsonl', STILL_MISSING);
+    expect(text).toContain(LIFECYCLE_FINDING);
+  });
+
+  it('passes the identity parsed from the finding text to scanFn', () => {
+    let capturedRef;
+    const scanFn = (_path, ref) => {
+      capturedRef = ref;
+      return { resolved: true, found: true };
+    };
+    buildConsolidatedContext(
+      [{ findings: ['acme/widgets#42: transitioned with no lifecycle comment found this turn -- consider posting one.'] }],
+      '/fake/transcript.jsonl',
+      scanFn,
+    );
+    expect(capturedRef).toEqual({ owner: 'acme', repo: 'widgets', number: 42 });
+  });
+
+  it('never re-checks a non-lifecycle-comment finding (passes through unconditionally)', () => {
+    let called = false;
+    const scanFn = () => {
+      called = true;
+      return { resolved: true, found: true };
+    };
+    const otherFinding = 'acme/widgets#9: PR references it but board Status is still "In Review" -- consider moving it to In Review.';
+    const text = buildConsolidatedContext([{ findings: [otherFinding] }], '/fake/transcript.jsonl', scanFn);
+    expect(text).toContain(otherFinding);
+    expect(called).toBe(false);
+  });
+
+  it('reports null only when every finding in the turn turns out already resolved', () => {
+    const entries = [
+      {
+        findings: [
+          'acme/widgets#1: transitioned with no lifecycle comment found this turn -- consider posting one.',
+          'acme/widgets#2: transitioned with no lifecycle comment found this turn -- consider posting one.',
+        ],
+      },
+    ];
+    const text = buildConsolidatedContext(entries, '/fake/transcript.jsonl', RESOLVED);
+    expect(text).toBeNull();
+  });
+
+  it('keeps whichever findings remain unresolved while dropping the resolved ones in the same turn', () => {
+    const resolved = 'acme/widgets#1: transitioned with no lifecycle comment found this turn -- consider posting one.';
+    const stillOpen = 'acme/widgets#2: transitioned with no lifecycle comment found this turn -- consider posting one.';
+    const scanFn = (_path, ref) => ({ resolved: true, found: ref.number === 1 });
+    const text = buildConsolidatedContext([{ findings: [resolved, stillOpen] }], '/fake/transcript.jsonl', scanFn);
+    expect(text).not.toContain(resolved);
+    expect(text).toContain(stillOpen);
+  });
+
+  it('does not re-check when scanFn reports unresolved (e.g. unreadable transcript) -- fails open, keeps the finding', () => {
+    const scanFn = () => ({ resolved: false });
+    const text = buildConsolidatedContext([{ findings: [LIFECYCLE_FINDING] }], '/fake/transcript.jsonl', scanFn);
+    expect(text).toContain(LIFECYCLE_FINDING);
+  });
+});
