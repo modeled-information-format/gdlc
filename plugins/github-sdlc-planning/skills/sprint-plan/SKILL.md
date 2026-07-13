@@ -2,7 +2,7 @@
 description: Plan a sprint from the open backlog, team size, and cadence — select candidate issues, assign the Sprint iteration field, and set Story Points. Use when the user asks to "plan the next sprint", "fill sprint N", or "what should we work on this sprint".
 when_to_use: Trigger on "plan the next sprint", "fill out sprint N", "what goes in this sprint", or when a sprint-planning-request.yml issue form is submitted.
 argument-hint: "[owner/repo] [project number] [sprint iteration]"
-allowed-tools: Bash, mcp__github-sdlc-planning__*, mcp__mif-docs__*
+allowed-tools: Bash, mcp__github-sdlc-planning__*, mcp__plugin_github-sdlc-planning_github-sdlc-planning__*, mcp__mif-docs__*
 ---
 
 # Sprint plan

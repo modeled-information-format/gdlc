@@ -2,7 +2,7 @@
 description: Build a repo health/activity report from traffic, contributor stats, community profile, and dependency-graph data. Use when the user asks to "report on repo health", "check traffic", or "summarize repo activity".
 when_to_use: Trigger on "report on repo health for <owner>/<repo>", "check traffic", "how's community health looking", or a periodic activity-report request.
 argument-hint: "[owner/repo]"
-allowed-tools: mcp__github-insights__*
+allowed-tools: mcp__github-insights__*, mcp__plugin_github-insights_github-insights__*
 ---
 
 # Repo insights report

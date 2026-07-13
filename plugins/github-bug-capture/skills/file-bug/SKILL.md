@@ -2,7 +2,7 @@
 description: File a diagnostic (a test failure, lint error, build break, or other observed defect) as a structured, MIF-conformant GitHub issue, after checking for likely duplicates and inferring a severity. Use when the user asks to "file a bug", "report this as an issue", "capture this diagnostic", or when the hooks-pack's diagnostic-capture hook points at this skill.
 when_to_use: Trigger on "file a bug", "file this as an issue", "capture this diagnostic", "report this failure", or a diagnostic-capture hook's additionalContext recommending this skill.
 argument-hint: "<owner/repo> <diagnostic description or captured failure text>"
-allowed-tools: Bash, mcp__github-bug-capture__search_similar_issues, mcp__github-bug-capture__ensure_severity_field, mcp__github-bug-capture__set_severity, mcp__github-sdlc-planning__create_issue, mcp__github-sdlc-planning__add_item_to_project
+allowed-tools: Bash, mcp__github-bug-capture__search_similar_issues, mcp__plugin_github-bug-capture_github-bug-capture__search_similar_issues, mcp__github-bug-capture__ensure_severity_field, mcp__plugin_github-bug-capture_github-bug-capture__ensure_severity_field, mcp__github-bug-capture__set_severity, mcp__plugin_github-bug-capture_github-bug-capture__set_severity, mcp__github-sdlc-planning__create_issue, mcp__plugin_github-sdlc-planning_github-sdlc-planning__create_issue, mcp__github-sdlc-planning__add_item_to_project, mcp__plugin_github-sdlc-planning_github-sdlc-planning__add_item_to_project
 ---
 
 # File bug

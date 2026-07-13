@@ -2,7 +2,7 @@
 description: Check a draft bug title/body against existing issues for likely duplicates before filing. Use when the user asks to "check for duplicates", "is this already reported", "dedup check", or as the first step the file-bug skill delegates to.
 when_to_use: Trigger on "check for duplicates", "dedup check", "has this already been reported", or automatically as step 3 of the file-bug skill.
 argument-hint: "<owner/repo> <draft title or keywords>"
-allowed-tools: Bash, mcp__github-bug-capture__search_similar_issues
+allowed-tools: Bash, mcp__github-bug-capture__search_similar_issues, mcp__plugin_github-bug-capture_github-bug-capture__search_similar_issues
 ---
 
 # Dedup check
