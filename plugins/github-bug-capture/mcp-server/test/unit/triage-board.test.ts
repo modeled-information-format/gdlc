@@ -93,18 +93,22 @@ describe('ensureSeverityField', () => {
 describe('setSeverity', () => {
   const INPUT = { owner: 'acme', repo: 'widgets', issueNumber: 9, ...COORDS, severity: 'High' } as const;
 
+  const DEFAULT_ITEM = { id: 'PVTI_9', content: { number: 9, repository: { nameWithOwner: 'acme/widgets' } }, fieldValueByName: null };
+
   function mockBoard(overrides: {
-    projectItems?: Array<{ id: string; project: { id: string } }>;
+    items?: Array<{ id: string; content: { number: number; repository: { nameWithOwner: string } }; fieldValueByName?: { name: string } | null }>;
     fields?: unknown[];
-    issue?: null;
+    issueExists?: boolean;
     onUpdate?: (vars: Record<string, unknown>) => void;
   }): void {
     mockGraphQL((body) => {
       const routed = routeProject(body);
       if (routed) return routed;
-      if (body.query.includes('projectItems(first')) {
-        if (overrides.issue === null) return { repository: { issue: null } };
-        return { repository: { issue: { projectItems: { nodes: overrides.projectItems ?? [{ id: 'PVTI_9', project: { id: 'PVT_1' } }] } } } };
+      if (body.query.includes('issue(number: $number) { id }')) {
+        return overrides.issueExists === false ? { repository: { issue: null } } : { repository: { issue: { id: 'I_9' } } };
+      }
+      if (body.query.includes('items(first: 100, after')) {
+        return { node: { items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: overrides.items ?? [DEFAULT_ITEM] } } };
       }
       if (body.query.includes('fields(first')) {
         return {
@@ -123,12 +127,12 @@ describe('setSeverity', () => {
     });
   }
 
-  it('resolves the board item through the issue projectItems connection and sets the option', async () => {
+  it('resolves the board item through the project items connection and sets the option', async () => {
     let updateVars: Record<string, unknown> | undefined;
     mockBoard({
-      projectItems: [
-        { id: 'PVTI_other', project: { id: 'PVT_other' } },
-        { id: 'PVTI_9', project: { id: 'PVT_1' } },
+      items: [
+        { id: 'PVTI_other', content: { number: 99, repository: { nameWithOwner: 'acme/widgets' } } },
+        DEFAULT_ITEM,
       ],
       onUpdate: (vars) => {
         updateVars = vars;
@@ -141,13 +145,24 @@ describe('setSeverity', () => {
     expect(updateVars).toEqual({ projectId: 'PVT_1', itemId: 'PVTI_9', fieldId: 'F_sev', optionId: 'OPT_high' });
   });
 
+  // Issue #273: the board item lookup used to go through the issue's own
+  // projectItems connection, which was confirmed to silently omit items on a
+  // project owned by a different entity than the issue's repo. This test
+  // guards the fix by asserting the item resolves via the project's own
+  // items connection, not the (now-removed) issue-side one.
+  it('resolves the board item even when it lives on a user-owned project (issue #273 regression)', async () => {
+    mockBoard({ items: [DEFAULT_ITEM] });
+    const result = await setSeverity({ ...INPUT, projectOwnerType: 'user' });
+    expect(result.itemId).toBe('PVTI_9');
+  });
+
   it('fails with resolve_issue_id when the issue does not exist', async () => {
-    mockBoard({ issue: null });
+    mockBoard({ issueExists: false });
     await expect(setSeverity(INPUT)).rejects.toMatchObject({ code: 'resolve_issue_id' });
   });
 
   it('fails with issue_not_on_board when the issue has no item on this project', async () => {
-    mockBoard({ projectItems: [{ id: 'PVTI_other', project: { id: 'PVT_other' } }] });
+    mockBoard({ items: [{ id: 'PVTI_other', content: { number: 99, repository: { nameWithOwner: 'acme/widgets' } } }] });
     await expect(setSeverity(INPUT)).rejects.toMatchObject({ code: 'issue_not_on_board' });
   });
 
@@ -180,5 +195,68 @@ describe('setSeverity', () => {
     expect(sleeps.length).toBe(1);
     expect(sleeps[0]).toBeGreaterThan(0);
     expect(sleeps[0]).toBeLessThanOrEqual(1000);
+  });
+
+  // Mirrors github-sdlc-planning/projects.ts's equivalent coverage for the
+  // same paginated-scan shape (gdlc#200's fix), since findProjectItemForContent
+  // (project-board.ts) reuses that pattern for issue #273's fix.
+  it('paginates past a 100-item first page to find a match on a later page', async () => {
+    const page1 = Array.from({ length: 100 }, (_, i) => ({
+      id: `PVTI_other_${i}`,
+      content: { number: 1000 + i, repository: { nameWithOwner: 'acme/widgets' } },
+    }));
+    let pageQueries = 0;
+    mockGraphQL((body) => {
+      const routed = routeProject(body);
+      if (routed) return routed;
+      if (body.query.includes('issue(number: $number) { id }')) return { repository: { issue: { id: 'I_9' } } };
+      if (body.query.includes('items(first: 100, after')) {
+        pageQueries += 1;
+        if (body.variables.after === undefined || body.variables.after === null) {
+          return { node: { items: { pageInfo: { hasNextPage: true, endCursor: 'CURSOR_PAGE_2' }, nodes: page1 } } };
+        }
+        expect(body.variables.after).toBe('CURSOR_PAGE_2');
+        return { node: { items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [DEFAULT_ITEM] } } };
+      }
+      if (body.query.includes('fields(first')) {
+        return { node: { fields: { nodes: [{ __typename: 'ProjectV2SingleSelectField', id: 'F_sev', name: 'Severity', options: SEVERITY_OPTIONS }] } } };
+      }
+      return { updateProjectV2ItemFieldValue: { projectV2Item: { id: 'PVTI_9' } } };
+    });
+
+    const result = await setSeverity(INPUT);
+    expect(pageQueries).toBe(2);
+    expect(result.itemId).toBe('PVTI_9');
+  });
+
+  it('throws rather than looping forever when hasNextPage never becomes false', async () => {
+    let calls = 0;
+    mockGraphQL((body) => {
+      const routed = routeProject(body);
+      if (routed) return routed;
+      if (body.query.includes('issue(number: $number) { id }')) return { repository: { issue: { id: 'I_9' } } };
+      if (body.query.includes('items(first: 100, after')) {
+        calls += 1;
+        return { node: { items: { pageInfo: { hasNextPage: true, endCursor: `CURSOR_${calls}` }, nodes: [] } } };
+      }
+      throw new Error(`unexpected query: ${body.query}`);
+    });
+
+    await expect(setSeverity(INPUT)).rejects.toThrow(/exceeded \d+ pages/);
+    expect(calls).toBe(1000);
+  });
+
+  it('throws a clear error rather than a confusing TypeError when pageInfo is missing on a present items page', async () => {
+    mockGraphQL((body) => {
+      const routed = routeProject(body);
+      if (routed) return routed;
+      if (body.query.includes('issue(number: $number) { id }')) return { repository: { issue: { id: 'I_9' } } };
+      if (body.query.includes('items(first: 100, after')) {
+        return { node: { items: { nodes: [{ id: 'PVTI_1', content: null, fieldValueByName: null }] } } };
+      }
+      throw new Error(`unexpected query: ${body.query}`);
+    });
+
+    await expect(setSeverity(INPUT)).rejects.toThrow(/malformed response.*pageInfo missing/);
   });
 });

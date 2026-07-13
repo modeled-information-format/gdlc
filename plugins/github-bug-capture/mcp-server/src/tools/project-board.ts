@@ -100,32 +100,118 @@ export async function getFieldByName(projectId: string, name: string, deps: Gith
   return nodes.find((n) => n.name === name);
 }
 
-const ISSUE_PROJECT_ITEMS_QUERY = `
-  query($owner: String!, $repo: String!, $number: Int!) {
-    repository(owner: $owner, name: $repo) {
-      issue(number: $number) {
-        projectItems(first: 100) {
-          nodes { id project { id } }
+const PROJECT_ITEMS_BY_CONTENT_QUERY = `
+  query($projectId: ID!, $after: String) {
+    node(id: $projectId) {
+      ... on ProjectV2 {
+        items(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            id
+            content {
+              ... on Issue { number repository { nameWithOwner } }
+              ... on PullRequest { number repository { nameWithOwner } }
+            }
+            fieldValueByName(name: "Status") {
+              ... on ProjectV2ItemFieldSingleSelectValue { name }
+            }
+          }
         }
       }
     }
   }
 `;
 
-interface IssueProjectItemsResponse {
-  repository?: {
-    issue?: { projectItems: { nodes: Array<{ id: string; project: { id: string } }> } } | null;
+interface RawContentItemNode {
+  id: string;
+  content: { number?: number; repository?: { nameWithOwner?: string } } | null;
+  fieldValueByName: { name: string } | null;
+}
+
+interface ProjectItemsByContentResponse {
+  node: {
+    items?: { pageInfo?: { hasNextPage: boolean; endCursor: string | null }; nodes: RawContentItemNode[] };
   } | null;
+}
+
+/** Issue #273: gdlc#200 already proved `ProjectV2.items` (paginated from the
+ * PROJECT side) is the reliable way to enumerate a board's items --
+ * `Issue.projectItems` (paginated from the ISSUE side, as this function used
+ * to query) was confirmed live to silently omit items on a project owned by
+ * a different entity than the issue's own repo (e.g. a user-owned project
+ * holding an item for an org repo's issue: `totalCount: 1` on the issue side,
+ * listing only the org project, while the user project's item demonstrably
+ * existed via a direct `ProjectV2.items` query). `set_severity` and
+ * `set_lifecycle_state` both failed with a false `issue_not_on_board` for
+ * exactly this case. Bounded the same way `fetchAllProjectItemNodes` is in
+ * github-sdlc-planning's projects.ts, for the same reason: a malformed or
+ * looping GraphQL response must throw loudly, not hang or silently
+ * truncate. */
+const MAX_PAGES = 1000;
+
+async function findProjectItemForContent(
+  projectId: string,
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  deps: GithubClientDeps,
+): Promise<{ itemId: string; statusName: string | null } | null> {
+  const target = `${owner}/${repo}`;
+  let after: string | null = null;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const data: ProjectItemsByContentResponse = await githubGraphQL<ProjectItemsByContentResponse>(
+      PROJECT_ITEMS_BY_CONTENT_QUERY,
+      { projectId, after },
+      deps,
+    );
+    const items = data.node?.items;
+    if (items === undefined) return null; // no `items` at all: project not found / no access
+    const match = (items?.nodes ?? []).find((n: RawContentItemNode) => n.content?.number === issueNumber && n.content?.repository?.nameWithOwner === target);
+    if (match) return { itemId: match.id, statusName: match.fieldValueByName?.name ?? null };
+    if (items.pageInfo === undefined) {
+      throw new Error(`findProjectItemForContent: malformed response -- items present but pageInfo missing (projectId=${projectId})`);
+    }
+    if (!items.pageInfo.hasNextPage) return null;
+    after = items.pageInfo.endCursor;
+  }
+  throw new Error(`findProjectItemForContent: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);
 }
 
 export interface ResolvedProjectItem {
   itemId: string;
 }
 
-/** Resolve an issue's board item through the issue's own projectItems
- * connection (an issue sits on few boards) rather than paginating the whole
- * board. Fails with a typed error when the issue does not exist or is not on
- * this project. */
+const ISSUE_EXISTS_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) { id }
+    }
+  }
+`;
+
+interface IssueExistsResponse {
+  repository?: { issue?: { id: string } | null } | null;
+}
+
+/** Confirms the issue itself exists, independent of board membership --
+ * kept as its own tiny query (rather than folded into
+ * `findProjectItemForContent`'s project-side scan, which has no reason to
+ * know about issues that aren't on the board at all) so callers can still
+ * distinguish "this issue doesn't exist" (`resolve_issue_id`) from "this
+ * issue exists but isn't on this board" (`issue_not_on_board`). */
+export async function assertIssueExists(owner: string, repo: string, issueNumber: number, deps: GithubClientDeps = {}): Promise<void> {
+  const data = await githubGraphQL<IssueExistsResponse>(ISSUE_EXISTS_QUERY, { owner, repo, number: issueNumber }, deps);
+  if (!data.repository?.issue) {
+    throw new BugCaptureError('resolve_issue_id', `Issue ${owner}/${repo}#${issueNumber} not found`, {
+      lookupStep: 'resolve_issue_id',
+    });
+  }
+}
+
+/** Resolve an issue's board item by scanning the project's own items
+ * connection (see `findProjectItemForContent`'s doc for why this replaced an
+ * issue-side lookup). Fails with a typed error when the issue does not exist,
+ * or exists but is not on this project. */
 export async function resolveProjectItem(
   coords: ProjectCoordinates,
   projectId: string,
@@ -134,27 +220,19 @@ export async function resolveProjectItem(
   issueNumber: number,
   deps: GithubClientDeps = {},
 ): Promise<ResolvedProjectItem> {
-  const itemsData = await githubGraphQL<IssueProjectItemsResponse>(
-    ISSUE_PROJECT_ITEMS_QUERY,
-    { owner, repo, number: issueNumber },
-    deps,
-  );
-  const issue = itemsData.repository?.issue;
-  if (!issue) {
-    throw new BugCaptureError('resolve_issue_id', `Issue ${owner}/${repo}#${issueNumber} not found`, {
-      lookupStep: 'resolve_issue_id',
-    });
-  }
-  const item = issue.projectItems.nodes.find((n) => n.project.id === projectId);
-  if (!item) {
+  await assertIssueExists(owner, repo, issueNumber, deps);
+  const found = await findProjectItemForContent(projectId, owner, repo, issueNumber, deps);
+  if (!found) {
     throw new BugCaptureError(
       'issue_not_on_board',
       `Issue ${owner}/${repo}#${issueNumber} is not an item on ${coords.projectOwnerLogin} project #${coords.projectNumber}; add it to the board first (github-sdlc-planning's add_item_to_project)`,
       { issueNumber, projectNumber: coords.projectNumber },
     );
   }
-  return { itemId: item.id };
+  return { itemId: found.itemId };
 }
+
+export { findProjectItemForContent };
 
 const UPDATE_FIELD_VALUE_MUTATION = `
   mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {

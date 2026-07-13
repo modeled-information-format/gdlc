@@ -4,6 +4,7 @@ import {
   resolveProjectNodeId,
   getFieldByName,
   resolveProjectItem,
+  findProjectItemForContent,
   setSingleSelectFieldValue,
   type ProjectCoordinates,
 } from './project-board.js';
@@ -36,52 +37,44 @@ export interface GetLifecycleStateResult {
   status: string | null;
 }
 
-const ISSUE_LIFECYCLE_QUERY = `
+const ISSUE_STATE_QUERY = `
   query($owner: String!, $repo: String!, $number: Int!) {
     repository(owner: $owner, name: $repo) {
-      issue(number: $number) {
-        state
-        projectItems(first: 100) {
-          nodes {
-            project { id }
-            fieldValueByName(name: "Status") {
-              ... on ProjectV2ItemFieldSingleSelectValue { name }
-            }
-          }
-        }
-      }
+      issue(number: $number) { state }
     }
   }
 `;
 
-interface IssueLifecycleResponse {
-  repository?: {
-    issue?: {
-      state: 'OPEN' | 'CLOSED';
-      projectItems: { nodes: Array<{ project: { id: string }; fieldValueByName: { name: string } | null }> };
-    } | null;
-  } | null;
+interface IssueStateResponse {
+  repository?: { issue?: { state: 'OPEN' | 'CLOSED' } | null } | null;
 }
 
+/** Issue #273: previously queried the issue's own `projectItems` connection
+ * for board membership + Status in the same round trip as native state --
+ * that connection was confirmed to silently omit items on a project owned by
+ * a different entity than the issue's repo (see `findProjectItemForContent`'s
+ * doc in project-board.ts). Native state (open/closed) still comes from the
+ * issue directly; board membership/status now comes from the same
+ * project-side scan `set_severity`/`set_lifecycle_state` use. */
 export async function getLifecycleState(input: GetLifecycleStateInput, deps: GithubClientDeps = {}): Promise<GetLifecycleStateResult> {
   const projectId = await resolveProjectNodeId(input, deps);
-  const data = await githubGraphQL<IssueLifecycleResponse>(
-    ISSUE_LIFECYCLE_QUERY,
+  const stateData = await githubGraphQL<IssueStateResponse>(
+    ISSUE_STATE_QUERY,
     { owner: input.owner, repo: input.repo, number: input.issueNumber },
     deps,
   );
-  const issue = data.repository?.issue;
+  const issue = stateData.repository?.issue;
   if (!issue) {
     throw new BugCaptureError('resolve_issue_id', `Issue ${input.owner}/${input.repo}#${input.issueNumber} not found`, {
       lookupStep: 'resolve_issue_id',
     });
   }
-  const item = issue.projectItems.nodes.find((n) => n.project.id === projectId);
+  const found = await findProjectItemForContent(projectId, input.owner, input.repo, input.issueNumber, deps);
   return {
     issueNumber: input.issueNumber,
     nativeState: issue.state === 'CLOSED' ? 'closed' : 'open',
-    onBoard: item !== undefined,
-    status: item?.fieldValueByName?.name ?? null,
+    onBoard: found !== null,
+    status: found?.statusName ?? null,
   };
 }
 
