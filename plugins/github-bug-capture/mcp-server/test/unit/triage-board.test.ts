@@ -269,4 +269,24 @@ describe('setSeverity', () => {
 
     await expect(setSeverity(INPUT)).rejects.toThrow(/malformed response.*pageInfo missing/);
   });
+
+  // Copilot review finding (round 2) on PR #283: hasNextPage:true with a
+  // null/unchanged endCursor would otherwise re-fetch the same page until
+  // MAX_PAGES is hit rather than surfacing the malformed response immediately.
+  it('throws immediately when hasNextPage is true but endCursor never advances', async () => {
+    let calls = 0;
+    mockGraphQL((body) => {
+      const routed = routeProject(body);
+      if (routed) return routed;
+      if (body.query.includes('issue(number: $number) { id }')) return { repository: { issue: { id: 'I_9' } } };
+      if (body.query.includes('items(first: 100, after')) {
+        calls += 1;
+        return { node: { items: { pageInfo: { hasNextPage: true, endCursor: null }, nodes: [] } } };
+      }
+      throw new Error(`unexpected query: ${body.query}`);
+    });
+
+    await expect(setSeverity(INPUT)).rejects.toThrow(/endCursor did not advance/);
+    expect(calls).toBe(1);
+  });
 });

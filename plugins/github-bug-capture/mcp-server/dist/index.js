@@ -38612,6 +38612,11 @@ async function findProjectItemForContent(projectId, owner, repo, issueNumber, de
       throw new Error(`findProjectItemForContent: malformed response -- items present but pageInfo missing (projectId=${projectId})`);
     }
     if (!items.pageInfo.hasNextPage) return null;
+    if (items.pageInfo.endCursor === after) {
+      throw new Error(
+        `findProjectItemForContent: malformed response -- hasNextPage true but endCursor did not advance (projectId=${projectId})`
+      );
+    }
     after = items.pageInfo.endCursor;
   }
   throw new Error(`findProjectItemForContent: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);
