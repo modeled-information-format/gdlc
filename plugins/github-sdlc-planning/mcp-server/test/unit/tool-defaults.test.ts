@@ -79,6 +79,35 @@ describe('withRequiredBoardCoordinates', () => {
     }
     expect(threw).toBe(true);
   });
+
+  // Issue #274 (Copilot review finding on PR #280): withRequiredBoardCoordinates
+  // shares the BoardArgs interface with withOptionalBoardCoordinates, but a
+  // first pass at this fix only threaded startDir through the optional
+  // wrapper -- silently leaving the mutating tools behind this required
+  // wrapper (add_item_to_project, set_field_value, get_project_items,
+  // get_project_status_profile) exposed to the identical wrong-board risk.
+  it('issue #274: resolves board coordinates from startDir, not process.cwd(), when startDir is given', async () => {
+    const cwdRoot = tmpProjectWith(null); // cwd itself has NO board configured
+    const otherRoot = tmpProjectWith(['board:', '  projectOwnerLogin: from-startdir', '  projectNumber: 9', ''].join('\n'));
+    isolate(cwdRoot, tmpGlobalWith(null));
+    const fn = withRequiredBoardCoordinates(
+      (args: { projectOwnerLogin: string; projectNumber: number; startDir?: string }) => args,
+    );
+    expect(await fn({ startDir: otherRoot })).toEqual({
+      projectOwnerLogin: 'from-startdir',
+      projectNumber: 9,
+      startDir: otherRoot,
+    });
+  });
+
+  it('issue #274: still resolves from process.cwd() when startDir is omitted (backward compatible)', async () => {
+    isolate(
+      tmpProjectWith(['board:', '  projectOwnerLogin: from-cwd', '  projectNumber: 3', ''].join('\n')),
+      tmpGlobalWith(null),
+    );
+    const fn = withRequiredBoardCoordinates((args: { projectOwnerLogin: string; projectNumber: number }) => args);
+    expect(await fn({})).toEqual({ projectOwnerLogin: 'from-cwd', projectNumber: 3 });
+  });
 });
 
 describe('withOptionalBoardCoordinates', () => {

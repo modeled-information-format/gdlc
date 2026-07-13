@@ -117,7 +117,8 @@ server.registerTool(
       'Add an issue to a Projects v2 board via addProjectV2ItemById, resolving node IDs first. Idempotent: if the ' +
       'issue already has an item on the target project (e.g. added by a native auto-add workflow), returns that ' +
       'item with existed: true instead of creating a duplicate. projectOwnerLogin/projectNumber default to the ' +
-      'configured board mapping (issue #82) when omitted.',
+      'configured board mapping (issue #82) when omitted, resolved from startDir if given (issue #274) rather ' +
+      'than the MCP server process\'s own cwd.',
     inputSchema: {
       owner: z.string(),
       repo: z.string(),
@@ -125,6 +126,7 @@ server.registerTool(
       projectOwnerLogin: z.string().optional(),
       projectNumber: z.number().int().optional(),
       projectOwnerType: projectOwnerTypeSchema.optional(),
+      startDir: z.string().optional(),
     },
   },
   wrap(withRequiredBoardCoordinates(addItemToProject)),
@@ -136,7 +138,8 @@ server.registerTool(
     title: 'Set project field value',
     description:
       'Set a Projects v2 item field value via updateProjectV2ItemFieldValue. projectOwnerLogin/projectNumber ' +
-      'default to the configured board mapping (issue #82) when omitted.',
+      'default to the configured board mapping (issue #82) when omitted, resolved from startDir if given ' +
+      '(issue #274) rather than the MCP server process\'s own cwd.',
     inputSchema: {
       projectOwnerLogin: z.string().optional(),
       projectNumber: z.number().int().optional(),
@@ -150,6 +153,7 @@ server.registerTool(
         z.object({ kind: z.literal('singleSelect'), optionId: z.string() }),
         z.object({ kind: z.literal('iteration'), iterationId: z.string() }),
       ]),
+      startDir: z.string().optional(),
     },
   },
   wrap(withRequiredBoardCoordinates(setFieldValue)),
@@ -161,11 +165,13 @@ server.registerTool(
     title: 'Get project items',
     description:
       'List a Projects v2 board\'s items and their field values. projectOwnerLogin/projectNumber default to the ' +
-      'configured board mapping (issue #82) when omitted.',
+      'configured board mapping (issue #82) when omitted, resolved from startDir if given (issue #274) rather ' +
+      'than the MCP server process\'s own cwd.',
     inputSchema: {
       projectOwnerLogin: z.string().optional(),
       projectNumber: z.number().int().optional(),
       projectOwnerType: projectOwnerTypeSchema.optional(),
+      startDir: z.string().optional(),
     },
   },
   wrap(withRequiredBoardCoordinates(getProjectItems)),
@@ -179,11 +185,13 @@ server.registerTool(
       'Read the durable, XDG-cached profile of a project\'s real Status field (option IDs/names) and which ' +
       'documented CLAUDE.md lifecycle stages (Backlog/Ready/In Progress/In Review/Done) have no matching board ' +
       'option, refreshing from a live GraphQL query only when the cache is missing or past its 1-hour TTL. ' +
-      'projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted.',
+      'projectOwnerLogin/projectNumber default to the configured board mapping (issue #82) when omitted, ' +
+      'resolved from startDir if given (issue #274) rather than the MCP server process\'s own cwd.',
     inputSchema: {
       projectOwnerLogin: z.string().optional(),
       projectNumber: z.number().int().optional(),
       projectOwnerType: projectOwnerTypeSchema.optional(),
+      startDir: z.string().optional(),
     },
   },
   wrap(withRequiredBoardCoordinates(getProjectStatusProfile)),
