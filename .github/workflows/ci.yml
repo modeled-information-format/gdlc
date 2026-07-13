@@ -210,3 +210,53 @@ jobs:
             echo "No .config/gdlc/config.yml files found — nothing to validate."
           fi
           exit "$status"
+
+  # Issue #272: configure-gdlc/project-setup's `tools:` frontmatter granted
+  # only the bare `mcp__github-sdlc-planning__*` form. Per the precedent
+  # already established for this exact class of bug (CHANGELOG [0.7.1],
+  # PR #177/#178, docs/github-sdlc-planning/explanation/architecture.md,
+  # plugins/github-sdlc-planning/hooks/lib/mcp-tool-name.mjs), a
+  # self-vendored plugin's MCP tools are legitimately exposed under EITHER
+  # name depending on install topology: the bare form
+  # (`mcp__<plugin>__<action>`) for a directly-registered MCP server, or the
+  # plugin-qualified form (`mcp__plugin_<marketplace>_<plugin>__<action>`)
+  # for a marketplace install. An agent's static `tools:` grant has to list
+  # both to work under either topology — granting only one silently zeroes
+  # out the agent's tools under the other. This job checks, for every
+  # self-vendored plugin referenced by name in any agents/*.md `tools:`
+  # line, that both forms are present together. It intentionally does not
+  # check externally-referenced plugins (e.g. mif-docs) since this repo
+  # can't authoritatively verify another repo's real MCP server name.
+  agent-tools-glob-check:
+    name: agent-tools-glob-check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Self-vendored plugin MCP tool globs must grant both install-topology forms
+        run: |
+          set -uo pipefail
+          status=0
+          known_plugins=()
+          for d in plugins/*/; do
+            known_plugins+=("$(basename "$d")")
+          done
+          while IFS= read -r -d '' f; do
+            tools_line="$(grep -m1 '^tools:' "$f" || true)"
+            [ -z "$tools_line" ] && continue
+            for p in "${known_plugins[@]}"; do
+              bare="mcp__${p}__"
+              qual="mcp__plugin_${p}_${p}__"
+              has_bare=0
+              has_qual=0
+              grep -qF -- "$bare" <<<"$tools_line" && has_bare=1
+              grep -qF -- "$qual" <<<"$tools_line" && has_qual=1
+              if { [ "$has_bare" -eq 1 ] || [ "$has_qual" -eq 1 ]; } && { [ "$has_bare" -ne 1 ] || [ "$has_qual" -ne 1 ]; }; then
+                echo "::error file=$f::references plugin '$p' MCP tools with only one of the two valid install-topology forms (bare present=$has_bare, plugin-qualified present=$has_qual) — grant both ${bare}* and ${qual}* so the agent works whether this plugin is directly registered or marketplace-installed"
+                status=1
+              fi
+            done
+          done < <(find plugins -path '*/agents/*.md' -print0)
+          exit "$status"
