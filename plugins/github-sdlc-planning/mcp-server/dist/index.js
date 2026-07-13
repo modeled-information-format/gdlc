@@ -38936,9 +38936,50 @@ var ADD_ITEM_MUTATION = `
     }
   }
 `;
-function findExistingItem(nodes, owner, repo, issueNumber) {
+var FIND_ITEM_BY_CONTENT_QUERY = `
+  query($projectId: ID!, $after: String) {
+    node(id: $projectId) {
+      ... on ProjectV2 {
+        items(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            id
+            content {
+              ... on Issue { number repository { nameWithOwner } }
+              ... on PullRequest { number repository { nameWithOwner } }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+async function findExistingItemId(projectId, owner, repo, issueNumber, deps) {
   const target = `${owner}/${repo}`.toLowerCase();
-  return nodes.find((n) => n.content?.number === issueNumber && n.content?.repository?.nameWithOwner?.toLowerCase() === target);
+  let after = null;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const data = await githubGraphQL(
+      FIND_ITEM_BY_CONTENT_QUERY,
+      { projectId, after },
+      {},
+      deps
+    );
+    const items = data.node?.items;
+    if (items === void 0) return null;
+    const match = (items.nodes ?? []).find(
+      (n) => n.content?.number === issueNumber && n.content?.repository?.nameWithOwner?.toLowerCase() === target
+    );
+    if (match) return match.id;
+    if (items.pageInfo === void 0) {
+      throw new Error(`findExistingItemId: malformed response -- items present but pageInfo missing (projectId=${projectId})`);
+    }
+    if (!items.pageInfo.hasNextPage) return null;
+    if (items.pageInfo.endCursor === after) {
+      throw new Error(`findExistingItemId: malformed response -- hasNextPage true but endCursor did not advance (projectId=${projectId})`);
+    }
+    after = items.pageInfo.endCursor;
+  }
+  throw new Error(`findExistingItemId: exceeded ${MAX_PAGES} pages without hasNextPage becoming false (projectId=${projectId})`);
 }
 async function addItemToProject(input, deps = {}) {
   await assertProjectScope(deps.fetchImpl);
@@ -38946,10 +38987,9 @@ async function addItemToProject(input, deps = {}) {
     resolveIssueNodeId(input.owner, input.repo, input.issueNumber, deps),
     resolveProjectNodeId(input.projectOwnerLogin, input.projectNumber, input.projectOwnerType ?? "organization", deps)
   ]);
-  const nodes = await fetchAllProjectItemNodes(projectId, deps);
-  const existingItem = findExistingItem(nodes, input.owner, input.repo, input.issueNumber);
-  if (existingItem) {
-    return { itemId: existingItem.id, existed: true };
+  const existingItemId = await findExistingItemId(projectId, input.owner, input.repo, input.issueNumber, deps);
+  if (existingItemId) {
+    return { itemId: existingItemId, existed: true };
   }
   const data = await githubGraphQL(ADD_ITEM_MUTATION, { projectId, contentId }, {}, deps);
   return { itemId: data.addProjectV2ItemById.item.id, existed: false };
