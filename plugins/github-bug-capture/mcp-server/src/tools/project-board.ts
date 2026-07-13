@@ -2,7 +2,8 @@ import { githubGraphQL, type GithubClientDeps } from '../github-client.js';
 import { BugCaptureError } from '../errors.js';
 
 /** Shared Projects v2 resolution helpers: project node ID, field lookup by
- * name, an issue's board item, and the single-select field write. Both
+ * name, an issue's board item (and the underlying content-matching scan
+ * findProjectItemForContent), and the single-select field write. Both
  * triage-board.ts (Severity) and lifecycle.ts (Status) resolve the same
  * board shape through these, so the resolution/error semantics stay single-
  * sourced instead of drifting per bug-domain field. */
@@ -154,9 +155,14 @@ async function findProjectItemForContent(
   owner: string,
   repo: string,
   issueNumber: number,
-  deps: GithubClientDeps,
+  deps: GithubClientDeps = {},
 ): Promise<{ itemId: string; statusName: string | null } | null> {
-  const target = `${owner}/${repo}`;
+  // Copilot review finding: GraphQL accepts mixed-case owner/repo in queries,
+  // but `nameWithOwner` comes back in GitHub's own canonical casing -- a
+  // case-sensitive match here would produce the exact false `issue_not_on_board`
+  // this function exists to eliminate, just triggered by input casing instead
+  // of the original cross-owner-type omission.
+  const target = `${owner}/${repo}`.toLowerCase();
   let after: string | null = null;
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const data: ProjectItemsByContentResponse = await githubGraphQL<ProjectItemsByContentResponse>(
@@ -166,7 +172,9 @@ async function findProjectItemForContent(
     );
     const items = data.node?.items;
     if (items === undefined) return null; // no `items` at all: project not found / no access
-    const match = (items?.nodes ?? []).find((n: RawContentItemNode) => n.content?.number === issueNumber && n.content?.repository?.nameWithOwner === target);
+    const match = (items?.nodes ?? []).find(
+      (n: RawContentItemNode) => n.content?.number === issueNumber && n.content?.repository?.nameWithOwner?.toLowerCase() === target,
+    );
     if (match) return { itemId: match.id, statusName: match.fieldValueByName?.name ?? null };
     if (items.pageInfo === undefined) {
       throw new Error(`findProjectItemForContent: malformed response -- items present but pageInfo missing (projectId=${projectId})`);

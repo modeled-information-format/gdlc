@@ -38593,8 +38593,8 @@ var PROJECT_ITEMS_BY_CONTENT_QUERY = `
   }
 `;
 var MAX_PAGES = 1e3;
-async function findProjectItemForContent(projectId, owner, repo, issueNumber, deps) {
-  const target = `${owner}/${repo}`;
+async function findProjectItemForContent(projectId, owner, repo, issueNumber, deps = {}) {
+  const target = `${owner}/${repo}`.toLowerCase();
   let after = null;
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const data = await githubGraphQL(
@@ -38604,7 +38604,9 @@ async function findProjectItemForContent(projectId, owner, repo, issueNumber, de
     );
     const items = data.node?.items;
     if (items === void 0) return null;
-    const match = (items?.nodes ?? []).find((n) => n.content?.number === issueNumber && n.content?.repository?.nameWithOwner === target);
+    const match = (items?.nodes ?? []).find(
+      (n) => n.content?.number === issueNumber && n.content?.repository?.nameWithOwner?.toLowerCase() === target
+    );
     if (match) return { itemId: match.id, statusName: match.fieldValueByName?.name ?? null };
     if (items.pageInfo === void 0) {
       throw new Error(`findProjectItemForContent: malformed response -- items present but pageInfo missing (projectId=${projectId})`);

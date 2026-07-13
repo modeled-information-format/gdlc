@@ -197,6 +197,16 @@ describe('setSeverity', () => {
     expect(sleeps[0]).toBeLessThanOrEqual(1000);
   });
 
+  // Copilot review finding on PR #283: GraphQL accepts mixed-case owner/repo
+  // in queries, but nameWithOwner comes back in GitHub's canonical casing --
+  // a case-sensitive match would reintroduce a false issue_not_on_board for
+  // an issue that genuinely is on the board, just triggered by input casing.
+  it('matches the board item case-insensitively against owner/repo (Copilot review finding)', async () => {
+    mockBoard({ items: [{ id: 'PVTI_9', content: { number: 9, repository: { nameWithOwner: 'Acme/Widgets' } } }] });
+    const result = await setSeverity({ ...INPUT, owner: 'acme', repo: 'widgets' });
+    expect(result.itemId).toBe('PVTI_9');
+  });
+
   // Mirrors github-sdlc-planning/projects.ts's equivalent coverage for the
   // same paginated-scan shape (gdlc#200's fix), since findProjectItemForContent
   // (project-board.ts) reuses that pattern for issue #273's fix.
