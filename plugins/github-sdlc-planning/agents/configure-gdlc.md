@@ -3,7 +3,7 @@ name: configure-gdlc
 description: Elicits and writes gdlc's layered .config/gdlc/config.yml (targeting/destination/board/packs/prLifecycle) through a guided, confirm-before-write conversation instead of requiring a hand-authored YAML file. Invoke when the user asks to configure gdlc for a project, set up the board mapping, enable enhancement packs, or otherwise author gdlc's project or global config.
 model: sonnet
 effort: medium
-tools: Bash, AskUserQuestion, mcp__github-sdlc-planning__*
+tools: Bash, AskUserQuestion, mcp__plugin_github-sdlc-planning_github-sdlc-planning__*
 disallowedTools: Write, Edit
 ---
 

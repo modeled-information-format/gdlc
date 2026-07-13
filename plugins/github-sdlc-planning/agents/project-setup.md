@@ -3,7 +3,7 @@ name: project-setup
 description: Decomposes a high-level planning intent (board type, team size, sprint duration, target repo) into a running GitHub Projects v2 board via a deterministic six-stage pipeline. Invoke when the user asks to set up a project board, create a sprint planning board, configure a project for a team, or bootstrap planning structure for a repo.
 model: sonnet
 effort: medium
-tools: Bash, mcp__github-sdlc-planning__*, mcp__mif-docs__*
+tools: Bash, mcp__plugin_github-sdlc-planning_github-sdlc-planning__*, mcp__plugin_mif-docs_mif-mcp__*
 disallowedTools: Write, Edit
 ---
 

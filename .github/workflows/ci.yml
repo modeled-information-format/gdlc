@@ -210,3 +210,32 @@ jobs:
             echo "No .config/gdlc/config.yml files found — nothing to validate."
           fi
           exit "$status"
+
+  # Issue #272: an agent's `tools:` frontmatter granted `mcp__<name>__*`,
+  # but every plugin-provided MCP server's real, resolvable tool name is
+  # namespaced `mcp__plugin_<plugin>_<server>__*` — the bare form matches
+  # nothing, so the glob silently resolves to zero granted tools with no
+  # error at agent-spawn time. Catches a reintroduction of the same stale
+  # glob in any agents/*.md before it ships another silently-crippled agent.
+  agent-tools-glob-check:
+    name: agent-tools-glob-check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Every mcp__ tool glob in agents/*.md must be plugin-scoped
+        run: |
+          set -uo pipefail
+          status=0
+          while IFS= read -r -d '' f; do
+            tools_line="$(grep -m1 '^tools:' "$f" || true)"
+            [ -z "$tools_line" ] && continue
+            bad="$(grep -oE 'mcp__[A-Za-z0-9_-]+' <<<"$tools_line" | grep -v '^mcp__plugin_' || true)"
+            if [ -n "$bad" ]; then
+              echo "::error file=$f::stale, unprefixed MCP tool glob(s) found: $(echo "$bad" | tr '\n' ' ') — plugin-provided MCP tools resolve as mcp__plugin_<plugin>_<server>__*, not mcp__<name>__*"
+              status=1
+            fi
+          done < <(find plugins -path '*/agents/*.md' -print0)
+          exit "$status"
