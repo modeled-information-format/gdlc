@@ -231,9 +231,17 @@ jobs:
   # restriction the way an agent's `tools:` is). This job checks, for every
   # self-vendored plugin referenced by name in any agents/*.md `tools:` line
   # or skills/*/SKILL.md `allowed-tools:` line, that both forms are present
-  # together. It intentionally does not check externally-referenced plugins
-  # (e.g. mif-docs) since this repo can't authoritatively verify another
-  # repo's real MCP server name.
+  # together. It does not generically check externally-referenced plugins
+  # since this repo can't authoritatively verify another repo's real MCP
+  # server name -- EXCEPT mif-docs, which is a documented exception:
+  # plugins/github-sdlc-planning/agents/project-setup.md already established
+  # mif-docs' real plugin-qualified name (`mcp__plugin_mif-docs_mif-mcp__*`
+  # -- note the second segment is `mif-mcp`, not `mif-docs` doubled, so it
+  # can't reuse the self-vendored loop's `mcp__plugin_${p}_${p}__` pattern
+  # and needs its own mapping) elsewhere in this same repo, so a mismatch
+  # here is exactly as verifiable and exactly as real a bug as a
+  # self-vendored one (PR #279 review round 2 found 4 more skills/SKILL.md
+  # files with this precise gap after #277's own first pass).
   agent-tools-glob-check:
     name: agent-tools-glob-check
     runs-on: ubuntu-latest
@@ -250,6 +258,14 @@ jobs:
           for d in plugins/*/; do
             known_plugins+=("$(basename "$d")")
           done
+          # mif-docs is external (not one of this repo's own plugins/*/
+          # dirs), but its real plugin-qualified MCP name is already
+          # established in this repo (project-setup.md), so it gets an
+          # explicit bare->qualified mapping alongside the self-vendored
+          # loop rather than the doubled-name pattern the loop assumes.
+          declare -A known_external_qual=(
+            ["mif-docs"]="mcp__plugin_mif-docs_mif-mcp__"
+          )
           check_file() {
             local f="$1" field="$2"
             local tools_line
@@ -263,6 +279,17 @@ jobs:
               grep -qF -- "$qual" <<<"$tools_line" && has_qual=1
               if { [ "$has_bare" -eq 1 ] || [ "$has_qual" -eq 1 ]; } && { [ "$has_bare" -ne 1 ] || [ "$has_qual" -ne 1 ]; }; then
                 echo "::error file=$f::references plugin '$p' MCP tools with only one of the two valid install-topology forms (bare present=$has_bare, plugin-qualified present=$has_qual) — grant both ${bare}* and ${qual}* so it works whether this plugin is directly registered or marketplace-installed"
+                status=1
+              fi
+            done
+            for p in "${!known_external_qual[@]}"; do
+              local bare="mcp__${p}__"
+              local qual="${known_external_qual[$p]}"
+              local has_bare=0 has_qual=0
+              grep -qF -- "$bare" <<<"$tools_line" && has_bare=1
+              grep -qF -- "$qual" <<<"$tools_line" && has_qual=1
+              if { [ "$has_bare" -eq 1 ] || [ "$has_qual" -eq 1 ]; } && { [ "$has_bare" -ne 1 ] || [ "$has_qual" -ne 1 ]; }; then
+                echo "::error file=$f::references external plugin '$p' MCP tools with only one of the two valid install-topology forms (bare present=$has_bare, plugin-qualified present=$has_qual) — grant both ${bare}* and ${qual}* so it works whether this plugin is directly registered or marketplace-installed"
                 status=1
               fi
             done

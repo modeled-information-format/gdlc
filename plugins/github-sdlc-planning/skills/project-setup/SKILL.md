@@ -2,7 +2,7 @@
 description: Set up a GitHub Projects v2 board from a high-level planning intent (board type, team size, sprint duration, target repo) via the project-setup agent's six-stage pipeline. Use when the user asks to "set up a project board", "create a sprint planning board", "configure a project for this team", or "bootstrap planning for" a repo.
 when_to_use: Trigger on "set up a project board", "create a sprint board", "configure a project", "bootstrap a project for [team]", or a submitted project-setup-request.yml issue form.
 argument-hint: "[owner/repo] [intent]"
-allowed-tools: Bash, mcp__github-sdlc-planning__*, mcp__plugin_github-sdlc-planning_github-sdlc-planning__*, mcp__mif-docs__*
+allowed-tools: Bash, mcp__github-sdlc-planning__*, mcp__plugin_github-sdlc-planning_github-sdlc-planning__*, mcp__mif-docs__*, mcp__plugin_mif-docs_mif-mcp__*
 ---
 
 # Project setup
