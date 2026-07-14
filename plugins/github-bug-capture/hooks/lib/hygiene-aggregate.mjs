@@ -1,9 +1,18 @@
 /**
  * Stop/SubagentStop end-of-turn aggregator's testable core (ADR-0007,
- * AD-3). This hook is a backstop, not a detector: it never inspects
- * `tool_name`/`tool_input` itself (Stop/SubagentStop carry only the common
- * envelope), it only summarizes what hygiene-check.mjs already wrote to
- * this session's scratch file (hygiene-scratch.mjs) during the turn.
+ * AD-3). This hook is a backstop, not a detector: Stop/SubagentStop's OWN
+ * input envelope carries no `tool_name`/`tool_input` (unlike PostToolUse,
+ * which hygiene-check.mjs handles), so it can't identify a touch itself --
+ * it only summarizes what hygiene-check.mjs already wrote to this
+ * session's scratch file (hygiene-scratch.mjs) during the turn.
+ *
+ * gdlc#278: for the one finding kind cheap and unambiguous enough to
+ * revalidate this way (see isLifecycleFindingNowResolved below), it also
+ * re-runs hygiene-check.mjs's own `scanTranscriptForComment` against the
+ * turn's transcript file -- reading that file's logged `tool_name`/
+ * `tool_input` history is how that scan works, distinct from this hook's
+ * own input envelope (which still carries none). No network call is
+ * involved either way.
  */
 import { scanTranscriptForComment } from './hygiene-check.mjs';
 
@@ -27,11 +36,10 @@ const LIFECYCLE_FINDING_RE = /^([^/\s]+)\/([^#\s]+)#(\d+): transitioned with no 
  * scan now resolves as found -- the live end-of-turn truth wins over the
  * stale scratch-time snapshot. Only this one finding *kind* is re-checked:
  * it's the one cheap and unambiguous enough to revalidate purely from its
- * own message text (identity + a single deterministic scan), unlike e.g.
- * a sub-issue-linkage finding, which would need a fresh GraphQL round trip
- * this backstop deliberately never makes (see the module doc comment
- * above: no `tool_name`/`tool_input`, no network calls of its own). `scanFn`
- * is injectable for tests, defaulting to the real transcript scan. */
+ * own message text (identity + a single deterministic, network-free
+ * transcript scan), unlike e.g. a sub-issue-linkage finding, which would
+ * need a fresh GraphQL round trip this backstop deliberately never makes.
+ * `scanFn` is injectable for tests, defaulting to the real transcript scan. */
 function isLifecycleFindingNowResolved(finding, transcriptPath, scanFn) {
   const match = LIFECYCLE_FINDING_RE.exec(finding);
   if (!match) return false;
