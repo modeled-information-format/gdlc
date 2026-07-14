@@ -1,5 +1,5 @@
 ---
-description: Read an existing bug issue, suggest a severity, and (with confirmation) apply it to the issue's label and the triage board. Use when the user asks to "triage this issue", "suggest a severity for #N", or "review this bug".
+description: Read an existing bug issue, suggest a severity, and (with confirmation) apply it to the issue's label and the triage board. Use when the user asks to "triage this issue", "suggest a severity for #N", or "review this bug". Skill only — there is no matching Agent; invoke via the Skill tool, never the Agent tool's subagent_type (which will report "not found").
 when_to_use: Trigger on "triage issue #N", "suggest a severity", "what severity should this be", or "review this bug report".
 argument-hint: "<owner/repo> <issue number>"
 allowed-tools: Bash, mcp__github-bug-capture__ensure_severity_field, mcp__plugin_github-bug-capture_github-bug-capture__ensure_severity_field, mcp__github-bug-capture__set_severity, mcp__plugin_github-bug-capture_github-bug-capture__set_severity

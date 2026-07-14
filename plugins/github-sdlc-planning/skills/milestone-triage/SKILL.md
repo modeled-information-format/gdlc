@@ -1,5 +1,5 @@
 ---
-description: Review open milestones for a repo, flag ones that are overdue, empty, or over/under capacity, and suggest re-sequencing. Use when the user asks to "triage milestones", "review our milestones", or "clean up the milestone list".
+description: Review open milestones for a repo, flag ones that are overdue, empty, or over/under capacity, and suggest re-sequencing. Use when the user asks to "triage milestones", "review our milestones", or "clean up the milestone list". Skill only — there is no matching Agent; invoke via the Skill tool, never the Agent tool's subagent_type (which will report "not found").
 when_to_use: Trigger on "triage milestones", "review our milestones", "clean up milestones", or "what's overdue".
 argument-hint: "[owner/repo]"
 allowed-tools: Bash, mcp__github-sdlc-planning__*, mcp__plugin_github-sdlc-planning_github-sdlc-planning__*

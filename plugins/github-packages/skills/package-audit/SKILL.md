@@ -1,5 +1,5 @@
 ---
-description: Audit an org's published packages and their versions, and present a summary for the user to review. Use when the user asks to "audit packages", "list our packages", or "check package versions".
+description: Audit an org's published packages and their versions, and present a summary for the user to review. Use when the user asks to "audit packages", "list our packages", or "check package versions". Skill only — there is no matching Agent; invoke via the Skill tool, never the Agent tool's subagent_type (which will report "not found").
 when_to_use: Trigger on "audit packages for <org>", "list packages", "check versions of <package>", or a periodic package-inventory review request.
 argument-hint: "[org] [package type]"
 allowed-tools: mcp__github-packages__*, mcp__plugin_github-packages_github-packages__*
