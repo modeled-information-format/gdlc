@@ -1,5 +1,5 @@
 ---
-description: List an org's organization roles and their team/user assignments, and present a summary for the user to review. Use when the user asks to "audit org roles", "who has admin on this org", or "review organization role assignments".
+description: List an org's organization roles and their team/user assignments, and present a summary for the user to review. Use when the user asks to "audit org roles", "who has admin on this org", or "review organization role assignments". Skill only — there is no matching Agent; invoke via the Skill tool, never the Agent tool's subagent_type (which will report "not found").
 when_to_use: Trigger on "audit org roles for <org>", "who has [role] in <org>", "review organization role assignments", or a periodic access-review request.
 argument-hint: "[org]"
 allowed-tools: mcp__github-org-identity__*, mcp__plugin_github-org-identity_github-org-identity__*

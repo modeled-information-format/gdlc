@@ -1,5 +1,5 @@
 ---
-description: Elicit and write gdlc's layered .config/gdlc/config.yml (targeting/destination/board/packs/prLifecycle) through the configure-gdlc agent's six-stage confirm-before-write pipeline, instead of hand-authoring YAML against the schema docs. Use when the user asks to configure gdlc for a project, set up the board mapping, enable enhancement packs, or otherwise author gdlc's project or global config.
+description: Elicit and write gdlc's layered .config/gdlc/config.yml (targeting/destination/board/packs/prLifecycle) through the configure-gdlc agent's six-stage confirm-before-write pipeline, instead of hand-authoring YAML against the schema docs. Use when the user asks to configure gdlc for a project, set up the board mapping, enable enhancement packs, or otherwise author gdlc's project or global config. Also registered as an Agent of the same name — invoke via the Agent tool's subagent_type for autonomous execution, or via the Skill tool for the guided version.
 when_to_use: Trigger on "configure gdlc", "set up gdlc config", "elicit config", "configure this project for gdlc", "enable the hooks pack", or "set the board mapping for this repo".
 argument-hint: "[owner/repo or directory] [what to configure]"
 allowed-tools: Bash, AskUserQuestion, mcp__github-sdlc-planning__*, mcp__plugin_github-sdlc-planning_github-sdlc-planning__*

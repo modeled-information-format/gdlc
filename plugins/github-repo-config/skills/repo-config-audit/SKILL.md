@@ -1,5 +1,5 @@
 ---
-description: Audit a repo's branch protection, rulesets, Pages status, and custom properties, and present a summary for the user to review. Use when the user asks to "audit repo config", "check branch protection", or "review repo governance settings".
+description: Audit a repo's branch protection, rulesets, Pages status, and custom properties, and present a summary for the user to review. Use when the user asks to "audit repo config", "check branch protection", or "review repo governance settings". Skill only — there is no matching Agent; invoke via the Skill tool, never the Agent tool's subagent_type (which will report "not found").
 when_to_use: Trigger on "audit repo config for <owner>/<repo>", "check branch protection on <branch>", "review governance settings", or a periodic repo-config review request.
 argument-hint: "[owner/repo] [branch]"
 allowed-tools: mcp__github-repo-config__*, mcp__plugin_github-repo-config_github-repo-config__*
