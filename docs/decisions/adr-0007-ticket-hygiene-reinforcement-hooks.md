@@ -262,9 +262,17 @@ generalize.
 
 Per-touch detection stays on `PostToolUse`, which writes a per-call signal
 to a session-scoped scratch file (`hooks/lib/hygiene-scratch.mjs`);
-`Stop`/`SubagentStop` only reads that file back and consolidates.
-**Consequence**: the two hooks are not redundant; removing either loses a
-distinct capability (per-call precision vs. turn-level deduplication).
+`Stop`/`SubagentStop` only reads that file back and consolidates. **Amended
+2026-07-13 (issue #278):** the aggregator now also re-runs one specific,
+already-existing detection function (`scanTranscriptForComment`) against
+the turn's final transcript state, to drop a lifecycle-comment finding a
+later same-turn action already resolved -- narrower than "the aggregator
+detects," since it revalidates a signal `PostToolUse` already produced
+rather than deriving a new one, and touches no other finding kind. **Consequence**:
+the two hooks are still not redundant (removing `PostToolUse` loses the
+initial detection entirely; removing `Stop`/`SubagentStop` loses both
+turn-level deduplication and this revalidation), but the aggregator is no
+longer purely a passive scratch-file reader for this one finding kind.
 
 ### AD-4: Copy-and-register distribution across sibling plugins
 
@@ -465,6 +473,29 @@ ambiguous-response fail-open, GraphQL-error fail-open, and no-itemId
 short-circuit).
 
 **Action Required:** None; issue #172 is resolved.
+
+### 2026-07-13
+
+**Status:** Compliant
+
+**Findings:**
+
+| Finding | Files | Lines | Assessment |
+| --- | --- | --- | --- |
+| Issue #278 resolved: `buildConsolidatedContext` replayed every `PostToolUse`-time scratch finding verbatim, even after a later same-turn action already resolved it -- a lifecycle-comment finding is only ever true as of the instant its own `checkLifecycleComment` ran. Fixed by re-running `scanTranscriptForComment` against the turn's final transcript state before reporting, dropping any lifecycle-comment finding that scan now resolves as found; every other finding kind is unaffected. Required amending AD-3 (above) since the aggregator is no longer a pure scratch-file reader for this one finding kind. | plugins/*/hooks/lib/hygiene-aggregate.mjs | - | compliant |
+| Round-2 review finding on the same PR: reusing `scanTranscriptForComment` at `Stop` time across a whole turn (rather than narrowly at `PostToolUse`, its original use) exposed a pre-existing gap in its Bash-comment match -- it matched a `gh issue|pr comment <N>` command by issue number alone, with no owner/repo check, so a same-turn comment against a same-numbered issue in a *different* repo could wrongly suppress a genuine reminder. Fixed by reusing `extractTouch`'s existing `parseGhRepoFlag` helper (exported for this purpose) to validate an explicit `-R`/`--repo` flag against the finding's own identity when one is present; a command with no such flag keeps the prior number-only match, since this scan has no cwd context to resolve an unflagged command's real target repo and that case was never the one at issue. | plugins/*/hooks/lib/hygiene-check.mjs | - | compliant |
+
+**Summary:** Both findings trace to the same root cause: reusing an
+existing detection function in a new, broader context (turn-wide Stop-time
+revalidation) exposed an edge case that was safe in its original, narrower
+context (single-touch `PostToolUse`) but not in the new one. Both are fixed
+in the same PR, with regression tests proven to fail without each fix and
+a manual end-to-end reproduction against the real hook entrypoint.
+Propagated identically to `github-pull-requests`/`github-bug-capture`'s
+byte-identical copies per AD-4, verified against the exact diff logic
+`hygiene-hook-drift-check` runs.
+
+**Action Required:** None; issue #278 is resolved.
 
 [adr-0003]: adr-0003-board-status-hygiene.md
 [adr-0004]: adr-0004-project-config-surface.md

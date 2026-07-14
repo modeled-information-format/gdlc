@@ -449,6 +449,30 @@ describe('scanTranscriptForComment', () => {
     writeFileSync(path, 'not json\n{"tool_name":"Bash","tool_input":{"command":"gh issue comment 1"}}\n');
     expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 1 })).toEqual({ resolved: true, found: true });
   });
+
+  // gdlc#278 round-2 Copilot finding: this scan is now also reused at Stop
+  // time across a whole turn (buildConsolidatedContext's stale-finding
+  // re-validation), where a same-numbered issue in a DIFFERENT repo could
+  // otherwise wrongly suppress a genuine reminder.
+  it('does not match a gh comment command with an explicit --repo flag naming a different repo (same issue number)', () => {
+    const path = tmpTranscriptWith([{ tool_name: 'Bash', tool_input: { command: 'gh issue comment 1 --repo other/other-repo --body "hi"' } }]);
+    expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 1 })).toEqual({ resolved: true, found: false });
+  });
+
+  it('does not match a gh comment command with an explicit -R flag naming a different repo (same issue number)', () => {
+    const path = tmpTranscriptWith([{ tool_name: 'Bash', tool_input: { command: 'gh issue comment 1 -R other/other-repo --body "hi"' } }]);
+    expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 1 })).toEqual({ resolved: true, found: false });
+  });
+
+  it('still matches a gh comment command with an explicit --repo flag naming the SAME repo', () => {
+    const path = tmpTranscriptWith([{ tool_name: 'Bash', tool_input: { command: 'gh issue comment 1 --repo acme/widgets --body "hi"' } }]);
+    expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 1 })).toEqual({ resolved: true, found: true });
+  });
+
+  it('still matches a gh comment command with no --repo flag at all (the common case, unchanged)', () => {
+    const path = tmpTranscriptWith([{ tool_name: 'Bash', tool_input: { command: 'gh issue comment 1 --body "hi"' } }]);
+    expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 1 })).toEqual({ resolved: true, found: true });
+  });
 });
 
 describe('checkLifecycleComment', () => {

@@ -249,7 +249,7 @@ const GH_REPO_FLAG_RE = /(?:^|\s)(?:-R|--repo)(?:=|\s+)(?:"([^"]+)"|'([^']*)'|(\
  * present but its value doesn't parse as `owner/repo` (never guess -- the
  * cwd fallback is not a safe substitute for an explicit-but-broken flag),
  * or `{owner, repo}` when it parses cleanly. */
-function parseGhRepoFlag(command) {
+export function parseGhRepoFlag(command) {
   const match = GH_REPO_FLAG_RE.exec(command);
   if (!match) return undefined;
   const raw = match[1] ?? match[2] ?? match[3] ?? '';
@@ -653,9 +653,29 @@ export function scanTranscriptForComment(transcriptPath, ref, readFn = readTrans
     const isGhComment = ghCommentMatch !== null;
     if (!isCommentTool && !isGhComment) continue;
 
-    const sameIssue = isGhComment
-      ? Number(ghCommentMatch[1]) === ref.number
-      : (toolInput.owner === ref.owner && toolInput.repo === ref.repo && (toolInput.number === ref.number || toolInput.issue_number === ref.number));
+    let sameIssue;
+    if (isGhComment) {
+      const sameNumber = Number(ghCommentMatch[1]) === ref.number;
+      // gdlc#278 round-2 Copilot finding: this scan is now also called at
+      // Stop time across a whole turn (not just narrowly at PostToolUse,
+      // its original use), so a same-turn `gh issue comment <N> --repo
+      // other/other-repo` sharing the SAME issue NUMBER as `ref` in a
+      // DIFFERENT repo must never count as a match -- that would wrongly
+      // suppress a genuine lifecycle-comment reminder for `ref`'s own
+      // repo. An explicit, parseable -R/--repo flag that disagrees with
+      // `ref` rules the match out. No flag at all (or one that doesn't
+      // parse as owner/repo) keeps the prior behavior of matching by
+      // number alone -- this scan has no cwd context of its own to
+      // resolve an unflagged command's real target repo, and "no flag,
+      // same repo" is the dominant real-world pattern this scan exists to
+      // recognize (see parseGhRepoFlag's own doc comment for the same
+      // never-guess-when-ambiguous rationale `extractTouch` already
+      // applies to this exact flag).
+      const repoFlag = sameNumber ? parseGhRepoFlag(toolInput.command) : undefined;
+      sameIssue = sameNumber && (repoFlag == null || (repoFlag.owner === ref.owner && repoFlag.repo === ref.repo));
+    } else {
+      sameIssue = toolInput.owner === ref.owner && toolInput.repo === ref.repo && (toolInput.number === ref.number || toolInput.issue_number === ref.number);
+    }
     if (sameIssue) return { resolved: true, found: true };
   }
   return { resolved: true, found: false };
