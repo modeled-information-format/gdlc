@@ -39484,7 +39484,7 @@ async function checkPrReadiness(ref, deps = {}) {
 }
 
 // src/index.ts
-var server = new McpServer({ name: "github-pull-requests", version: "0.11.1" });
+var server = new McpServer({ name: "github-pull-requests", version: "0.11.2" });
 function toolResult(data) {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }

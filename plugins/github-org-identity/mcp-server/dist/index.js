@@ -31176,7 +31176,7 @@ async function removeUserRole(input, deps = {}) {
 }
 
 // src/index.ts
-var server = new McpServer({ name: "github-org-identity", version: "0.11.1" });
+var server = new McpServer({ name: "github-org-identity", version: "0.11.2" });
 function toolResult(data) {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }

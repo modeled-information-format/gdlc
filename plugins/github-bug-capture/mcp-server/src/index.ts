@@ -9,7 +9,7 @@ import { ensureSeverityField, setSeverity, SEVERITY_LEVELS } from './tools/triag
 import { getLifecycleState, setLifecycleState, searchSimilarIssues, closeAsDuplicate } from './tools/lifecycle.js';
 import { withRequiredBoardCoordinates } from './tool-defaults.js';
 
-const server = new McpServer({ name: 'github-bug-capture', version: '0.11.1' });
+const server = new McpServer({ name: 'github-bug-capture', version: '0.11.2' });
 
 function toolResult(data: unknown): { content: Array<{ type: 'text'; text: string }> } {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
