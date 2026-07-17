@@ -93,6 +93,26 @@ jobs:
               fi
             done
           done
+          # ADR-0010 session-monitors family (byte-copy family #2): the
+          # shared monitor harness and the session-pointer bridge, canonical
+          # in github-sdlc-planning, copied to every monitor-bearing sibling.
+          # Kept as its own loop rather than merged above so the two
+          # families' membership can diverge independently.
+          canonRoot=plugins/github-sdlc-planning
+          for f in monitors/lib/monitor-core.mjs hooks/lib/session-pointer.mjs hooks/session-pointer.mjs; do
+            for sibling in github-pull-requests github-bug-capture; do
+              path="plugins/$sibling/$f"
+              if [ ! -f "$path" ]; then
+                echo "::error file=$path::missing — every monitor-bearing sibling must carry a copy of $f"
+                status=1
+                continue
+              fi
+              if ! diff -u "$canonRoot/$f" "$path"; then
+                echo "::error file=$path::drifted from $canonRoot/$f — re-copy the canonical file verbatim"
+                status=1
+              fi
+            done
+          done
           exit "$status"
 
   # CLAUDE.local.md's "Version discipline" requires the catalog, each

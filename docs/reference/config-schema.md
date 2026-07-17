@@ -3,17 +3,17 @@ id: 20d89b34-8277-4da6-bd0f-0c2888c7a680
 type: semantic
 created: 2026-07-06T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: '2026-07-12T13:42:47.030Z'
+modified: '2026-07-17T09:42:05.183Z'
 title: Layered config schema (global + project)
 diataxis_type: reference
 provenance:
   '@type': Provenance
-  agent: claude-code/claude-sonnet-5
+  agent: claude-code/claude-fable-5
   wasGeneratedBy:
-    '@id': urn:mif:activity:claude-code-session:6587ad77-f582-49d4-9e1b-44734dc4b70a
+    '@id': urn:mif:activity:claude-code-session:09389b7a-b2b1-4088-9b84-424cb64dcedc
     '@type': prov:Activity
   trustLevel: user_stated
-  agentVersion: 2.1.207
+  agentVersion: 2.1.212
 ---
 
 Epic [#78](https://github.com/modeled-information-format/gdlc/issues/78)'s
@@ -77,8 +77,10 @@ packs:
   hooks: true                # optional; enhancement-pack opt-in toggles
   triage-skills: true         # (github-bug-capture: hooks, triage-skills,
   mcp-integration: false      # mcp-integration, gh-aw; github-sdlc-planning:
-  gh-aw: false                # skipMutationConfirm). Keyed by pack name ->
-  skipMutationConfirm: false  # boolean; unset = disabled (fail-closed).
+  gh-aw: false                # skipMutationConfirm; all three hook-bearing
+  skipMutationConfirm: false  # plugins: monitors, ADR-0010's background
+  monitors: false             # session monitors). Keyed by pack name ->
+                              # boolean; unset = disabled (fail-closed).
 prLifecycle:
   enabled: false                                     # optional; default false (fail-closed)
   localReviewer: "/code-review --fix"                 # optional; default shown

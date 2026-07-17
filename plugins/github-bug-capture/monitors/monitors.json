@@ -1,0 +1,8 @@
+[
+  {
+    "name": "bug-triage",
+    "command": "node \"${CLAUDE_PLUGIN_ROOT}/monitors/bug-triage.mjs\"",
+    "description": "Bugs filed this session that still lack a Severity triage",
+    "when": "always"
+  }
+]

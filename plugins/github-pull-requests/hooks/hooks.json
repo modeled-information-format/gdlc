@@ -1,6 +1,19 @@
 {
-  "description": "ADR-0007 ticket-hygiene reminder (non-blocking PostToolUse/Stop/SubagentStop, byte-identical copy of github-sdlc-planning's canonical hygiene-check.mjs/hygiene-aggregate.mjs/lib, kept in sync by a build-time drift check) plus issue #185/#187's PR-lifecycle enforcement hooks (pr-lifecycle-gate.mjs, pr-lifecycle-reminder.mjs) and gdlc#202/#211's unresolved-review-thread gate (track-opened-prs.mjs, review-thread-gate.mjs), none of which are part of that drift-checked family -- they are this plugin's own, since PR-lifecycle enforcement is owned by github-pull-requests alone (ADR-0002).",
+  "description": "ADR-0007 ticket-hygiene reminder (non-blocking PostToolUse/Stop/SubagentStop, byte-identical copy of github-sdlc-planning's canonical hygiene-check.mjs/hygiene-aggregate.mjs/lib, kept in sync by a build-time drift check) plus issue #185/#187's PR-lifecycle enforcement hooks (pr-lifecycle-gate.mjs, pr-lifecycle-reminder.mjs) and gdlc#202/#211's unresolved-review-thread gate (track-opened-prs.mjs, review-thread-gate.mjs), none of which are part of that drift-checked family -- they are this plugin's own, since PR-lifecycle enforcement is owned by github-pull-requests alone (ADR-0002). Also carries the ADR-0010 session-pointer bootstrap (cwd -> session_id, byte-copied and drift-checked like the hygiene family), the bridge this plugin's pr-settlement background monitor resolves its session context from.",
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/session-pointer.mjs"],
+            "timeout": 15
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "^mcp__(plugin_.+_)?github-pull-requests__create_pull_request$",

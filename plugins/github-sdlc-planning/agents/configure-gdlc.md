@@ -62,8 +62,17 @@ directory the user means before calling `get_gdlc_config`.
      tell them how to find it (the Projects v2 URL's trailing number) or
      offer to look it up via `get_project_items` against a login they name.
    - `packs`: per-plugin boolean toggles (`hooks`, `triage-skills`,
-     `mcp-integration`, `gh-aw`, `skipMutationConfirm`, ...). Ask which
-     packs, default each to its current value.
+     `mcp-integration`, `gh-aw`, `skipMutationConfirm`, `monitors`, ...).
+     Ask which packs, default each to its current value. For `monitors`
+     (ADR-0010's background session monitors -- board-hygiene,
+     pr-settlement, bug-triage -- which watch for ticket-hygiene drift
+     between events and nudge the next lifecycle step), also explain when
+     the toggle takes effect: the monitor processes only START at session
+     start, but they re-check this pack every cycle, so enabling it
+     mid-session activates already-running monitors within ~5 minutes,
+     while a fresh install needs the next session; disabling silences all
+     nudges at the next poll cycle (the idle processes linger harmlessly
+     until session end -- expected, per the component's lifecycle).
    - `prLifecycle`: `enabled` plus the four `require*` sub-toggles and
      `localReviewer` — remind the user these all default to strict
      (`true`) once `enabled: true`, per `resolvePrLifecycleConfig`'s own

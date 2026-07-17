@@ -55,7 +55,9 @@ export interface GdlcConfig {
   board?: BoardConfig;
   /** Enhancement-pack opt-in toggles (ADR-0006), keyed by pack name
    * (e.g. `hooks`, `triage-skills`, `mcp-integration`, `gh-aw` for
-   * github-bug-capture today). Supersedes the legacy `packs:` map in
+   * github-bug-capture; `skipMutationConfirm` for github-sdlc-planning;
+   * `monitors` for ADR-0010's session monitors across all three
+   * hook-bearing plugins). Supersedes the legacy `packs:` map in
    * `.claude/github-bug-capture.local.md`. */
   packs?: Record<string, boolean>;
   prLifecycle?: PrLifecycleConfig;

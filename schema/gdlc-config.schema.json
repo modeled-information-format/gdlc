@@ -48,7 +48,7 @@
     },
     "packs": {
       "type": "object",
-      "description": "Enhancement-pack opt-in toggles (github-bug-capture: hooks, triage-skills, mcp-integration, gh-aw; github-sdlc-planning: skipMutationConfirm today). Supersedes the legacy packs: map in .claude/github-bug-capture.local.md (ADR-0006). additionalProperties is deliberately open so a plugin can add a new pack name without a schema change; each value must still be a boolean.",
+      "description": "Enhancement-pack opt-in toggles (github-bug-capture: hooks, triage-skills, mcp-integration, gh-aw; github-sdlc-planning: skipMutationConfirm; all three hook-bearing plugins: monitors, ADR-0010's background session monitors). Supersedes the legacy packs: map in .claude/github-bug-capture.local.md (ADR-0006). additionalProperties is deliberately open so a plugin can add a new pack name without a schema change; each value must still be a boolean.",
       "additionalProperties": { "type": "boolean" }
     },
     "prLifecycle": {
