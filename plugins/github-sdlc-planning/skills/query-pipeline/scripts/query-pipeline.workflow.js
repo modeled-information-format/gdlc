@@ -293,18 +293,37 @@ ${SHARED_RULES}
 The user explicitly enabled automerge for this run, and the PR's readiness
 verdict is settled — that is your merge authorization for THIS PR only.
 
+That authorization explicitly COVERS one specific --admin retry and no
+other: if the plain merge in step 2 is rejected and the rejection reason is
+SPECIFICALLY that branch protection requires an approving review (Copilot's
+own review does not count as an approval, and the PR author cannot
+self-approve), retrying with --admin is already-granted automerge
+authorization for this PR — do not stop, do not treat it as needing
+separate sign-off, do not file a bug about it. Any OTHER blocking reason
+(failing or pending checks, merge conflicts, an unresolved review thread,
+anything not literally the required-approval rejection) is NOT covered by
+this authorization: do not retry with --admin for those — stop and return
+merged=false with the real reason instead.
+
 1. Re-verify freshly (state can change between stages): the PR is still
    open and check_pr_readiness still reports settled: true. If not, stop
    and return merged=false with the current verdict.
 2. gh pr merge ${dev.prNumber} --repo ${item.repo} --squash --delete-branch
-3. Confirm the merge landed (gh pr view --json state,mergedAt shows MERGED
+3. If step 2 fails, read the actual rejection reason before doing anything
+   else:
+   - Required-approval-only rejection (e.g. "at least 1 approving review is
+     required"): retry once — gh pr merge ${dev.prNumber} --repo ${item.repo}
+     --squash --delete-branch --admin — covered by the authorization above.
+   - Any other rejection reason: do NOT retry with --admin. Stop and return
+     merged=false with the real reason.
+4. Confirm the merge landed (gh pr view --json state,mergedAt shows MERGED
    with a real timestamp — never infer from the command exiting 0).
-4. sync_linked_issues_project_field for the post-merge board field, and
+5. sync_linked_issues_project_field for the post-merge board field, and
    confirm via get_linked_issues which linked issues actually closed;
    report any skippedCrossRepo entries. Native board automation moves
    Status to Done on close — read before writing; only write Done where
    automation demonstrably did not.
-5. Comment on the source issue${item.kind === 'issue' ? ` (#${item.number})` : ''} only if closure did not happen automatically.
+6. Comment on the source issue${item.kind === 'issue' ? ` (#${item.number})` : ''} only if closure did not happen automatically.
 
 Return merged and notes.`,
     { label: `merge:${item.repo}#${dev.prNumber}`, phase: 'Merge', schema: MERGE_SCHEMA },
