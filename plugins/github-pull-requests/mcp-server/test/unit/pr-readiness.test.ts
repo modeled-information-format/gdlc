@@ -21,6 +21,10 @@ function deps(overrides: Partial<PrReadinessDeps>): PrReadinessDeps {
     fetchReviews: async () => [],
     fetchReviewThreads: async () => [],
     fetchCodeScanningAlerts: async () => [],
+    // Default: no branch-protection review requirement configured at all
+    // (matches most of this file's other pre-existing scenarios, which
+    // predate issue #305 and never intended to exercise this signal).
+    fetchReviewDecision: async () => null,
     ...overrides,
   };
 }
@@ -99,6 +103,72 @@ describe('assessPrReadiness', () => {
     );
     expect(result.settled).toBe(false);
     expect(result.reasons).toContain('no reviews yet');
+  });
+
+  // Issue #305 repro: modeled-information-format/mif-rs PR #118 -- 36 green
+  // checks, zero unresolved threads, zero code-scanning alerts, and one
+  // submitted review (Copilot's COMMENTED, not an approval). The old logic
+  // only checked "at least one non-pending review exists," which COMMENTED
+  // satisfies, so it reported settled: true on a PR whose real
+  // reviewDecision was REVIEW_REQUIRED and whose mergeStateStatus was
+  // BLOCKED -- `gh pr merge` then rejected it outright.
+  it('is not settled when reviewDecision is REVIEW_REQUIRED, even with a submitted non-approving review and clean checks/threads/alerts', async () => {
+    const result = await assessPrReadiness(
+      REF,
+      deps({
+        fetchChecks: async () => [{ name: 'build', state: 'success' }],
+        fetchReviews: async () => [{ author: 'copilot-pull-request-reviewer', state: 'COMMENTED' }],
+        fetchReviewDecision: async () => 'REVIEW_REQUIRED',
+      }),
+    );
+    expect(result.settled).toBe(false);
+    expect(result.reviewDecision).toBe('REVIEW_REQUIRED');
+    expect(result.reasons).toContain('branch protection requires an approving review and none has been given yet');
+    // The review DID happen -- "no reviews yet" must not ALSO fire, or the
+    // reported reason would misdescribe the actual blocking condition.
+    expect(result.reasons).not.toContain('no reviews yet');
+  });
+
+  it('is not settled when reviewDecision is CHANGES_REQUESTED', async () => {
+    const result = await assessPrReadiness(
+      REF,
+      deps({
+        fetchChecks: async () => [{ name: 'build', state: 'success' }],
+        fetchReviews: async () => [{ author: 'reviewer', state: 'CHANGES_REQUESTED' }],
+        fetchReviewDecision: async () => 'CHANGES_REQUESTED',
+      }),
+    );
+    expect(result.settled).toBe(false);
+    expect(result.reviewDecision).toBe('CHANGES_REQUESTED');
+    expect(result.reasons).toContain('a reviewer has requested changes, blocking merge');
+  });
+
+  it('is settled when reviewDecision is APPROVED, alongside clean checks/threads/alerts', async () => {
+    const result = await assessPrReadiness(
+      REF,
+      deps({
+        fetchChecks: async () => [{ name: 'build', state: 'success' }],
+        fetchReviews: async () => [{ author: 'reviewer', state: 'APPROVED' }],
+        fetchReviewDecision: async () => 'APPROVED',
+      }),
+    );
+    expect(result.settled).toBe(true);
+    expect(result.reviewDecision).toBe('APPROVED');
+    expect(result.reasons).toEqual([]);
+  });
+
+  it('is settled with a non-approving submitted review when reviewDecision is null (no branch-protection review requirement configured)', async () => {
+    const result = await assessPrReadiness(
+      REF,
+      deps({
+        fetchChecks: async () => [{ name: 'build', state: 'success' }],
+        fetchReviews: async () => [{ author: 'copilot-pull-request-reviewer', state: 'COMMENTED' }],
+        fetchReviewDecision: async () => null,
+      }),
+    );
+    expect(result.settled).toBe(true);
+    expect(result.reviewDecision).toBeNull();
+    expect(result.reasons).toEqual([]);
   });
 
   it('is not settled with an open code-scanning alert, even otherwise clean', async () => {
@@ -213,6 +283,7 @@ const GRAPHQL_FIELDS = {
     ],
   },
   reviewThreads: { nodes: [{ isResolved: true }, { isResolved: false }] },
+  reviewDecision: 'REVIEW_REQUIRED' as const,
 };
 
 describe('createLiveReadinessDeps: CheckRun/StatusContext classification', () => {
@@ -304,6 +375,20 @@ describe('createLiveReadinessDeps: CheckRun/StatusContext classification', () =>
     expect(threads).toEqual([{ isResolved: true }, { isResolved: false }]);
   });
 
+  it('passes reviewDecision through unchanged (issue #305)', async () => {
+    mockGraphQL(() => ({ repository: { pullRequest: GRAPHQL_FIELDS } }));
+    const deps = createLiveReadinessDeps();
+    const reviewDecision = await deps.fetchReviewDecision({ owner: 'acme', repo: 'widgets', pullNumber: 1 });
+    expect(reviewDecision).toBe('REVIEW_REQUIRED');
+  });
+
+  it('reports reviewDecision as null when GitHub returns null (no branch-protection review requirement)', async () => {
+    mockGraphQL(() => ({ repository: { pullRequest: { ...GRAPHQL_FIELDS, reviewDecision: null } } }));
+    const deps = createLiveReadinessDeps();
+    const reviewDecision = await deps.fetchReviewDecision({ owner: 'acme', repo: 'widgets', pullNumber: 1 });
+    expect(reviewDecision).toBeNull();
+  });
+
   it('fetches code-scanning alerts filtered by the PR head ref (from the memoized GraphQL response, no separate REST call)', async () => {
     let capturedUrl = '';
     mockGraphQL(() => ({ repository: { pullRequest: GRAPHQL_FIELDS } }));
@@ -360,7 +445,7 @@ describe('createLiveReadinessDeps: CheckRun/StatusContext classification', () =>
     });
     const deps = createLiveReadinessDeps();
     const ref: PrReadinessRef = { owner: 'acme', repo: 'widgets', pullNumber: 1 };
-    await Promise.all([deps.fetchChecks(ref), deps.fetchReviews(ref), deps.fetchReviewThreads(ref)]);
+    await Promise.all([deps.fetchChecks(ref), deps.fetchReviews(ref), deps.fetchReviewThreads(ref), deps.fetchReviewDecision(ref)]);
     expect(callCount).toBe(1);
   });
 });
@@ -385,6 +470,28 @@ describe('checkPrReadiness', () => {
     const result = await checkPrReadiness({ owner: 'acme', repo: 'widgets', pullNumber: 1 });
     expect(result.settled).toBe(true);
     expect(result.codeScanningAlerts.total).toBe(0);
+  });
+
+  // Issue #305 repro at the full wiring level (mif-rs PR #118): green
+  // checks, zero unresolved threads, zero code-scanning alerts, and one
+  // submitted-but-non-approving review, with reviewDecision REVIEW_REQUIRED.
+  it('is not settled end to end when checks/threads/alerts are clean but reviewDecision is REVIEW_REQUIRED (issue #305)', async () => {
+    mockGraphQL(() => ({
+      repository: {
+        pullRequest: {
+          headRefName: 'main',
+          commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [{ __typename: 'CheckRun', name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' }] } } } }] },
+          reviews: { nodes: [{ author: { login: 'copilot-pull-request-reviewer' }, state: 'COMMENTED' }] },
+          reviewThreads: { nodes: [] },
+          reviewDecision: 'REVIEW_REQUIRED',
+        },
+      },
+    }));
+    mockRest('get', '/repos/acme/widgets/code-scanning/alerts', []);
+    const result = await checkPrReadiness({ owner: 'acme', repo: 'widgets', pullNumber: 1 });
+    expect(result.settled).toBe(false);
+    expect(result.reviewDecision).toBe('REVIEW_REQUIRED');
+    expect(result.reasons).toContain('branch protection requires an approving review and none has been given yet');
   });
 
   // Issue #281: same root cause as gdlc#274/#280 -- checkPrReadiness's
