@@ -13,13 +13,21 @@
  *     gap a monitor closes;
  *   - everything green, approved, zero unresolved threads -> the PR is
  *     settled and the next step is to merge it (the shepherd-forward case);
- *   - merged -> one-time reminder to verify linked issues closed and the
+ *   - merged -> one reminder to verify linked issues closed and the
  *     board shows Done (time-based backstop to the hygiene family's
  *     closing-keyword checks).
  *
  * Advisory only, never mutates. Findings carry state-qualified dedup keys
  * (head sha / thread count), so a push or a new thread re-arms immediately
  * while a persisting condition is throttled by monitor-core's cooldown.
+ * The merged finding is the one terminal condition: its key can never
+ * change again, and the session scratch never forgets a PR, so relying on
+ * the cooldown alone would re-nudge every 30 minutes forever (code-review
+ * finding on the PR that introduced this file). Instead the assess
+ * closure retires a PR from all future polling the moment it is seen
+ * merged or closed -- one report per process lifetime, with at most one
+ * cooldown-throttled repeat after the documented plugin-reload restart
+ * (the dedup store persists across restarts; the closure does not).
  *
  * Plugin-specific (NOT byte-copied): imports this plugin's own hooks/lib
  * modules freely, unlike monitor-core.mjs.
@@ -113,18 +121,29 @@ export function evaluatePrFindings(pr, ref) {
 }
 
 /** Build the monitor's assess function. No PRs recorded for this session
- * means nothing to watch -- stay silent, make zero API calls. */
+ * means nothing to watch -- stay silent, make zero API calls. The
+ * `finished` set is closure state owned by the long-lived monitor process
+ * (same lifetime pattern as board-hygiene's git tracker): a PR observed
+ * merged or closed is retired from every later cycle's query, so its
+ * terminal report happens once and dead PRs stop costing API aliases. */
 export function createPrSettlementAssess({
   readOpenedPrsFn = (sessionId) => readOpenedPrs(sessionPrsFilePath(sessionId)),
 } = {}) {
+  const finished = new Set();
+
   return async function assess({ sessionId, runGraphQL }) {
-    const refs = readOpenedPrsFn(sessionId);
+    const refs = readOpenedPrsFn(sessionId).filter((ref) => !finished.has(prKey(ref)));
     if (refs.length === 0) return [];
 
     const data = await runGraphQL(buildSettlementQuery(refs));
     const findings = [];
     refs.forEach((ref, i) => {
-      findings.push(...evaluatePrFindings(data?.[`p${i}`]?.pullRequest ?? null, ref));
+      const pr = data?.[`p${i}`]?.pullRequest ?? null;
+      findings.push(...evaluatePrFindings(pr, ref));
+      // Retire terminal PRs: merged (its one report is in `findings` right
+      // now) and closed-unmerged (never reported at all). A vanished node
+      // (null) is NOT retired -- that can be a transient API hiccup.
+      if (pr && (pr.merged === true || pr.state !== 'OPEN')) finished.add(prKey(ref));
     });
     return findings;
   };

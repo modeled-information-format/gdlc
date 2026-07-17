@@ -12,8 +12,11 @@
 // false) -- gateNewWorkOnUnresolvedThreads itself defaults to true once
 // the family is opted into, same "strictest sane behavior once enabled"
 // convention as prLifecycle's other require* toggles (see config.ts's
-// resolvePrLifecycleConfig doc comment); if the family is off, tracking
-// PRs for a gate that can never fire is pointless overhead.
+// resolvePrLifecycleConfig doc comment). Tracking originally ran only for
+// that gate; since ADR-0010 (AD-7) this scratch is ALSO the pr-settlement
+// monitor's data source, so the monitors pack alone keeps tracking on
+// even with the prLifecycle family off -- see the gating below. Only when
+// NEITHER consumer is enabled is tracking pointless overhead and skipped.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { extractTouch } from './lib/hygiene-check.mjs';

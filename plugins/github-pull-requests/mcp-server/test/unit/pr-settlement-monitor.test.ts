@@ -149,6 +149,54 @@ describe('createPrSettlementAssess', () => {
       'pr-settlement:acme/gizmos#9:merged',
     ]);
   });
+
+  // Code-review finding on the introducing PR: the merged key never
+  // changes and the session scratch never forgets a PR, so without
+  // retirement the cooldown alone would re-nudge "is merged" every 30
+  // minutes forever. Terminal PRs must leave the polling set after their
+  // one report.
+  it('retires merged and closed PRs from later cycles (one terminal report, then zero API cost)', async () => {
+    const refs = [REF, { owner: 'acme', repo: 'gizmos', pullNumber: 9 }];
+    const assess = createPrSettlementAssess({ readOpenedPrsFn: () => refs });
+    let calls = 0;
+    const run = () =>
+      assess({
+        sessionId: 's',
+        runGraphQL: async (q: string) => {
+          calls += 1;
+          // After cycle 1 retires both (one merged, one closed-unmerged),
+          // no query should ever mention them again.
+          if (calls > 1) throw new Error(`unexpected query: ${q}`);
+          return {
+            p0: { pullRequest: prNode({ merged: true, state: 'MERGED' }) },
+            p1: { pullRequest: prNode({ state: 'CLOSED' }) },
+          };
+        },
+      } as never);
+    const first = await run();
+    expect(first.map((f: { key: string }) => f.key)).toEqual(['pr-settlement:acme/widgets#77:merged']);
+    const second = await run();
+    expect(second).toEqual([]);
+    expect(calls).toBe(1);
+  });
+
+  it('does not retire a PR whose node vanished from the response (transient API hiccup)', async () => {
+    const assess = createPrSettlementAssess({ readOpenedPrsFn: () => [REF] });
+    let calls = 0;
+    const run = (node: unknown) =>
+      assess({
+        sessionId: 's',
+        runGraphQL: async () => {
+          calls += 1;
+          return { p0: { pullRequest: node } };
+        },
+      } as never);
+    expect(await run(null)).toEqual([]);
+    // Still polled next cycle -- and reportable once the node comes back.
+    const second = await run(prNode({ merged: true, state: 'MERGED' }));
+    expect(second.map((f: { key: string }) => f.key)).toEqual(['pr-settlement:acme/widgets#77:merged']);
+    expect(calls).toBe(2);
+  });
 });
 
 // Regression for the ADR-0010 gating widening: the monitors pack alone

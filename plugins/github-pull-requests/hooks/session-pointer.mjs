@@ -5,11 +5,13 @@
 // their session context from. See hooks/lib/session-pointer.mjs for the
 // full contract; this entrypoint is byte-copied into every monitor-bearing
 // plugin and drift-checked alongside it, so it must stay free of any
-// plugin-specific reference. The already-firing PostToolUse hooks that are
-// NOT part of a drift-checked family (set-in-progress.mjs here,
-// track-opened-prs.mjs in github-pull-requests) refresh the same pointer
-// mid-session, so a monitor's freshness check keeps resolving the session
-// as long as work is actually happening in it.
+// plugin-specific code reference. Each plugin also refreshes the same
+// pointer mid-session from its own already-firing PostToolUse hooks that
+// are NOT part of a drift-checked family (set-in-progress.mjs in
+// github-sdlc-planning, track-opened-prs.mjs in github-pull-requests,
+// track-created-issues.mjs in github-bug-capture), so a monitor's
+// freshness check keeps resolving the session as long as work is actually
+// happening in it.
 //
 // Every failure path is a silent no-op emitting `{}` -- a hook must never
 // break the session event it observes.
