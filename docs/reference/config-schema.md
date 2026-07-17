@@ -3,14 +3,14 @@ id: 20d89b34-8277-4da6-bd0f-0c2888c7a680
 type: semantic
 created: 2026-07-06T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: '2026-07-17T09:42:05.183Z'
+modified: '2026-07-17T12:43:19.122Z'
 title: Layered config schema (global + project)
 diataxis_type: reference
 provenance:
   '@type': Provenance
-  agent: claude-code/claude-fable-5
+  agent: claude-code/claude-sonnet-5
   wasGeneratedBy:
-    '@id': urn:mif:activity:claude-code-session:09389b7a-b2b1-4088-9b84-424cb64dcedc
+    '@id': urn:mif:activity:claude-code-session:510bf739-31a0-4ce7-a88a-aa51484ddbbd
     '@type': prov:Activity
   trustLevel: user_stated
   agentVersion: 2.1.212
@@ -179,6 +179,27 @@ review command, which can run before a PR exists — not the plugin-qualified
 `code-review@claude-plugins-official` marketplace plugin, which only reviews
 an already-open PR (`gh pr diff`/`gh pr view`) and has no `--fix` handling;
 naming it here would make this gate unsatisfiable pre-PR.
+
+### Opting out of the hard block (issue #275)
+
+`requireLocalReview` and `gateNewWorkOnUnresolvedThreads` each control
+whether their check *runs at all*; they say nothing about whether tripping
+the check blocks the tool call. Before issue #275, tripping either check
+always emitted `permissionDecision: 'ask'` — a hard stop with no opt-out
+short of disabling the whole check, reminder included. Two new keys
+separate "does this run" from "does this block":
+
+- `confirmLocalReview` (default `false`) — governs `pr-lifecycle-gate.mjs`'s
+  `create_pull_request` reminder.
+- `confirmNewWorkGate` (default `false`) — governs `review-thread-gate.mjs`'s
+  worktree/branch-creation reminder.
+
+With the default `false`, tripping the check still surfaces the exact same
+`permissionDecisionReason` text, just as `permissionDecision: 'allow'`
+(non-blocking context) instead of `'ask'`. Set either to `true` to restore
+the original hard-stop behavior. Same opt-out shape as `packs.skipMutationConfirm`
+(issue #183): a fail-open default for high-volume workflows, with the
+stricter behavior one explicit config line away for anyone who wants it.
 
 ## History: the two retired markdown carriers
 

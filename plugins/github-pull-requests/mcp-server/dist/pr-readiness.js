@@ -7642,6 +7642,10 @@ function normalizeConfig(parsed) {
       prLifecycle.requireCleanCodeScanning = raw.requireCleanCodeScanning;
     if (typeof raw.gateNewWorkOnUnresolvedThreads === "boolean")
       prLifecycle.gateNewWorkOnUnresolvedThreads = raw.gateNewWorkOnUnresolvedThreads;
+    if (typeof raw.confirmLocalReview === "boolean")
+      prLifecycle.confirmLocalReview = raw.confirmLocalReview;
+    if (typeof raw.confirmNewWorkGate === "boolean")
+      prLifecycle.confirmNewWorkGate = raw.confirmNewWorkGate;
     if (Object.keys(prLifecycle).length > 0)
       config.prLifecycle = prLifecycle;
   }
@@ -7677,7 +7681,9 @@ function resolvePrLifecycleConfig(config) {
     requireLocalReview: raw.requireLocalReview ?? true,
     requireCopilotReview: raw.requireCopilotReview ?? true,
     requireCleanCodeScanning: raw.requireCleanCodeScanning ?? true,
-    gateNewWorkOnUnresolvedThreads: raw.gateNewWorkOnUnresolvedThreads ?? true
+    gateNewWorkOnUnresolvedThreads: raw.gateNewWorkOnUnresolvedThreads ?? true,
+    confirmLocalReview: raw.confirmLocalReview ?? false,
+    confirmNewWorkGate: raw.confirmNewWorkGate ?? false
   };
 }
 

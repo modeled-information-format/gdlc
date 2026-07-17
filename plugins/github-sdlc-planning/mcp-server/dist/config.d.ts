@@ -33,6 +33,18 @@ export interface PrLifecycleConfig {
     /** gdlc#202/#211: gate starting new branch/worktree work on any PR opened
      * this session still having unresolved review threads. */
     gateNewWorkOnUnresolvedThreads?: boolean;
+    /** gdlc#275: whether `requireLocalReview`'s reminder actually blocks
+     * (`permissionDecision: 'ask'`) or merely surfaces as non-blocking context
+     * (`permissionDecision: 'allow'` with the same `permissionDecisionReason`).
+     * Defaults to `false` -- mirrors `skipMutationConfirm`'s opt-out shape:
+     * every repo that has never heard of this key keeps the check running,
+     * just without the hard stop. Has no effect unless `requireLocalReview`
+     * is itself enabled. */
+    confirmLocalReview?: boolean;
+    /** gdlc#275: same opt-out, for `gateNewWorkOnUnresolvedThreads`'s gate.
+     * Defaults to `false`. Has no effect unless `gateNewWorkOnUnresolvedThreads`
+     * is itself enabled. */
+    confirmNewWorkGate?: boolean;
 }
 export interface GdlcConfig {
     targeting?: {
@@ -200,6 +212,8 @@ export interface ResolvedPrLifecycleConfig {
     requireCopilotReview: boolean;
     requireCleanCodeScanning: boolean;
     gateNewWorkOnUnresolvedThreads: boolean;
+    confirmLocalReview: boolean;
+    confirmNewWorkGate: boolean;
 }
 /** Applies defaults to the raw `prLifecycle` section (issue #185/#186).
  * `enabled` defaults to `false` -- an absent or malformed section means the
@@ -225,5 +239,14 @@ export interface ResolvedPrLifecycleConfig {
  * would silently do nothing (or run the literal string as a binary name and
  * fail) instead of enforcing anything. See
  * `plugins/github-pull-requests/hooks/pr-lifecycle-gate.mjs` for the
- * consuming hook and its own doc comment on this same constraint. */
+ * consuming hook and its own doc comment on this same constraint.
+ *
+ * `confirmLocalReview`/`confirmNewWorkGate` (gdlc#275) each default to
+ * `false`: the reminder still fires whenever `requireLocalReview`/
+ * `gateNewWorkOnUnresolvedThreads` is on, but as a non-blocking
+ * `permissionDecision: 'allow'` (context only) rather than a hard `'ask'`
+ * stop. Setting either to `true` restores the original hard-stop behavior.
+ * Same opt-out shape as `skipMutationConfirm` (issue #183): before this,
+ * the only way to silence the blocking prompt was to disable the whole
+ * check, reminder included. */
 export declare function resolvePrLifecycleConfig(config: GdlcConfig): ResolvedPrLifecycleConfig;

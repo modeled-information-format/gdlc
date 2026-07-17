@@ -21913,7 +21913,12 @@ var prLifecycleSectionSchema = external_exports.object({
   requireLocalReview: external_exports.boolean().optional(),
   requireCopilotReview: external_exports.boolean().optional(),
   requireCleanCodeScanning: external_exports.boolean().optional(),
-  gateNewWorkOnUnresolvedThreads: external_exports.boolean().optional()
+  gateNewWorkOnUnresolvedThreads: external_exports.boolean().optional(),
+  // gdlc#275: opt-out of the hard 'ask' block for requireLocalReview /
+  // gateNewWorkOnUnresolvedThreads respectively, defaulting to false
+  // (non-blocking) in resolvePrLifecycleConfig.
+  confirmLocalReview: external_exports.boolean().optional(),
+  confirmNewWorkGate: external_exports.boolean().optional()
 }).strict();
 var GDLC_CONFIG_SECTION_SCHEMAS = {
   targeting: targetingSectionSchema,

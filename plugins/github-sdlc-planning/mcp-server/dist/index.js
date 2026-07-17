@@ -39304,6 +39304,8 @@ function normalizeConfig(parsed) {
     if (typeof raw.requireCopilotReview === "boolean") prLifecycle.requireCopilotReview = raw.requireCopilotReview;
     if (typeof raw.requireCleanCodeScanning === "boolean") prLifecycle.requireCleanCodeScanning = raw.requireCleanCodeScanning;
     if (typeof raw.gateNewWorkOnUnresolvedThreads === "boolean") prLifecycle.gateNewWorkOnUnresolvedThreads = raw.gateNewWorkOnUnresolvedThreads;
+    if (typeof raw.confirmLocalReview === "boolean") prLifecycle.confirmLocalReview = raw.confirmLocalReview;
+    if (typeof raw.confirmNewWorkGate === "boolean") prLifecycle.confirmNewWorkGate = raw.confirmNewWorkGate;
     if (Object.keys(prLifecycle).length > 0) config2.prLifecycle = prLifecycle;
   }
   return config2;
@@ -39436,7 +39438,12 @@ var prLifecycleSectionSchema = external_exports.object({
   requireLocalReview: external_exports.boolean().optional(),
   requireCopilotReview: external_exports.boolean().optional(),
   requireCleanCodeScanning: external_exports.boolean().optional(),
-  gateNewWorkOnUnresolvedThreads: external_exports.boolean().optional()
+  gateNewWorkOnUnresolvedThreads: external_exports.boolean().optional(),
+  // gdlc#275: opt-out of the hard 'ask' block for requireLocalReview /
+  // gateNewWorkOnUnresolvedThreads respectively, defaulting to false
+  // (non-blocking) in resolvePrLifecycleConfig.
+  confirmLocalReview: external_exports.boolean().optional(),
+  confirmNewWorkGate: external_exports.boolean().optional()
 }).strict();
 var GDLC_CONFIG_SECTION_SCHEMAS = {
   targeting: targetingSectionSchema,

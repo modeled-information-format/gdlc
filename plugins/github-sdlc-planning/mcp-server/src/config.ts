@@ -42,6 +42,18 @@ export interface PrLifecycleConfig {
   /** gdlc#202/#211: gate starting new branch/worktree work on any PR opened
    * this session still having unresolved review threads. */
   gateNewWorkOnUnresolvedThreads?: boolean;
+  /** gdlc#275: whether `requireLocalReview`'s reminder actually blocks
+   * (`permissionDecision: 'ask'`) or merely surfaces as non-blocking context
+   * (`permissionDecision: 'allow'` with the same `permissionDecisionReason`).
+   * Defaults to `false` -- mirrors `skipMutationConfirm`'s opt-out shape:
+   * every repo that has never heard of this key keeps the check running,
+   * just without the hard stop. Has no effect unless `requireLocalReview`
+   * is itself enabled. */
+  confirmLocalReview?: boolean;
+  /** gdlc#275: same opt-out, for `gateNewWorkOnUnresolvedThreads`'s gate.
+   * Defaults to `false`. Has no effect unless `gateNewWorkOnUnresolvedThreads`
+   * is itself enabled. */
+  confirmNewWorkGate?: boolean;
 }
 
 export interface GdlcConfig {
@@ -262,6 +274,8 @@ function normalizeConfig(parsed: unknown): GdlcConfig {
     if (typeof raw.requireCopilotReview === 'boolean') prLifecycle.requireCopilotReview = raw.requireCopilotReview;
     if (typeof raw.requireCleanCodeScanning === 'boolean') prLifecycle.requireCleanCodeScanning = raw.requireCleanCodeScanning;
     if (typeof raw.gateNewWorkOnUnresolvedThreads === 'boolean') prLifecycle.gateNewWorkOnUnresolvedThreads = raw.gateNewWorkOnUnresolvedThreads;
+    if (typeof raw.confirmLocalReview === 'boolean') prLifecycle.confirmLocalReview = raw.confirmLocalReview;
+    if (typeof raw.confirmNewWorkGate === 'boolean') prLifecycle.confirmNewWorkGate = raw.confirmNewWorkGate;
     if (Object.keys(prLifecycle).length > 0) config.prLifecycle = prLifecycle;
   }
 
@@ -428,6 +442,8 @@ export interface ResolvedPrLifecycleConfig {
   requireCopilotReview: boolean;
   requireCleanCodeScanning: boolean;
   gateNewWorkOnUnresolvedThreads: boolean;
+  confirmLocalReview: boolean;
+  confirmNewWorkGate: boolean;
 }
 
 const DEFAULT_LOCAL_REVIEWER = '/code-review --fix';
@@ -456,7 +472,16 @@ const DEFAULT_LOCAL_REVIEWER = '/code-review --fix';
  * would silently do nothing (or run the literal string as a binary name and
  * fail) instead of enforcing anything. See
  * `plugins/github-pull-requests/hooks/pr-lifecycle-gate.mjs` for the
- * consuming hook and its own doc comment on this same constraint. */
+ * consuming hook and its own doc comment on this same constraint.
+ *
+ * `confirmLocalReview`/`confirmNewWorkGate` (gdlc#275) each default to
+ * `false`: the reminder still fires whenever `requireLocalReview`/
+ * `gateNewWorkOnUnresolvedThreads` is on, but as a non-blocking
+ * `permissionDecision: 'allow'` (context only) rather than a hard `'ask'`
+ * stop. Setting either to `true` restores the original hard-stop behavior.
+ * Same opt-out shape as `skipMutationConfirm` (issue #183): before this,
+ * the only way to silence the blocking prompt was to disable the whole
+ * check, reminder included. */
 export function resolvePrLifecycleConfig(config: GdlcConfig): ResolvedPrLifecycleConfig {
   const raw = config.prLifecycle ?? {};
   return {
@@ -466,5 +491,7 @@ export function resolvePrLifecycleConfig(config: GdlcConfig): ResolvedPrLifecycl
     requireCopilotReview: raw.requireCopilotReview ?? true,
     requireCleanCodeScanning: raw.requireCleanCodeScanning ?? true,
     gateNewWorkOnUnresolvedThreads: raw.gateNewWorkOnUnresolvedThreads ?? true,
+    confirmLocalReview: raw.confirmLocalReview ?? false,
+    confirmNewWorkGate: raw.confirmNewWorkGate ?? false,
   };
 }
