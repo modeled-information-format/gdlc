@@ -321,3 +321,54 @@ jobs:
             check_file "$f" "allowed-tools"
           done < <(find plugins -path '*/skills/*/SKILL.md' -print0)
           exit "$status"
+
+  # Issue #306: query-pipeline's mergeStage prompt granted every item in a
+  # run identical "settled + automerge" authorization without ever saying
+  # whether an --admin retry after a required-approval-only branch-protection
+  # rejection was covered by it. Two sibling subagents given the byte-
+  # identical prompt in the same run read that ambiguity two different ways
+  # (.github#74 retried with --admin and merged; mif-rs#118 stopped and filed
+  # a bug instead) -- silently inconsistent automerge behavior for the exact
+  # same settled-PR state. The fix is pure instructional text, so the
+  # regression gate for it is a content check on the prompt itself rather
+  # than a unit test: it fails if the explicit --admin-retry carve-out, its
+  # required-approval-only condition, or its "otherwise don't retry"
+  # counterpart are ever removed or loosened back into ambiguity.
+  query-pipeline-merge-authorization-check:
+    name: query-pipeline-merge-authorization-check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: mergeStage prompt must resolve the --admin retry ambiguity explicitly
+        run: |
+          set -uo pipefail
+          status=0
+          f=plugins/github-sdlc-planning/skills/query-pipeline/scripts/query-pipeline.workflow.js
+          if [ ! -f "$f" ]; then
+            echo "::error file=$f::missing"
+            exit 1
+          fi
+          # The retry itself must still exist as the actual merge retry
+          # command, not merely the string "--admin" appearing anywhere in
+          # the file (e.g. in a comment or another stage) -- match the
+          # specific `--delete-branch --admin` retry invocation.
+          if ! grep -q -- '--delete-branch --admin' "$f"; then
+            echo "::error file=$f::mergeStage prompt no longer offers the --delete-branch --admin retry command at all (gdlc#306 regression: the ambiguity this closed was about WHEN it is authorized, not whether it exists)"
+            status=1
+          fi
+          # ...gated behind the required-approval-only condition, not
+          # offered unconditionally.
+          if ! grep -qi 'required-approval' "$f"; then
+            echo "::error file=$f::mergeStage prompt no longer conditions the --admin retry on a required-approval-only rejection reason (gdlc#306 regression: a blanket --admin retry re-introduces the exact non-determinism the fix closed)"
+            status=1
+          fi
+          # ...and every other rejection reason must be explicitly excluded,
+          # or this is a blanket grant again in different words.
+          if ! grep -q 'do NOT retry with --admin' "$f"; then
+            echo "::error file=$f::mergeStage prompt no longer explicitly excludes non-approval rejection reasons from the --admin authorization (gdlc#306 regression)"
+            status=1
+          fi
+          exit "$status"
