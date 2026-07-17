@@ -3,7 +3,7 @@ id: c867194d-1baa-48c1-869e-5c8d43362ff7
 type: semantic
 created: 2026-07-03T00:00:00Z
 namespace: github-sdlc-plugins/github-sdlc-planning
-modified: '2026-07-17T08:34:34.313Z'
+modified: '2026-07-17T09:07:10.079Z'
 title: github-sdlc-planning
 diataxis_type: reference
 provenance:
@@ -69,7 +69,10 @@ required for every Projects v2 write. Fine-grained PAT equivalent: Issues
   and carry it through to a reviewed, merged pull request, composing
   `epic-decomposition`, `github-pull-requests`, `github-bug-capture`,
   `github-repo-config`, `github-insights`, `github-packages`, and
-  `github-org-identity` end to end instead of hand-rolled `gh`/GraphQL calls
+  `github-org-identity` end to end instead of hand-rolled `gh`/GraphQL
+  calls; the skill is the interactive trigger (scope, confirm-before-execute
+  and confirm-before-merge gates), and the orchestration runs as a bundled
+  background Workflow script launched twice — plan mode, then execute mode
 - `query-pipeline` — fan out over a GitHub issues/PR search query and drive
   every result to a settled PR independently (issues developed into PRs,
   existing PRs entering at review; per PR: code review with fixes, one
