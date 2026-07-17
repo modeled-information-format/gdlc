@@ -5,6 +5,23 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-07-17
+
+### Fixed
+
+- `github-sdlc-planning`: `query-pipeline`'s Discover stage now runs the
+  given search query verbatim (#300, #301). The prior guidance wrapped a
+  multi-qualifier query in a single quoted string for `gh search issues`,
+  which the `gh` CLI mis-parses whenever `org:` isn't the first token —
+  silently absorbing every trailing qualifier into the org value and
+  either erroring or returning a bogus empty result with no visible
+  signal. The fix passes each qualifier as a separate argument (preserving
+  quoted multi-word values intact) and explicitly forbids substituting the
+  raw REST search endpoint as a workaround, since some qualifiers (e.g.
+  `has:project`) are enforced client-side by the `gh` CLI's own search
+  command and are silently ignored by the raw endpoint — a different
+  silent-failure mode that over-matches instead of under-matching.
+
 ## [0.11.0] - 2026-07-17
 
 ### Added

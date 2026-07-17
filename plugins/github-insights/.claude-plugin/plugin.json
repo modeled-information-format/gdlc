@@ -1,7 +1,7 @@
 {
   "name": "github-insights",
   "displayName": "GitHub Insights",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Read-only repo/org reporting: traffic (views/clones), contributor stats, community-health profile, and dependency-graph/SBOM summary.",
   "author": {
     "name": "modeled-information-format"
