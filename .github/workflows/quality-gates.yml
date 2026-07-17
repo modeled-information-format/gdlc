@@ -53,7 +53,7 @@ jobs:
       actions: read
       packages: read
     uses: >-
-      modeled-information-format/.github/.github/workflows/reusable-sast-codeql.yml@e9e93cd50943a5ec3a9ad4ce8bb52f2fd29814fc
+      modeled-information-format/.github/.github/workflows/reusable-sast-codeql.yml@55bb7629147965895d480ed94b08b098ff431a35
     with:
       languages: actions
       build-mode: none
