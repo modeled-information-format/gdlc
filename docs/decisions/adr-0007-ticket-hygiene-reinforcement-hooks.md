@@ -497,6 +497,30 @@ byte-identical copies per AD-4, verified against the exact diff logic
 
 **Action Required:** None; issue #278 is resolved.
 
+### 2026-07-17
+
+**Status:** Compliant
+
+**Findings:**
+
+| Finding | Files | Lines | Assessment |
+| --- | --- | --- | --- |
+| Issue #289 resolved: `scanTranscriptForComment`'s line parser only ever read a bare `entry.tool_name`/`entry.message.tool_name`, a shape no real Claude Code session transcript line actually has -- a real line's tool calls live in `message.content[]` as one or more `tool_use` blocks keyed `name`/`input`. The bug report's own framing (MCP comment tools "never match") undersold the defect: verified against a real session transcript, the scan matched *nothing at all*, including a literal `gh issue comment <N>` Bash call, whenever it shared a line with another tool call in the same assistant turn -- the dominant shape a paired comment-then-transition batch actually takes. Fixed by extracting every `tool_use` block from `message.content[]` (falling back to the old flat shape for the existing test fixtures, which model it), checking all of a line's tool calls instead of assuming one. Variable-based `gh` invocations (e.g. `gh issue comment $2` in a loop) remain a documented, statically-unresolvable limitation per the issue's own suggested fix -- not attempted here. | plugins/*/hooks/lib/hygiene-check.mjs | - | fixed |
+
+**Summary:** Root-caused by replaying the exact false positive this hook
+produced against this session's own live transcript, then confirming the
+scan returns `found: false` for it via the real (unmodified) function --
+proving the defect empirically rather than from the bug report's
+description alone. Regression tests use a new real-shape transcript
+fixture (`tmpRealTranscriptWith`) distinct from the pre-existing
+flat-shape one, covering an MCP comment tool and a literal `gh` comment
+Bash call each sharing a transcript line with a sibling `set_field_value`
+tool_use block, plus a real-shape negative case. Propagated identically to
+`github-pull-requests`/`github-bug-capture`'s byte-identical copies per
+AD-4.
+
+**Action Required:** None; issue #289 is resolved.
+
 [adr-0003]: adr-0003-board-status-hygiene.md
 [adr-0004]: adr-0004-project-config-surface.md
 [adr-0005]: adr-0005-project-config-cwd-resolution.md

@@ -617,6 +617,32 @@ function readTranscriptTail(path) {
   }
 }
 
+/** A real Claude Code session transcript line is an `{type, message}` entry
+ * whose `message.content` is an array of blocks (text and/or `tool_use`) --
+ * ONE assistant turn commonly carries several tool calls as sibling blocks
+ * on the SAME line, keyed by `name`/`input`, never a bare `tool_name`/
+ * `tool_input`. gdlc#289: the prior version of this scan only ever checked
+ * `entry.tool_name`/`entry.message.tool_name` (singular, flat fields that
+ * no real transcript line has), so it silently matched nothing at all --
+ * not just MCP comment tools, but a same-turn literal `gh issue comment 42`
+ * sitting alongside another tool call in one multi-tool-use assistant
+ * message too, which is the dominant shape a batch of paired
+ * comment+transition calls actually takes. The flat shape is kept as a
+ * fallback since it's what this file's own unit tests (and any other
+ * hook-input-shaped fixture) construct. Returns every tool call found on
+ * the line, since a single line can carry more than one. */
+function extractToolCallsFromEntry(entry) {
+  const content = entry?.message?.content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((block) => block && block.type === 'tool_use' && typeof block.name === 'string' && block.input)
+      .map((block) => ({ toolName: block.name, toolInput: block.input }));
+  }
+  const toolName = entry?.tool_name ?? entry?.message?.tool_name;
+  const toolInput = entry?.tool_input ?? entry?.message?.tool_input;
+  return toolName && toolInput ? [{ toolName, toolInput }] : [];
+}
+
 /** Best-effort: scans the JSONL transcript for an `add_issue_comment` call
  * (plugin-scoped or the generic github MCP server's own comment tool --
  * NOT `issue_write`, which has no comment-posting semantics, see
@@ -624,7 +650,10 @@ function readTranscriptTail(path) {
  * call, referencing the same owner/repo/number anywhere in the
  * (tail-bounded) file. An unreadable/missing transcript is itself a
  * silent no-op for this check specifically -- it never suppresses the
- * other two checks (NFR-5). */
+ * other two checks (NFR-5). A variable-based gh invocation (e.g. `gh issue
+ * comment $2` inside a loop) is statically unresolvable and will not match
+ * this or any regex-based scan -- prefer literal issue numbers in comment
+ * commands when that matters to this check. */
 export function scanTranscriptForComment(transcriptPath, ref, readFn = readTranscriptTail) {
   if (!transcriptPath || !ref || typeof ref.owner !== 'string' || typeof ref.repo !== 'string') {
     return { resolved: false };
@@ -644,39 +673,38 @@ export function scanTranscriptForComment(transcriptPath, ref, readFn = readTrans
     } catch {
       continue;
     }
-    const toolName = entry?.tool_name ?? entry?.message?.tool_name;
-    const toolInput = entry?.tool_input ?? entry?.message?.tool_input;
-    if (!toolName || !toolInput) continue;
-    const action = toolName === 'Bash' ? null : mcpAction(toolName);
-    const isCommentTool = action !== null && COMMENT_ACTIONS.has(action);
-    const ghCommentMatch = toolName === 'Bash' && typeof toolInput.command === 'string' ? /\bgh\s+(?:issue|pr)\s+comment\s+#?(\d+)\b/.exec(toolInput.command) : null;
-    const isGhComment = ghCommentMatch !== null;
-    if (!isCommentTool && !isGhComment) continue;
+    for (const { toolName, toolInput } of extractToolCallsFromEntry(entry)) {
+      const action = toolName === 'Bash' ? null : mcpAction(toolName);
+      const isCommentTool = action !== null && COMMENT_ACTIONS.has(action);
+      const ghCommentMatch = toolName === 'Bash' && typeof toolInput.command === 'string' ? /\bgh\s+(?:issue|pr)\s+comment\s+#?(\d+)\b/.exec(toolInput.command) : null;
+      const isGhComment = ghCommentMatch !== null;
+      if (!isCommentTool && !isGhComment) continue;
 
-    let sameIssue;
-    if (isGhComment) {
-      const sameNumber = Number(ghCommentMatch[1]) === ref.number;
-      // gdlc#278 round-2 Copilot finding: this scan is now also called at
-      // Stop time across a whole turn (not just narrowly at PostToolUse,
-      // its original use), so a same-turn `gh issue comment <N> --repo
-      // other/other-repo` sharing the SAME issue NUMBER as `ref` in a
-      // DIFFERENT repo must never count as a match -- that would wrongly
-      // suppress a genuine lifecycle-comment reminder for `ref`'s own
-      // repo. An explicit, parseable -R/--repo flag that disagrees with
-      // `ref` rules the match out. No flag at all (or one that doesn't
-      // parse as owner/repo) keeps the prior behavior of matching by
-      // number alone -- this scan has no cwd context of its own to
-      // resolve an unflagged command's real target repo, and "no flag,
-      // same repo" is the dominant real-world pattern this scan exists to
-      // recognize (see parseGhRepoFlag's own doc comment for the same
-      // never-guess-when-ambiguous rationale `extractTouch` already
-      // applies to this exact flag).
-      const repoFlag = sameNumber ? parseGhRepoFlag(toolInput.command) : undefined;
-      sameIssue = sameNumber && (repoFlag == null || (repoFlag.owner === ref.owner && repoFlag.repo === ref.repo));
-    } else {
-      sameIssue = toolInput.owner === ref.owner && toolInput.repo === ref.repo && (toolInput.number === ref.number || toolInput.issue_number === ref.number);
+      let sameIssue;
+      if (isGhComment) {
+        const sameNumber = Number(ghCommentMatch[1]) === ref.number;
+        // gdlc#278 round-2 Copilot finding: this scan is now also called at
+        // Stop time across a whole turn (not just narrowly at PostToolUse,
+        // its original use), so a same-turn `gh issue comment <N> --repo
+        // other/other-repo` sharing the SAME issue NUMBER as `ref` in a
+        // DIFFERENT repo must never count as a match -- that would wrongly
+        // suppress a genuine lifecycle-comment reminder for `ref`'s own
+        // repo. An explicit, parseable -R/--repo flag that disagrees with
+        // `ref` rules the match out. No flag at all (or one that doesn't
+        // parse as owner/repo) keeps the prior behavior of matching by
+        // number alone -- this scan has no cwd context of its own to
+        // resolve an unflagged command's real target repo, and "no flag,
+        // same repo" is the dominant real-world pattern this scan exists to
+        // recognize (see parseGhRepoFlag's own doc comment for the same
+        // never-guess-when-ambiguous rationale `extractTouch` already
+        // applies to this exact flag).
+        const repoFlag = sameNumber ? parseGhRepoFlag(toolInput.command) : undefined;
+        sameIssue = sameNumber && (repoFlag == null || (repoFlag.owner === ref.owner && repoFlag.repo === ref.repo));
+      } else {
+        sameIssue = toolInput.owner === ref.owner && toolInput.repo === ref.repo && (toolInput.number === ref.number || toolInput.issue_number === ref.number);
+      }
+      if (sameIssue) return { resolved: true, found: true };
     }
-    if (sameIssue) return { resolved: true, found: true };
   }
   return { resolved: true, found: false };
 }

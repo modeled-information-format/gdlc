@@ -394,6 +394,21 @@ function tmpTranscriptWith(lines: unknown[]): string {
   return path;
 }
 
+// Real Claude Code transcript shape (gdlc#289): one line per assistant
+// turn, `message.content[]` holding one or more `tool_use` blocks.
+function tmpRealTranscriptWith(turns: Array<Array<{ name: string; input: unknown }>>): string {
+  const dir = mkdtempSync(join(tmpdir(), 'gdlc-hygiene-real-transcript-'));
+  const path = join(dir, 'transcript.jsonl');
+  const lines = turns.map((blocks) =>
+    JSON.stringify({
+      type: 'assistant',
+      message: { role: 'assistant', content: blocks.map((b) => ({ type: 'tool_use', id: 'toolu_x', name: b.name, input: b.input })) },
+    }),
+  );
+  writeFileSync(path, lines.join('\n'));
+  return path;
+}
+
 describe('scanTranscriptForComment', () => {
   it('returns unresolved for a missing transcript path', () => {
     expect(scanTranscriptForComment(undefined, { owner: 'acme', repo: 'widgets', number: 1 })).toEqual({ resolved: false });
@@ -472,6 +487,44 @@ describe('scanTranscriptForComment', () => {
   it('still matches a gh comment command with no --repo flag at all (the common case, unchanged)', () => {
     const path = tmpTranscriptWith([{ tool_name: 'Bash', tool_input: { command: 'gh issue comment 1 --body "hi"' } }]);
     expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 1 })).toEqual({ resolved: true, found: true });
+  });
+
+  // gdlc#289: a real Claude Code session transcript line has no bare
+  // `tool_name`/`tool_input` at all -- every tool call is a `tool_use`
+  // block (keyed `name`/`input`) inside `message.content[]`, and a single
+  // assistant turn commonly carries several such blocks on ONE line. The
+  // fixtures above (tmpTranscriptWith) predate that discovery and use a
+  // flat shape no real transcript actually has; these use the verified
+  // real shape instead, proving the fix rather than the fixture's own
+  // (wrong) assumption.
+  it('finds an MCP add_issue_comment call inside a real transcript entry, sharing a line with a sibling tool_use block', () => {
+    const path = tmpRealTranscriptWith([
+      [
+        { name: 'mcp__github__add_issue_comment', input: { owner: 'acme', repo: 'widgets', issue_number: 1, body: 'hi' } },
+        { name: 'mcp__github-sdlc-planning__set_field_value', input: { itemId: 'i1', fieldId: 'f1', value: {} } },
+      ],
+    ]);
+    expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 1 })).toEqual({ resolved: true, found: true });
+  });
+
+  it('finds a literal gh issue comment Bash call inside a real transcript entry, sharing a line with a sibling tool_use block', () => {
+    const path = tmpRealTranscriptWith([
+      [
+        { name: 'Bash', input: { command: 'gh issue comment 1 --body "hi"' } },
+        { name: 'mcp__github-sdlc-planning__set_field_value', input: { itemId: 'i1', fieldId: 'f1', value: {} } },
+      ],
+    ]);
+    expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 1 })).toEqual({ resolved: true, found: true });
+  });
+
+  it('does not find a comment in a real-shape entry when none of its sibling tool_use blocks is a comment', () => {
+    const path = tmpRealTranscriptWith([
+      [
+        { name: 'mcp__github-sdlc-planning__update_issue', input: { owner: 'acme', repo: 'widgets', number: 1 } },
+        { name: 'mcp__github-sdlc-planning__set_field_value', input: { itemId: 'i1', fieldId: 'f1', value: {} } },
+      ],
+    ]);
+    expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 1 })).toEqual({ resolved: true, found: false });
   });
 });
 
