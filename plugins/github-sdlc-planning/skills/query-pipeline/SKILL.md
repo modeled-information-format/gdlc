@@ -65,12 +65,19 @@ names one.
 - **Discover**: one agent runs the query via `gh search issues` /
   `gh search prs`, returns structured items, and the script caps at
   `maxItems`, logging every dropped item.
-- **Develop** (issues only — existing PRs skip straight to Review): an agent
-  reads the issue, implements it in an isolated temporary worktree (never a
-  possibly-dirty primary checkout), runs the repo's own local gates, pushes,
-  opens the PR via `create_pull_request` (never `gh pr create`) with
-  `Closes #N`, classifies it, puts it on the board, and moves the issue's
-  board Status forward with a comment at each transition.
+- **Develop** (issues only — existing PRs skip straight to Review): before
+  any implementation work, a read-only guard checks the issue's real board
+  Status (`get_project_status_profile` + `get_project_items`) and skips
+  straight to a no-op "already in flight" result if it's already past the
+  board's "not started" equivalent option with no PR yet — this is what
+  makes the query safe to re-run on a schedule against the same issues
+  (gdlc#307); GitHub search has no qualifier for a custom Projects v2 Status
+  value, so this can't be pushed into the query string itself. Otherwise an
+  agent reads the issue, implements it in an isolated temporary worktree
+  (never a possibly-dirty primary checkout), runs the repo's own local
+  gates, pushes, opens the PR via `create_pull_request` (never
+  `gh pr create`) with `Closes #N`, classifies it, puts it on the board, and
+  moves the issue's board Status forward with a comment at each transition.
 - **Review**: `/code-review:code-review <PR> --fix --no-comments` on
   `reviewModel`; fixes are pushed, findings never posted as a PR comment.
 - **Settle**: request a Copilot review **once** via
@@ -114,3 +121,8 @@ with why and what its board Status was left as — never silently dropped.
   a hand-rolled `create_issue`.
 - If the query is ambiguous about scope or intent, ask before launching —
   a background fleet cannot ask later.
+- Safe to re-run on a schedule against the same query: each issue-kind item
+  is guarded by its real board Status before Develop is dispatched, so an
+  issue a prior run already moved past "not started" (In Progress or later,
+  no PR yet) is skipped rather than handed to a second, independent Develop
+  agent (gdlc#307).
