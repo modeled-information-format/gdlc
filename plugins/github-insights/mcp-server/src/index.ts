@@ -9,7 +9,7 @@ import { getCommunityProfile } from './tools/community-profile.js';
 import { getDependencyGraphSbom } from './tools/dependency-graph.js';
 import { isInsightsError } from './errors.js';
 
-const server = new McpServer({ name: 'github-insights', version: '0.11.1' });
+const server = new McpServer({ name: 'github-insights', version: '0.11.2' });
 
 function toolResult(data: unknown): { content: Array<{ type: 'text'; text: string }> } {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };

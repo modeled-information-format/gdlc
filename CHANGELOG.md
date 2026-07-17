@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] - 2026-07-17
+
+### Fixed
+
+- `github-pull-requests`: `pr-lifecycle-gate.mjs` and `review-thread-gate.mjs`
+  no longer hard-block on a manual approval every time their governing
+  config flag (`requireLocalReview`, `gateNewWorkOnUnresolvedThreads`) is
+  true (#275). Both now default to a non-blocking `permissionDecision:
+  'allow'` reminder, matching `confirm-mutation.mjs`'s existing
+  `skipMutationConfirm` opt-out shape. New `prLifecycle.confirmLocalReview`
+  / `prLifecycle.confirmNewWorkGate` keys (default `false`) restore the old
+  hard-`'ask'` behavior for anyone who wants it. Version-bumped for
+  catalog-lockstep consistency per this repo's version-discipline
+  convention (issue #49); no other plugin has a functional change in this
+  release.
+
 ## [0.11.1] - 2026-07-17
 
 ### Fixed
