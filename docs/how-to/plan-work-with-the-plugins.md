@@ -3,7 +3,7 @@ id: 8b5d1e73-6a2f-4c08-b9d4-2f7e9a1c6d52
 type: procedural
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: '2026-07-17T08:35:33.511Z'
+modified: '2026-07-17T09:07:47.323Z'
 title: Plan and track work with the planning and PR plugins
 diataxis_type: how-to
 provenance:
@@ -26,7 +26,10 @@ asking for the **epic-pipeline** skill (`github-sdlc-planning`) with a goal,
 seed issue, or plan/design doc — it composes the exact same tools this page
 describes (plus `file-bug`/`pr-review-route` and a `get_branch_protection`
 pre-flight) into one decompose-then-execute pipeline, gated on explicit
-confirmation before executing and before merging.
+confirmation before executing and before merging. The skill itself is the
+interactive trigger; the orchestration runs as a bundled background
+Workflow script launched twice — plan mode, then (only after your explicit
+confirmation) execute mode — and merging always stays with you.
 
 When the starting point is a search query rather than a single goal
 ("everything labeled tech-debt", "all open Dependabot PRs"), ask for the
