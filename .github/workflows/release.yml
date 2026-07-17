@@ -382,7 +382,7 @@ jobs:
     needs: [meta, build]
     permissions: { id-token: write, attestations: write, contents: read }
     uses: >-
-      modeled-information-format/.github/.github/workflows/reusable-vex.yml@7c56346c4bc47b15f08d44889116486583a1a7ac
+      modeled-information-format/.github/.github/workflows/reusable-vex.yml@55bb7629147965895d480ed94b08b098ff431a35
     with:
       subject-name: ${{ needs.build.outputs.subject-name }}
       subject-digest: ${{ needs.build.outputs.subject-digest }}
