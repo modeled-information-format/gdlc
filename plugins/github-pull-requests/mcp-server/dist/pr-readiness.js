@@ -7690,11 +7690,12 @@ function resolvePrLifecycleConfig(config) {
 // src/tools/pr-readiness.ts
 async function assessPrReadiness(ref, deps, options = {}) {
   const requireCleanCodeScanning = options.requireCleanCodeScanning ?? true;
-  const [checks, reviews, threads, alerts] = await Promise.all([
+  const [checks, reviews, threads, alerts, reviewDecision] = await Promise.all([
     deps.fetchChecks(ref),
     deps.fetchReviews(ref),
     deps.fetchReviewThreads(ref),
-    requireCleanCodeScanning ? deps.fetchCodeScanningAlerts(ref) : Promise.resolve([])
+    requireCleanCodeScanning ? deps.fetchCodeScanningAlerts(ref) : Promise.resolve([]),
+    deps.fetchReviewDecision(ref)
   ]);
   const pending = checks.filter((c) => c.state === "pending").length;
   const failing = checks.filter((c) => c.state === "failure").length;
@@ -7707,6 +7708,11 @@ async function assessPrReadiness(ref, deps, options = {}) {
   if (pending > 0) reasons.push(`${pending} check(s) still pending`);
   if (failing > 0) reasons.push(`${failing} check(s) failing`);
   if (submittedReviews.length === 0) reasons.push("no reviews yet");
+  if (reviewDecision === "REVIEW_REQUIRED") {
+    reasons.push("branch protection requires an approving review and none has been given yet");
+  } else if (reviewDecision === "CHANGES_REQUESTED") {
+    reasons.push("a reviewer has requested changes, blocking merge");
+  }
   if (unresolvedThreads > 0) reasons.push(`${unresolvedThreads} unresolved review thread(s)`);
   if (requireCleanCodeScanning && openAlerts > 0) reasons.push(`${openAlerts} open code-scanning alert(s)`);
   return {
@@ -7715,6 +7721,7 @@ async function assessPrReadiness(ref, deps, options = {}) {
     reviews: { total: submittedReviews.length, states: submittedReviews.map((r) => r.state) },
     threads: { total: threads.length, unresolved: unresolvedThreads },
     codeScanningAlerts: { total: alerts.length, open: openAlerts },
+    reviewDecision,
     reasons
   };
 }
@@ -7740,6 +7747,7 @@ var PR_READINESS_QUERY = `
         }
         reviews(first: 100) { nodes { author { login } state } }
         reviewThreads(first: 100) { nodes { isResolved } }
+        reviewDecision
       }
     }
   }
@@ -7783,6 +7791,10 @@ function createLiveReadinessDeps(deps = {}) {
     async fetchReviewThreads(ref) {
       const repository = await fetchPrFields(ref);
       return repository?.pullRequest?.reviewThreads.nodes ?? [];
+    },
+    async fetchReviewDecision(ref) {
+      const repository = await fetchPrFields(ref);
+      return repository?.pullRequest?.reviewDecision ?? null;
     },
     async fetchCodeScanningAlerts(ref) {
       const repository = await fetchPrFields(ref);

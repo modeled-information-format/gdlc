@@ -43,6 +43,18 @@ export interface ReviewStatus {
   state: string;
 }
 
+/** GitHub's own computed verdict (`PullRequest.reviewDecision` GraphQL
+ * field) for whether the PR satisfies its target branch's review
+ * requirements -- `REVIEW_REQUIRED` means branch protection requires an
+ * approving review and none has landed yet (a `COMMENTED`/pending review
+ * does NOT satisfy this, only `APPROVED` does); `CHANGES_REQUESTED` means
+ * a reviewer explicitly blocked it; `null` means the branch has no review
+ * requirement configured at all. Already relied on for the identical
+ * purpose by this plugin's `pr-settlement` monitor
+ * (`monitors/lib/pr-settlement.mjs`) -- reusing the same signal here
+ * instead of reimplementing branch-protection awareness from scratch. */
+export type ReviewDecision = 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null;
+
 export interface ReviewThreadStatus {
   isResolved: boolean;
 }
@@ -58,6 +70,11 @@ export interface PrReadinessDeps {
   fetchReviews: (ref: PrReadinessRef) => Promise<ReviewStatus[]>;
   fetchReviewThreads: (ref: PrReadinessRef) => Promise<ReviewThreadStatus[]>;
   fetchCodeScanningAlerts: (ref: PrReadinessRef) => Promise<CodeScanningAlert[]>;
+  /** Issue #305: GitHub's own `reviewDecision` verdict, distinct from
+   * `fetchReviews`' raw per-review states -- "at least one review exists"
+   * (any state, including `COMMENTED`) is not the same fact as "branch
+   * protection's approval requirement is satisfied." */
+  fetchReviewDecision: (ref: PrReadinessRef) => Promise<ReviewDecision>;
 }
 
 export interface PrReadinessResult {
@@ -66,6 +83,11 @@ export interface PrReadinessResult {
   reviews: { total: number; states: string[] };
   threads: { total: number; unresolved: number };
   codeScanningAlerts: { total: number; open: number };
+  /** Issue #305: surfaced verbatim so a caller can distinguish "a review
+   * exists" from "the review actually satisfies branch protection" without
+   * re-deriving it -- the suggested fix's option 2, applied alongside
+   * option 1 (below) rather than instead of it. */
+  reviewDecision: ReviewDecision;
   reasons: string[];
 }
 
@@ -84,21 +106,27 @@ export interface PrReadinessOptions {
  * at least one non-empty review exists (a caller wanting a specific
  * reviewer, e.g. Copilot, filters `reviews.states`/checks review authors
  * itself -- this function stays reviewer-agnostic so it composes for any
- * PR, not just Copilot-reviewed ones); zero unresolved review threads;
- * zero OPEN code-scanning alerts (`dismissed`/`fixed` are fine -- an
- * explicitly dismissed alert is a resolved one, not an outstanding one),
- * unless `requireCleanCodeScanning: false`. */
+ * PR, not just Copilot-reviewed ones); GitHub's own `reviewDecision` is not
+ * `REVIEW_REQUIRED` or `CHANGES_REQUESTED` (issue #305 -- a submitted
+ * review existing is not the same fact as branch protection's approval
+ * requirement being satisfied; the only review present can be a
+ * `COMMENTED` from Copilot, which never counts as an approval); zero
+ * unresolved review threads; zero OPEN code-scanning alerts
+ * (`dismissed`/`fixed` are fine -- an explicitly dismissed alert is a
+ * resolved one, not an outstanding one), unless
+ * `requireCleanCodeScanning: false`. */
 export async function assessPrReadiness(
   ref: PrReadinessRef,
   deps: PrReadinessDeps,
   options: PrReadinessOptions = {},
 ): Promise<PrReadinessResult> {
   const requireCleanCodeScanning = options.requireCleanCodeScanning ?? true;
-  const [checks, reviews, threads, alerts] = await Promise.all([
+  const [checks, reviews, threads, alerts, reviewDecision] = await Promise.all([
     deps.fetchChecks(ref),
     deps.fetchReviews(ref),
     deps.fetchReviewThreads(ref),
     requireCleanCodeScanning ? deps.fetchCodeScanningAlerts(ref) : Promise.resolve([]),
+    deps.fetchReviewDecision(ref),
   ]);
 
   const pending = checks.filter((c) => c.state === 'pending').length;
@@ -129,6 +157,21 @@ export async function assessPrReadiness(
   if (pending > 0) reasons.push(`${pending} check(s) still pending`);
   if (failing > 0) reasons.push(`${failing} check(s) failing`);
   if (submittedReviews.length === 0) reasons.push('no reviews yet');
+  // Issue #305: a PR can have a submitted review (even several) while
+  // GitHub's own reviewDecision still reports REVIEW_REQUIRED -- e.g. the
+  // only review present is Copilot's `COMMENTED`, which is not an
+  // approval. The "no reviews yet" check above only catches an EMPTY
+  // review list; it says nothing about whether branch protection's
+  // approval requirement is actually satisfied, which is exactly the gap
+  // that let `settled: true` through on a PR `gh pr merge` then rejected
+  // as blocked. reviewDecision is GitHub's own combined verdict (branch
+  // protection rules + actual review states), so it is checked directly
+  // rather than reimplemented from the raw review list.
+  if (reviewDecision === 'REVIEW_REQUIRED') {
+    reasons.push('branch protection requires an approving review and none has been given yet');
+  } else if (reviewDecision === 'CHANGES_REQUESTED') {
+    reasons.push('a reviewer has requested changes, blocking merge');
+  }
   if (unresolvedThreads > 0) reasons.push(`${unresolvedThreads} unresolved review thread(s)`);
   if (requireCleanCodeScanning && openAlerts > 0) reasons.push(`${openAlerts} open code-scanning alert(s)`);
 
@@ -138,6 +181,7 @@ export async function assessPrReadiness(
     reviews: { total: submittedReviews.length, states: submittedReviews.map((r) => r.state) },
     threads: { total: threads.length, unresolved: unresolvedThreads },
     codeScanningAlerts: { total: alerts.length, open: openAlerts },
+    reviewDecision,
     reasons,
   };
 }
@@ -164,6 +208,7 @@ interface PrReadinessGraphQLResponse {
       commits: { nodes: Array<{ commit: { statusCheckRollup: { contexts: { nodes: RollupContext[] } } | null } }> };
       reviews: { nodes: Array<{ author: { login: string } | null; state: string }> };
       reviewThreads: { nodes: Array<{ isResolved: boolean }> };
+      reviewDecision: ReviewDecision;
     } | null;
   } | null;
 }
@@ -190,6 +235,7 @@ const PR_READINESS_QUERY = `
         }
         reviews(first: 100) { nodes { author { login } state } }
         reviewThreads(first: 100) { nodes { isResolved } }
+        reviewDecision
       }
     }
   }
@@ -276,6 +322,10 @@ export function createLiveReadinessDeps(deps: GithubClientDeps = {}): PrReadines
     async fetchReviewThreads(ref) {
       const repository = await fetchPrFields(ref);
       return repository?.pullRequest?.reviewThreads.nodes ?? [];
+    },
+    async fetchReviewDecision(ref) {
+      const repository = await fetchPrFields(ref);
+      return repository?.pullRequest?.reviewDecision ?? null;
     },
     async fetchCodeScanningAlerts(ref) {
       const repository = await fetchPrFields(ref);
