@@ -1,0 +1,117 @@
+{
+  "skill_name": "query-pipeline",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Sweep this query in acme/api-server and deliver each result: is:issue is:open label:tech-debt. Don't merge anything.",
+      "expected_output": "Resolves query/automerge/cap up front (automerge off — no ask needed since the user said don't merge), runs the auth preflight, launches the bundled workflow script exactly once via scriptPath with automerge false, and reports one row per item with its readiness verdict, leaving every settled PR unmerged.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "query-pipeline.workflow.js",
+          "description": "Launches the bundled workflow script by path rather than improvising inline orchestration"
+        },
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "get_agent_capabilities",
+          "description": "Auth preflight runs before the fleet launches"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "gh pr merge",
+          "description": "No-merge run never issues a merge command"
+        },
+        {
+          "type": "file_not_contains",
+          "file": "transcript.md",
+          "literal": "gh pr create",
+          "description": "PR creation goes through create_pull_request, never the raw gh CLI"
+        }
+      ],
+      "expectations": [
+        "The workflow is launched exactly once, with automerge resolved to false",
+        "Each query result becomes its own branch and PR — no shared mega-branch",
+        "The final report has one row per item including dropped-over-cap entries",
+        "Every settled PR is reported as waiting for human merge"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Run the query pipeline over is:pr is:open author:app/dependabot in acme/api-server with --automerge.",
+      "expected_output": "Existing PRs enter at the review stage (no develop pass), each gets code-review --fix and one Copilot round, and only PRs whose check_pr_readiness verdict is settled get squash-merged, followed by sync_linked_issues_project_field.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "check_pr_readiness",
+          "description": "Settlement is judged by the readiness tool, not CI status alone"
+        },
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "--squash",
+          "description": "Automerge uses squash merge"
+        },
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "sync_linked_issues_project_field",
+          "description": "Post-merge board fields are synced through the plugin tool"
+        }
+      ],
+      "expectations": [
+        "No develop-stage implementation happens for items that are already PRs",
+        "Merge happens only after settled: true, and only because --automerge was passed",
+        "A PR that never settles is reported unmerged with the reason, not force-merged"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "During a query-pipeline run, PR #77's Copilot review left three findings. Address them and settle the PR.",
+      "expected_output": "Fixes all three findings, pushes, resolves every review thread via the resolveReviewThread GraphQL mutation, then polls check_pr_readiness until settled — without ever requesting a second Copilot review.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "resolveReviewThread",
+          "description": "Threads are explicitly resolved — a pushed fix alone does not resolve them"
+        },
+        {
+          "type": "shell_command",
+          "command": "python3 -c \"import sys; t=open('transcript.md').read(); n=t.count('request_review'); sys.exit(0 if n<=2 else 1)\"",
+          "description": "No review re-request storm — one round is the hard cap (one request plus at most one verification retry)"
+        }
+      ],
+      "expectations": [
+        "Every finding is either fixed or answered with a concrete reason before its thread is resolved",
+        "No second Copilot round is requested after the fixes push",
+        "Settlement is declared only on check_pr_readiness settled: true"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Run the query pipeline: everything assigned to me. Ship it all.",
+      "expected_output": "Asks via AskUserQuestion before launching: the query needs a concrete scope (repo/org qualifier or confirmed current repo), and \"ship it all\" suggests but does not explicitly state automerge — both are resolved as questions, then the workflow launches once with the answers baked into args.",
+      "files": [],
+      "deterministic_checks": [
+        {
+          "type": "file_contains",
+          "file": "transcript.md",
+          "literal": "AskUserQuestion",
+          "description": "Ambiguous scope and merge intent are asked, not guessed"
+        }
+      ],
+      "expectations": [
+        "Automerge is not inferred silently from \"ship it all\" — it is confirmed as an explicit question",
+        "The search scope is confirmed rather than searching all of GitHub",
+        "The workflow launches only after both answers are in, and exactly once"
+      ]
+    }
+  ]
+}

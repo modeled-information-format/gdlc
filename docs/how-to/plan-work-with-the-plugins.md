@@ -3,17 +3,17 @@ id: 8b5d1e73-6a2f-4c08-b9d4-2f7e9a1c6d52
 type: procedural
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: '2026-07-12T13:43:27.975Z'
+modified: '2026-07-17T08:35:33.511Z'
 title: Plan and track work with the planning and PR plugins
 diataxis_type: how-to
 provenance:
   '@type': Provenance
-  agent: claude-code/claude-sonnet-5
+  agent: claude-code/claude-fable-5
   wasGeneratedBy:
-    '@id': urn:mif:activity:claude-code-session:6587ad77-f582-49d4-9e1b-44734dc4b70a
+    '@id': urn:mif:activity:claude-code-session:91372f7b-c89c-4533-a168-b4867130baf2
     '@type': prov:Activity
   trustLevel: user_stated
-  agentVersion: 2.1.207
+  agentVersion: 2.1.212
 ---
 
 Run a plan-to-merge cycle: decompose a goal into issues, board them, open
@@ -27,6 +27,12 @@ seed issue, or plan/design doc — it composes the exact same tools this page
 describes (plus `file-bug`/`pr-review-route` and a `get_branch_protection`
 pre-flight) into one decompose-then-execute pipeline, gated on explicit
 confirmation before executing and before merging.
+
+When the starting point is a search query rather than a single goal
+("everything labeled tech-debt", "all open Dependabot PRs"), ask for the
+**query-pipeline** skill instead — the fan-out counterpart: every query
+result is driven to its own reviewed, settled PR independently, with
+merging gated behind an explicit `--automerge` flag.
 
 ## 1. Decompose a goal into issues
 
