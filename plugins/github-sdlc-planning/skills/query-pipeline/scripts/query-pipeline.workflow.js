@@ -16,7 +16,11 @@ export const meta = {
 // Some Workflow-tool invocations deliver args as an unparsed JSON string
 // rather than the parsed object (observed 2026-07-17, gdlc#300's sibling
 // finding) — tolerate that shape defensively rather than failing outright.
-const resolvedArgs = typeof args === 'string' ? (() => { try { return JSON.parse(args) } catch { return args } })() : args
+const resolvedArgs = typeof args === 'string'
+  ? (() => {
+      try { return JSON.parse(args) } catch (e) { throw new Error(`query-pipeline received args as an unparsed string and it is not valid JSON: ${e.message}`) }
+    })()
+  : args
 if (typeof resolvedArgs === 'undefined' || !resolvedArgs || typeof resolvedArgs.query !== 'string' || resolvedArgs.query.trim() === '') {
   throw new Error('query-pipeline requires args.query — the launching skill must resolve the search query before starting the workflow')
 }
@@ -118,31 +122,38 @@ ${defaultRepo ? `If the query has no repo:/org: qualifier, scope it to ${default
 
 Run the query EXACTLY as given, verbatim, with every one of its qualifiers
 intact — do not substitute a different search mechanism that reinterprets
-or drops any of them. Concretely: split the query string on whitespace and
-pass each qualifier as its own SEPARATE, UNQUOTED argument to
-"gh search issues" / "gh search prs" — e.g. for "org:X is:issue is:open
-has:project" run:
-  gh search issues org:X is:issue is:open has:project --json repository,number,title,url,state
-Do NOT wrap the whole query in one quoted string ("gh search issues
+or drops any of them, and do not apply any implicit filtering of your own
+(e.g. do not silently exclude closed/merged items — if the query wants
+that, the query says so with is:open / is:closed).
+
+Concretely: tokenize the query into its qualifiers, preserving any quoted
+multi-word term (e.g. label:"good first issue" or a quoted exact-phrase
+search) as ONE argument, and pass each qualifier as its own SEPARATE
+argument to "gh search issues" / "gh search prs" — e.g. for
+'org:X is:issue is:open label:"good first issue"' run:
+  gh search issues org:X is:issue is:open 'label:"good first issue"' --json repository,number,title,url,state
+Do NOT wrap the WHOLE query in one quoted string ("gh search issues
 \"org:X is:issue is:open\""): the gh CLI mis-parses that form whenever
 "org:" is not the very first token, silently absorbing every trailing
 qualifier into the org value (producing an "Invalid search query" error or
-a bogus empty result with no visible signal). Do NOT substitute
-"gh api search/issues -f q=..." (the raw REST endpoint) as a "safer"
-alternative either — some qualifiers (e.g. has:project) are enforced
-client-side by the gh CLI's own search command and are silently IGNORED by
-the raw REST endpoint, which will over-match and return items the query
-never asked for. The unquoted multi-argument "gh search issues"/"gh search
-prs" form is the one form that reproduces the query's real semantics
-end-to-end — use it, and nothing else. With --json so you read real fields,
-not scraped text. If the query does not restrict type, run both issue and
-PR searches but keep them disjoint: qualify with is:issue for the issue
-search and let the PR search own the PR side; then de-duplicate by
-repo+number before returning. For each result report repo as owner/repo,
-the number, kind ("issue" or "pr"), title, and url. Exclude closed/merged
-items unless the query explicitly asks for them. Return only what the
-search actually returned — do not invent, drop, or add items beyond
-exactly what the query specifies.`,
+a bogus empty result with no visible signal). Do NOT flatten every
+qualifier to a bare unquoted word either — a qualifier whose value is
+itself multiple words (quoted) must stay one argument or its quoting is
+lost the same way. Do NOT substitute "gh api search/issues -f q=..." (the
+raw REST endpoint) as a "safer" alternative either — some qualifiers (e.g.
+has:project) are enforced client-side by the gh CLI's own search command
+and are silently IGNORED by the raw REST endpoint, which will over-match
+and return items the query never asked for. The multi-argument
+"gh search issues"/"gh search prs" form (each qualifier its own argument,
+quoted multi-word values kept intact) is the one form that reproduces the
+query's real semantics end-to-end — use it, and nothing else. With --json
+so you read real fields, not scraped text. If the query does not restrict
+type, run both issue and PR searches but keep them disjoint: qualify with
+is:issue for the issue search and let the PR search own the PR side; then
+de-duplicate by repo+number before returning. For each result report repo
+as owner/repo, the number, kind ("issue" or "pr"), title, and url. Return
+only what the search actually returned — do not invent, drop, or add items
+beyond exactly what the query specifies.`,
   { label: 'discover', phase: 'Discover', schema: ITEMS_SCHEMA },
 )
 
