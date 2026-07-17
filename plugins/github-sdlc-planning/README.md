@@ -3,17 +3,17 @@ id: c867194d-1baa-48c1-869e-5c8d43362ff7
 type: semantic
 created: 2026-07-03T00:00:00Z
 namespace: github-sdlc-plugins/github-sdlc-planning
-modified: '2026-07-12T13:50:27.338Z'
+modified: '2026-07-17T08:34:34.313Z'
 title: github-sdlc-planning
 diataxis_type: reference
 provenance:
   '@type': Provenance
-  agent: claude-code/claude-sonnet-5
+  agent: claude-code/claude-fable-5
   wasGeneratedBy:
-    '@id': urn:mif:activity:claude-code-session:6587ad77-f582-49d4-9e1b-44734dc4b70a
+    '@id': urn:mif:activity:claude-code-session:91372f7b-c89c-4533-a168-b4867130baf2
     '@type': prov:Activity
   trustLevel: user_stated
-  agentVersion: 2.1.207
+  agentVersion: 2.1.212
 ---
 # github-sdlc-planning
 
@@ -70,6 +70,12 @@ required for every Projects v2 write. Fine-grained PAT equivalent: Issues
   `epic-decomposition`, `github-pull-requests`, `github-bug-capture`,
   `github-repo-config`, `github-insights`, `github-packages`, and
   `github-org-identity` end to end instead of hand-rolled `gh`/GraphQL calls
+- `query-pipeline` — fan out over a GitHub issues/PR search query and drive
+  every result to a settled PR independently (issues developed into PRs,
+  existing PRs entering at review; per PR: code review with fixes, one
+  Copilot round with threads resolved, checks green, optional squash-merge
+  behind an explicit `--automerge`); the fan-out counterpart to
+  `epic-pipeline`, orchestrated by a bundled background Workflow script
 - `configure-gdlc` — "configure gdlc", "set up gdlc config", "elicit config",
   "configure this project for gdlc"
 

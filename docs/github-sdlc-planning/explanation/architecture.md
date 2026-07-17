@@ -3,9 +3,17 @@ id: 3c476b9f-2d8c-460f-86ed-e94ca6fd225b
 type: semantic
 created: 2026-07-05T00:00:00Z
 namespace: github-sdlc-plugins/docs
-modified: 2026-07-09T00:00:00Z
+modified: '2026-07-17T08:34:38.498Z'
 title: Why github-sdlc-planning exists and how it's built
 diataxis_type: explanation
+provenance:
+  '@type': Provenance
+  agent: claude-code/claude-fable-5
+  wasGeneratedBy:
+    '@id': urn:mif:activity:claude-code-session:91372f7b-c89c-4533-a168-b4867130baf2
+    '@type': prov:Activity
+  trustLevel: user_stated
+  agentVersion: 2.1.212
 ---
 
 
@@ -70,10 +78,13 @@ ADR-0001 as the pattern the rest of the marketplace follows too:
 2. **The progressive-enhancement layer** sits on top, Claude-Code-specific,
    and is optional:
    - **Skills**: `project-setup`, `epic-decomposition`, `epic-pipeline`,
-     `sprint-plan`, `milestone-triage`, `template-gallery` — each a
-     higher-level workflow built from the same 16 tools. `epic-pipeline`
-     composes the full plugin suite (not just this plugin's own tools) into
-     one decompose-to-merged-PR pipeline; see
+     `query-pipeline`, `sprint-plan`, `milestone-triage`, `template-gallery`
+     — each a higher-level workflow built from the same 16 tools.
+     `epic-pipeline` composes the full plugin suite (not just this plugin's
+     own tools) into one decompose-to-merged-PR pipeline, and
+     `query-pipeline` is its fan-out counterpart: a search query in, one
+     independently reviewed-and-settled PR per result out, orchestrated by
+     a bundled background Workflow script; see
      [ADR context and usage](../../how-to/plan-work-with-the-plugins.md).
    - **An agent**: `project-setup`'s six-stage pipeline (classify intent →
      resolve template → configure fields → seed draft issues → wire
