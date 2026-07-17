@@ -219,6 +219,14 @@ if (!Number.isInteger(args.epicNumber)) {
 if (!Array.isArray(args.tasks) || args.tasks.length === 0) {
   throw new Error('execute mode requires args.tasks (build-order list of {number, title}) — pass the plan-mode hierarchy through')
 }
+for (const t of args.tasks) {
+  if (!t || !Number.isInteger(t.number) || typeof t.title !== 'string' || t.title.trim() === '') {
+    throw new Error('execute mode: every args.tasks entry needs an integer number and a non-empty string title')
+  }
+  if (t.notes !== undefined && typeof t.notes !== 'string') {
+    throw new Error(`execute mode: args.tasks entry #${t.number} has a non-string notes field`)
+  }
+}
 const epicNumber = args.epicNumber
 const tasks = args.tasks
 const requiredChecks = Array.isArray(args.requiredChecks) ? args.requiredChecks : []
@@ -379,7 +387,7 @@ ${SHARED_RULES}
    only where it isn't already there.
 ${requestCopilot ? `6. Request a Copilot review via request_review (reviewers: ["Copilot"]) and
    verify it registered with list_review_requests — the call can silently
-   no-op; retry once if it did, then stop either way.` : '6. Do NOT request any review — the user declined review routing for this run.'}
+   no-op; retry once if it did, then stop either way.` : '6. Do NOT request a Copilot review — the user declined one for this run.'}
 7. Remove the temporary worktree (the branch lives on the remote now). Do
    NOT merge.
 

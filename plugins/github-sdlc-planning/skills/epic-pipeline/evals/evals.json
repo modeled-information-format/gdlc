@@ -14,16 +14,15 @@
           "description": "Orchestration is launched from the bundled workflow script, not improvised inline"
         },
         {
-          "type": "file_contains",
+          "type": "regex_match",
           "file": "transcript.md",
-          "literal": "\"mode\": \"plan\"",
-          "description": "Plan-only run launches the workflow in plan mode"
+          "pattern": "[\"']?mode[\"']?\\s*:\\s*[\"']plan[\"']",
+          "description": "Plan-only run launches the workflow in plan mode (matches both JSON tool-call args and JS-literal snippets)"
         },
         {
-          "type": "file_not_contains",
-          "file": "transcript.md",
-          "literal": "\"mode\": \"execute\"",
-          "description": "Plan-only run never launches the execute mode"
+          "type": "shell_command",
+          "command": "python3 -c \"import re,sys; t=open('transcript.md').read(); sys.exit(1 if re.search(r'[\\\"\\\\']?mode[\\\"\\\\']?\\\\s*:\\\\s*[\\\"\\\\']execute[\\\"\\\\']', t) else 0)\"",
+          "description": "Plan-only run never launches the execute mode, in either arg-literal format"
         },
         {
           "type": "file_not_contains",
@@ -46,10 +45,10 @@
       "files": [],
       "deterministic_checks": [
         {
-          "type": "file_contains",
+          "type": "regex_match",
           "file": "transcript.md",
-          "literal": "\"mode\": \"execute\"",
-          "description": "Execution goes through the workflow's execute mode"
+          "pattern": "[\"']?mode[\"']?\\s*:\\s*[\"']execute[\"']",
+          "description": "Execution goes through the workflow's execute mode (matches both JSON tool-call args and JS-literal snippets)"
         },
         {
           "type": "file_contains",

@@ -35,7 +35,7 @@ native-automation/config/ADR rules the workflow's agents compose.
    `get_agent_capabilities` (name the plugin — the tool name exists in more
    than one). Board writes need a `project`-scoped classic PAT or an
    App/fine-grained token — don't discover a `missing_scope` failure
-   mid-fleet after issues already exist.
+   mid-flight after issues already exist.
 3. Parse `$ARGUMENTS` four ways: an existing issue (`#123`/URL — read its
    body/labels/type and call `list_sub_issues` for any hierarchy already
    present), a plan/design doc path (read it; pass its substance as the
