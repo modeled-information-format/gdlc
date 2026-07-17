@@ -242,13 +242,18 @@ const developStage = (item) => {
   }
   return guardStage(item).then((guard) => {
     if (guard && guard.alreadyInProgress) {
-      log(`skip ${item.repo}#${item.number}: already "${guard.status}" on the board with no PR yet — re-dispatch guard (gdlc#307)`)
+      // guard.status is nullable per GUARD_SCHEMA (unset/off-board can still
+      // pair with alreadyInProgress=true from a malformed/partial guard
+      // response) — display a real label instead of the literal string
+      // "null" in logs/notes, which reads as a bogus Status value.
+      const statusLabel = guard.status || 'an unspecified in-progress status'
+      log(`skip ${item.repo}#${item.number}: already "${statusLabel}" on the board with no PR yet — re-dispatch guard (gdlc#307)`)
       return {
         ok: true,
         prNumber: null,
         prUrl: null,
         branch: null,
-        notes: `skipped — already "${guard.status}" on the board with no linked PR yet; a previous run appears to still be mid-flight on this issue (re-dispatch guard, gdlc#307)${guard.notes ? `: ${guard.notes}` : ''}`,
+        notes: `skipped — already "${statusLabel}" on the board with no linked PR yet; a previous run appears to still be mid-flight on this issue (re-dispatch guard, gdlc#307)${guard.notes ? `: ${guard.notes}` : ''}`,
       }
     }
     return agent(
