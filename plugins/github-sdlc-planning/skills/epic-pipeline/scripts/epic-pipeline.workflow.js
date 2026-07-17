@@ -292,7 +292,7 @@ Return ok, the absolute worktreePath, the branch name, and notes.`,
   { label: 'prepare-branch', phase: 'Implement', schema: PREPARE_SCHEMA },
 )
 if (!prepared || !prepared.ok || !prepared.worktreePath) {
-  return { mode, ok: false, repo: repoFull, epicNumber, branch: null, tasksCompleted: [], tasksSkipped: tasks.map((t) => t.number), pr: null, settle: null, summary: `branch preparation failed: ${(prepared && prepared.notes) || 'prepare agent returned no result'}` }
+  return { mode, ok: false, repo: repoFull, epicNumber, branch: null, tasksCompleted: [], tasksSkipped: tasks.map((t) => t.number), taskResults: [], bugsFiled: [], unplannedIssues: [], pr: null, settle: null, summary: `branch preparation failed: ${(prepared && prepared.notes) || 'prepare agent returned no result'}` }
 }
 
 // Sequential by design: Tasks execute in build order on one shared branch,
@@ -345,7 +345,11 @@ Return ok, taskNumber, bugsFiled, unplannedIssues, notes.`,
 }
 
 const tasksCompleted = taskResults.filter((r) => r.ok).map((r) => r.taskNumber)
-const tasksSkipped = tasks.map((t) => t.number).filter((n) => !taskResults.some((r) => r.taskNumber === n))
+// Every Task not completed — whether never attempted (loop halted before it)
+// or attempted-and-failed — belongs in the "not delivered" accounting, so
+// completed + skipped always reconciles to the full task list. taskResults
+// still preserves the attempted-vs-untried distinction for callers that want it.
+const tasksSkipped = tasks.map((t) => t.number).filter((n) => !tasksCompleted.includes(n))
 const bugsFiled = taskResults.flatMap((r) => r.bugsFiled || [])
 const unplannedIssues = taskResults.flatMap((r) => r.unplannedIssues || [])
 
