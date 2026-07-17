@@ -58,6 +58,11 @@ export const prLifecycleSectionSchema = z
     requireCopilotReview: z.boolean().optional(),
     requireCleanCodeScanning: z.boolean().optional(),
     gateNewWorkOnUnresolvedThreads: z.boolean().optional(),
+    // gdlc#275: opt-out of the hard 'ask' block for requireLocalReview /
+    // gateNewWorkOnUnresolvedThreads respectively, defaulting to false
+    // (non-blocking) in resolvePrLifecycleConfig.
+    confirmLocalReview: z.boolean().optional(),
+    confirmNewWorkGate: z.boolean().optional(),
   })
   .strict();
 

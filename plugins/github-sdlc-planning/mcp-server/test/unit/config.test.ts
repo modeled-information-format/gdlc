@@ -616,6 +616,8 @@ describe('loadConfigFile: prLifecycle section', () => {
         '  requireCopilotReview: false',
         '  requireCleanCodeScanning: true',
         '  gateNewWorkOnUnresolvedThreads: false',
+        '  confirmLocalReview: true',
+        '  confirmNewWorkGate: true',
         '',
       ].join('\n'),
     );
@@ -627,6 +629,8 @@ describe('loadConfigFile: prLifecycle section', () => {
         requireCopilotReview: false,
         requireCleanCodeScanning: true,
         gateNewWorkOnUnresolvedThreads: false,
+        confirmLocalReview: true,
+        confirmNewWorkGate: true,
       },
     });
   });
@@ -680,6 +684,8 @@ describe('resolvePrLifecycleConfig', () => {
       requireCopilotReview: true,
       requireCleanCodeScanning: true,
       gateNewWorkOnUnresolvedThreads: true,
+      confirmLocalReview: false,
+      confirmNewWorkGate: false,
     });
   });
 
@@ -687,7 +693,7 @@ describe('resolvePrLifecycleConfig', () => {
     expect(resolvePrLifecycleConfig({ prLifecycle: {} }).enabled).toBe(false);
   });
 
-  it('defaults every require* toggle and localReviewer to the strictest behavior once enabled', () => {
+  it('defaults every require*/gate* toggle and localReviewer to the strictest behavior once enabled, but confirmLocalReview/confirmNewWorkGate stay false', () => {
     expect(resolvePrLifecycleConfig({ prLifecycle: { enabled: true } })).toEqual({
       enabled: true,
       localReviewer: '/code-review --fix',
@@ -695,7 +701,19 @@ describe('resolvePrLifecycleConfig', () => {
       requireCopilotReview: true,
       requireCleanCodeScanning: true,
       gateNewWorkOnUnresolvedThreads: true,
+      confirmLocalReview: false,
+      confirmNewWorkGate: false,
     });
+  });
+
+  // gdlc#275: the opt-out itself -- confirmLocalReview/confirmNewWorkGate
+  // set to true restore the pre-#275 hard-stop behavior.
+  it('respects an explicit confirmLocalReview/confirmNewWorkGate: true override', () => {
+    expect(
+      resolvePrLifecycleConfig({
+        prLifecycle: { enabled: true, confirmLocalReview: true, confirmNewWorkGate: true },
+      }),
+    ).toMatchObject({ confirmLocalReview: true, confirmNewWorkGate: true });
   });
 
   it('respects explicit overrides for every field', () => {
@@ -708,6 +726,8 @@ describe('resolvePrLifecycleConfig', () => {
           requireCopilotReview: false,
           requireCleanCodeScanning: false,
           gateNewWorkOnUnresolvedThreads: false,
+          confirmLocalReview: true,
+          confirmNewWorkGate: true,
         },
       }),
     ).toEqual({
@@ -717,6 +737,8 @@ describe('resolvePrLifecycleConfig', () => {
       requireCopilotReview: false,
       requireCleanCodeScanning: false,
       gateNewWorkOnUnresolvedThreads: false,
+      confirmLocalReview: true,
+      confirmNewWorkGate: true,
     });
   });
 });

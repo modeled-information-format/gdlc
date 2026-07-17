@@ -8,6 +8,11 @@
 // ("Before creating any new worktree/branch/PR... re-check reviewThreads
 // fresh on every one of them"), which previously depended entirely on
 // agent diligence with no gate backing it.
+//
+// gdlc#275: `prLifecycle.confirmNewWorkGate` (default `false`) now decides
+// whether flagging unresolved threads emits a hard `'ask'` or a
+// non-blocking `'allow'` reminder -- same opt-out shape as
+// pr-lifecycle-gate.mjs's `confirmLocalReview` and `skipMutationConfirm`.
 import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { promisify } from 'node:util';
@@ -29,12 +34,12 @@ function emitEmpty() {
   process.stdout.write(JSON.stringify({}));
 }
 
-function emitAsk(reason) {
+function emitGate(reason, confirm) {
   process.stdout.write(
     JSON.stringify({
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
-        permissionDecision: 'ask',
+        permissionDecision: confirm ? 'ask' : 'allow',
         permissionDecisionReason: reason,
       },
     }),
@@ -93,7 +98,7 @@ async function main() {
   try {
     const flagged = await checkUnresolvedReviewThreads(prs, runGraphQL);
     if (flagged.length > 0) {
-      emitAsk(buildGateReason(flagged));
+      emitGate(buildGateReason(flagged), config.confirmNewWorkGate);
       return;
     }
   } catch {

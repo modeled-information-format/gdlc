@@ -88,7 +88,15 @@ function extractScalarValue(raw) {
   return (commentIndex === -1 ? trimmed : trimmed.slice(0, commentIndex)).trim();
 }
 
-const BOOLEAN_KEYS = new Set(['enabled', 'requireLocalReview', 'requireCopilotReview', 'requireCleanCodeScanning', 'gateNewWorkOnUnresolvedThreads']);
+const BOOLEAN_KEYS = new Set([
+  'enabled',
+  'requireLocalReview',
+  'requireCopilotReview',
+  'requireCleanCodeScanning',
+  'gateNewWorkOnUnresolvedThreads',
+  'confirmLocalReview',
+  'confirmNewWorkGate',
+]);
 
 /** Parse a top-level `prLifecycle:` scalar map out of a plain-YAML
  * `gdlc/config.yml` document, same constrained 2-space-indent shape as
@@ -170,7 +178,12 @@ export function readPrLifecycleRaw(cwd = process.cwd(), env = process.env, exist
  * applies -- kept in sync by hand, the same way the two independent
  * `board:` readers are kept behaviorally identical on purpose (issue #83).
  * `enabled` defaults `false`: an absent or malformed section means this
- * plugin's PR-lifecycle hooks stay no-ops. */
+ * plugin's PR-lifecycle hooks stay no-ops.
+ *
+ * `confirmLocalReview`/`confirmNewWorkGate` (gdlc#275) each default `false`:
+ * once enabled, the corresponding `require*`/`gate*` reminder still fires,
+ * but as non-blocking context (`permissionDecision: 'allow'`) instead of a
+ * hard `'ask'` stop, mirroring `skipMutationConfirm`'s opt-out shape. */
 export function resolvePrLifecycle(cwd = process.cwd(), env = process.env, existsFn = existsSync) {
   const raw = readPrLifecycleRaw(cwd, env, existsFn);
   return {
@@ -180,5 +193,7 @@ export function resolvePrLifecycle(cwd = process.cwd(), env = process.env, exist
     requireCopilotReview: raw.requireCopilotReview ?? true,
     requireCleanCodeScanning: raw.requireCleanCodeScanning ?? true,
     gateNewWorkOnUnresolvedThreads: raw.gateNewWorkOnUnresolvedThreads ?? true,
+    confirmLocalReview: raw.confirmLocalReview ?? false,
+    confirmNewWorkGate: raw.confirmNewWorkGate ?? false,
   };
 }

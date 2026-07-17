@@ -70,6 +70,16 @@
           "type": "boolean",
           "default": true,
           "description": "gdlc#202/#211: gate starting new branch/worktree work on any PR opened this session still having unresolved review threads."
+        },
+        "confirmLocalReview": {
+          "type": "boolean",
+          "default": false,
+          "description": "gdlc#275: whether requireLocalReview's reminder blocks (permissionDecision: 'ask') or is non-blocking context (permissionDecision: 'allow'). Defaults to false, mirroring skipMutationConfirm's opt-out shape -- the reminder still fires, it just doesn't force a prompt. Has no effect unless requireLocalReview is enabled."
+        },
+        "confirmNewWorkGate": {
+          "type": "boolean",
+          "default": false,
+          "description": "gdlc#275: same opt-out, for gateNewWorkOnUnresolvedThreads's gate. Has no effect unless gateNewWorkOnUnresolvedThreads is enabled."
         }
       }
     }

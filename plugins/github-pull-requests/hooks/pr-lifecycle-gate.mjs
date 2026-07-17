@@ -11,6 +11,13 @@
 // same legible-confirmation contract confirm-mutation.mjs already
 // established for board mutations. See hooks/lib/pr-lifecycle-config.mjs's
 // doc comment for the full rationale.
+//
+// issue #275: whether that "ask" is a hard block or a non-blocking reminder
+// is now a separate toggle (`prLifecycle.confirmLocalReview`, default
+// `false`) -- same opt-out shape as `skipMutationConfirm`. Before this,
+// `requireLocalReview` had exactly one behavior (hard `'ask'`) with no way
+// to keep the reminder while dropping the prompt short of disabling the
+// whole check.
 import { readFileSync } from 'node:fs';
 import { resolvePrLifecycle } from './lib/pr-lifecycle-config.mjs';
 
@@ -35,7 +42,7 @@ function main() {
     JSON.stringify({
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
-        permissionDecision: 'ask',
+        permissionDecision: config.confirmLocalReview ? 'ask' : 'allow',
         permissionDecisionReason: `prLifecycle.requireLocalReview is enabled: run \`${config.localReviewer}\` and fix its findings before opening this PR. A hook cannot run this for you -- it can only remind you.`,
       },
     }),

@@ -23,6 +23,8 @@ export declare const prLifecycleSectionSchema: z.ZodObject<{
     requireCopilotReview: z.ZodOptional<z.ZodBoolean>;
     requireCleanCodeScanning: z.ZodOptional<z.ZodBoolean>;
     gateNewWorkOnUnresolvedThreads: z.ZodOptional<z.ZodBoolean>;
+    confirmLocalReview: z.ZodOptional<z.ZodBoolean>;
+    confirmNewWorkGate: z.ZodOptional<z.ZodBoolean>;
 }, z.core.$strict>;
 /** Mirrors schema/gdlc-config.schema.json's per-section constraints one
  * section at a time -- write_gdlc_config validates only the section(s) a
@@ -52,6 +54,8 @@ export declare const GDLC_CONFIG_SECTION_SCHEMAS: {
         requireCopilotReview: z.ZodOptional<z.ZodBoolean>;
         requireCleanCodeScanning: z.ZodOptional<z.ZodBoolean>;
         gateNewWorkOnUnresolvedThreads: z.ZodOptional<z.ZodBoolean>;
+        confirmLocalReview: z.ZodOptional<z.ZodBoolean>;
+        confirmNewWorkGate: z.ZodOptional<z.ZodBoolean>;
     }, z.core.$strict>;
 };
 export type GdlcConfigSectionName = keyof typeof GDLC_CONFIG_SECTION_SCHEMAS;

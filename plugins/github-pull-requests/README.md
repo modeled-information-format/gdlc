@@ -3,17 +3,17 @@ id: 25a40c7f-52a4-4b36-bc2d-9a21f5786b43
 type: semantic
 created: 2026-07-03T00:00:00Z
 namespace: github-sdlc-plugins/github-pull-requests
-modified: '2026-07-12T03:19:47.202Z'
+modified: '2026-07-17T12:48:08.714Z'
 title: github-pull-requests
 diataxis_type: reference
 provenance:
   '@type': Provenance
   agent: claude-code/claude-sonnet-5
   wasGeneratedBy:
-    '@id': urn:mif:activity:claude-code-session:977e6b34-3d1d-414f-9745-a2925dde919f
+    '@id': urn:mif:activity:claude-code-session:510bf739-31a0-4ce7-a88a-aa51484ddbbd
     '@type': prov:Activity
   trustLevel: user_stated
-  agentVersion: 2.1.207
+  agentVersion: 2.1.212
 ---
 # github-pull-requests
 
@@ -73,8 +73,16 @@ across the plugin boundary, matching this codebase's existing convention):
 
 | Hook | Event / matcher | What it does |
 | --- | --- | --- |
-| `pr-lifecycle-gate.mjs` | `PreToolUse`, `create_pull_request` only | When `requireLocalReview`, asks for confirmation naming the configured `localReviewer` command. |
+| `pr-lifecycle-gate.mjs` | `PreToolUse`, `create_pull_request` only | When `requireLocalReview`, surfaces a reminder naming the configured `localReviewer` command — non-blocking (`permissionDecision: 'allow'`) unless `confirmLocalReview: true`, which restores a hard `'ask'` confirmation. |
 | `pr-lifecycle-reminder.mjs` | `PostToolUse`, `create_pull_request` only | When `requireCopilotReview`, reminds the agent to call `request_review` with Copilot immediately. |
+
+`review-thread-gate.mjs` (`PreToolUse`, worktree/branch creation) has the
+same shape: when `gateNewWorkOnUnresolvedThreads` flags a session-opened PR
+with unresolved review threads, it's a non-blocking reminder unless
+`confirmNewWorkGate: true`. `confirmLocalReview`/`confirmNewWorkGate`
+(issue #275) both default `false` — same opt-out shape as
+`packs.skipMutationConfirm` — separating "does this check run" from "does
+tripping it block the tool call."
 
 **Neither hook can execute `localReviewer` itself.** A Claude Code hook can
 only spawn an OS process (`node`/`bash`); it has no mechanism to invoke a

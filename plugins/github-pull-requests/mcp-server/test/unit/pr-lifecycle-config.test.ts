@@ -159,10 +159,12 @@ describe('resolvePrLifecycle: defaults match config.ts resolvePrLifecycleConfig 
       requireCopilotReview: true,
       requireCleanCodeScanning: true,
       gateNewWorkOnUnresolvedThreads: true,
+      confirmLocalReview: false,
+      confirmNewWorkGate: false,
     });
   });
 
-  it('defaults every require* toggle and localReviewer to the strictest behavior once enabled', () => {
+  it('defaults every require* toggle and localReviewer to the strictest behavior once enabled, but confirmLocalReview/confirmNewWorkGate stay false', () => {
     const dir = tmpDir();
     writeProjectConfig(dir, 'prLifecycle:\n  enabled: true\n');
     expect(resolvePrLifecycle(dir, fakeEnv(join(dir, 'no-such-global')))).toEqual({
@@ -172,6 +174,8 @@ describe('resolvePrLifecycle: defaults match config.ts resolvePrLifecycleConfig 
       requireCopilotReview: true,
       requireCleanCodeScanning: true,
       gateNewWorkOnUnresolvedThreads: true,
+      confirmLocalReview: false,
+      confirmNewWorkGate: false,
     });
   });
 
@@ -187,6 +191,8 @@ describe('resolvePrLifecycle: defaults match config.ts resolvePrLifecycleConfig 
         '  requireCopilotReview: false',
         '  requireCleanCodeScanning: false',
         '  gateNewWorkOnUnresolvedThreads: false',
+        '  confirmLocalReview: true',
+        '  confirmNewWorkGate: true',
         '',
       ].join('\n'),
     );
@@ -197,6 +203,20 @@ describe('resolvePrLifecycle: defaults match config.ts resolvePrLifecycleConfig 
       requireCopilotReview: false,
       requireCleanCodeScanning: false,
       gateNewWorkOnUnresolvedThreads: false,
+      confirmLocalReview: true,
+      confirmNewWorkGate: true,
     });
+  });
+
+  // gdlc#275: confirmLocalReview/confirmNewWorkGate default to false,
+  // unlike every other require*/gate* toggle here (which default true once
+  // enabled) -- this is the opt-IN-to-blocking shape, the inverse of the
+  // rest of this section.
+  it('defaults confirmLocalReview and confirmNewWorkGate to false even once enabled', () => {
+    const dir = tmpDir();
+    writeProjectConfig(dir, 'prLifecycle:\n  enabled: true\n');
+    const resolved = resolvePrLifecycle(dir, fakeEnv(join(dir, 'no-such-global')));
+    expect(resolved.confirmLocalReview).toBe(false);
+    expect(resolved.confirmNewWorkGate).toBe(false);
   });
 });

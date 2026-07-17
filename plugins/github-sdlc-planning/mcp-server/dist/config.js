@@ -199,6 +199,10 @@ function normalizeConfig(parsed) {
             prLifecycle.requireCleanCodeScanning = raw.requireCleanCodeScanning;
         if (typeof raw.gateNewWorkOnUnresolvedThreads === 'boolean')
             prLifecycle.gateNewWorkOnUnresolvedThreads = raw.gateNewWorkOnUnresolvedThreads;
+        if (typeof raw.confirmLocalReview === 'boolean')
+            prLifecycle.confirmLocalReview = raw.confirmLocalReview;
+        if (typeof raw.confirmNewWorkGate === 'boolean')
+            prLifecycle.confirmNewWorkGate = raw.confirmNewWorkGate;
         if (Object.keys(prLifecycle).length > 0)
             config.prLifecycle = prLifecycle;
     }
@@ -373,7 +377,16 @@ const DEFAULT_LOCAL_REVIEWER = '/code-review --fix';
  * would silently do nothing (or run the literal string as a binary name and
  * fail) instead of enforcing anything. See
  * `plugins/github-pull-requests/hooks/pr-lifecycle-gate.mjs` for the
- * consuming hook and its own doc comment on this same constraint. */
+ * consuming hook and its own doc comment on this same constraint.
+ *
+ * `confirmLocalReview`/`confirmNewWorkGate` (gdlc#275) each default to
+ * `false`: the reminder still fires whenever `requireLocalReview`/
+ * `gateNewWorkOnUnresolvedThreads` is on, but as a non-blocking
+ * `permissionDecision: 'allow'` (context only) rather than a hard `'ask'`
+ * stop. Setting either to `true` restores the original hard-stop behavior.
+ * Same opt-out shape as `skipMutationConfirm` (issue #183): before this,
+ * the only way to silence the blocking prompt was to disable the whole
+ * check, reminder included. */
 export function resolvePrLifecycleConfig(config) {
     const raw = config.prLifecycle ?? {};
     return {
@@ -383,6 +396,8 @@ export function resolvePrLifecycleConfig(config) {
         requireCopilotReview: raw.requireCopilotReview ?? true,
         requireCleanCodeScanning: raw.requireCleanCodeScanning ?? true,
         gateNewWorkOnUnresolvedThreads: raw.gateNewWorkOnUnresolvedThreads ?? true,
+        confirmLocalReview: raw.confirmLocalReview ?? false,
+        confirmNewWorkGate: raw.confirmNewWorkGate ?? false,
     };
 }
 //# sourceMappingURL=config.js.map
