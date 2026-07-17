@@ -5,6 +5,48 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.4] - 2026-07-17
+
+### Fixed
+
+- `github-sdlc-planning`: `get_session_context`'s board fallback and
+  `withOptionalBoardCoordinates`/`withRequiredBoardCoordinates` resolved
+  `.config/gdlc/config.yml` from the MCP server process's own cwd rather
+  than the target repo, so a board lookup could silently miss the caller's
+  actual project config (#274, #280); three more config-resolving call
+  sites shared the identical root cause and are fixed the same way (#281,
+  #284); `add_item_to_project`'s idempotency check queried an issue's own
+  `projectItems` connection, unreliable for a project owned by a different
+  org/user than the issue's repo, and now scans project-side instead
+  (#282, #285); `configure-gdlc`/`project-setup`'s `tools:` frontmatter
+  granted the wrong MCP tool-name namespace, silently leaving the
+  subagent with zero usable tools (#276).
+- `github-bug-capture`: `set_severity`/`set_lifecycle_state` failed with a
+  false `issue_not_on_board` for items that genuinely exist on the board,
+  same root cause as #273 — resolved via a project-side scan instead of
+  the issue-side connection (#273, #283).
+- Every skill's `allowed-tools:` frontmatter now grants both MCP
+  tool-name forms, since a Skill's `allowed-tools:` is a permission
+  allowlist (not a hard capability restriction the way an Agent's
+  `tools:` is) and only granted one of the two forms a plugin-provided
+  MCP server can resolve under (#279).
+- The Agent tool cannot resolve a skill-only name as `subagent_type` (it
+  only matches files under a plugin's `agents/` dir); 13 Skill-only
+  capabilities across all seven plugins shared a name with no matching
+  Agent, so any caller guessing skill-as-agent silently got the wrong
+  resolution or none — disambiguated with `Skill-only` guidance (#287,
+  #288).
+- The ticket-hygiene lifecycle-comment hook's Stop/SubagentStop backstop
+  replayed a `PostToolUse`-time finding verbatim even after a later
+  same-turn action had already resolved it (#278, #286); its underlying
+  `scanTranscriptForComment` also never matched a real Claude Code
+  transcript line at all — every tool call lives in `message.content[]`
+  as one or more `tool_use` blocks, not the bare `tool_name`/`tool_input`
+  shape the scan actually checked, so both MCP comment tools and literal
+  `gh issue|pr comment <N>` calls sharing a line with another tool call
+  went undetected (#289, #290). Propagated identically to the two sibling
+  hook copies per ADR-0007.
+
 ## [0.10.3] - 2026-07-12
 
 ### Added

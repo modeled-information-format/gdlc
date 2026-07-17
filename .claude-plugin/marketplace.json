@@ -21,7 +21,7 @@
         "sha": "1957dbf6b5f9c60af525ada27d5d5c1d801256a9"
       },
       "description": "Issues, native sub-issues, Projects v2, Milestones, and Discussions behind a portable MCP core plus a Claude Code progressive-enhancement layer. Every issue/discussion body carries MIF-conformant frontmatter authored via mif-docs.",
-      "version": "0.10.3",
+      "version": "0.10.4",
       "author": {
         "name": "modeled-information-format"
       },
@@ -48,7 +48,7 @@
         "sha": "1957dbf6b5f9c60af525ada27d5d5c1d801256a9"
       },
       "description": "Full pull-request lifecycle control: create, classify (type/size/risk labels), review-route, link to issues, and couple to Projects v2. Depends on github-sdlc-planning for its shared MIF comment-block reader and Projects v2 tools.",
-      "version": "0.10.3",
+      "version": "0.10.4",
       "author": {
         "name": "modeled-information-format"
       },
@@ -73,7 +73,7 @@
         "sha": "1957dbf6b5f9c60af525ada27d5d5c1d801256a9"
       },
       "description": "Repo/org governance: branch protection and rulesets, org-wide .github community health files, GitHub Pages status, and custom repository properties.",
-      "version": "0.10.3",
+      "version": "0.10.4",
       "author": {
         "name": "modeled-information-format"
       },
@@ -98,7 +98,7 @@
         "sha": "1957dbf6b5f9c60af525ada27d5d5c1d801256a9"
       },
       "description": "Read-only repo/org reporting: traffic (views/clones), contributor stats, community-health profile, and dependency-graph/SBOM summary.",
-      "version": "0.10.3",
+      "version": "0.10.4",
       "author": {
         "name": "modeled-information-format"
       },
@@ -124,7 +124,7 @@
         "sha": "1957dbf6b5f9c60af525ada27d5d5c1d801256a9"
       },
       "description": "List org packages and versions across npm, Maven, RubyGems, Docker (legacy registry), Container (ghcr.io), NuGet, and generic registries; delete/restore a package or version.",
-      "version": "0.10.3",
+      "version": "0.10.4",
       "author": {
         "name": "modeled-information-format"
       },
@@ -150,7 +150,7 @@
         "sha": "1957dbf6b5f9c60af525ada27d5d5c1d801256a9"
       },
       "description": "Organization roles and teams: list org roles, list role assignments, assign/remove a role for a team or user. SAML/SSO is out of scope.",
-      "version": "0.10.3",
+      "version": "0.10.4",
       "author": {
         "name": "modeled-information-format"
       },
@@ -174,7 +174,7 @@
         "sha": "1957dbf6b5f9c60af525ada27d5d5c1d801256a9"
       },
       "description": "Development-time bug capture: diagnostics discovered while code is being written become structured, MIF-conformant, lifecycle-managed GitHub issues. Portable MCP core plus opt-in Claude Code enhancement packs; composes with github-pull-requests and github-sdlc-planning.",
-      "version": "0.10.3",
+      "version": "0.10.4",
       "author": {
         "name": "modeled-information-format"
       },
