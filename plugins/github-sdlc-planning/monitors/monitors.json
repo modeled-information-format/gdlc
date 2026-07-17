@@ -1,0 +1,8 @@
+[
+  {
+    "name": "board-hygiene",
+    "command": "node \"${CLAUDE_PLUGIN_ROOT}/monitors/board-hygiene.mjs\"",
+    "description": "Board-status drift and uncommitted-work staleness for this session's active issue",
+    "when": "always"
+  }
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "name": "pr-settlement",
+    "command": "node \"${CLAUDE_PLUGIN_ROOT}/monitors/pr-settlement.mjs\"",
+    "description": "Settlement drift on PRs opened this session: failing checks, unresolved review threads, ready-to-merge",
+    "when": "always"
+  }
+]

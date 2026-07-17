@@ -12,13 +12,18 @@
 // false) -- gateNewWorkOnUnresolvedThreads itself defaults to true once
 // the family is opted into, same "strictest sane behavior once enabled"
 // convention as prLifecycle's other require* toggles (see config.ts's
-// resolvePrLifecycleConfig doc comment); if the family is off, tracking
-// PRs for a gate that can never fire is pointless overhead.
+// resolvePrLifecycleConfig doc comment). Tracking originally ran only for
+// that gate; since ADR-0010 (AD-7) this scratch is ALSO the pr-settlement
+// monitor's data source, so the monitors pack alone keeps tracking on
+// even with the prLifecycle family off -- see the gating below. Only when
+// NEITHER consumer is enabled is tracking pointless overhead and skipped.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { extractTouch } from './lib/hygiene-check.mjs';
 import { resolvePrLifecycle } from './lib/pr-lifecycle-config.mjs';
 import { sessionPrsFilePath, recordOpenedPr } from './lib/session-prs.mjs';
+import { pointerFilePath, writeSessionPointer } from './lib/session-pointer.mjs';
+import { isMonitorsPackEnabled } from '../monitors/lib/monitor-core.mjs';
 
 function readStdin() {
   try {
@@ -56,8 +61,23 @@ function main() {
   const input = readStdin();
   const cwd = input.cwd ?? process.cwd();
 
+  // ADR-0010: refresh the cwd -> session_id pointer the background
+  // monitors resolve their session from, BEFORE any gating below -- this
+  // hook fires on every PR-plugin/github-MCP/Bash PostToolUse, making it
+  // this plugin's natural mid-session heartbeat alongside the
+  // SessionStart entrypoint (session-pointer.mjs).
+  if (typeof input.session_id === 'string' && input.session_id !== '') {
+    writeSessionPointer(pointerFilePath(cwd), { sessionId: input.session_id, cwd, updatedAt: Date.now() });
+  }
+
+  // ADR-0010: the pr-settlement monitor consumes this same scratch, so
+  // the monitors pack alone (no prLifecycle opt-in) must also keep PRs
+  // tracked -- otherwise a monitors-only user's pr-settlement watch has a
+  // permanently empty data source. This deliberately couples one
+  // prLifecycle-family hook to the monitors pack; ADR-0010 records why.
   const config = resolvePrLifecycle(cwd);
-  if (!config.enabled || !config.gateNewWorkOnUnresolvedThreads || !input.session_id) {
+  const gateWantsTracking = config.enabled && config.gateNewWorkOnUnresolvedThreads;
+  if ((!gateWantsTracking && !isMonitorsPackEnabled(cwd)) || !input.session_id) {
     emitEmpty();
     return;
   }

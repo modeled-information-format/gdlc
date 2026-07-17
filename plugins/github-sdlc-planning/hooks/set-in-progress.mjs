@@ -30,6 +30,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { readBoardConfig, extractAffectedIssue, setIssueInProgress, buildAdditionalContext, FIRST_EDIT_TOOL_NAMES } from './lib/in-progress.mjs';
 import { activeIssuePath, promotedPath, writeActiveIssue, readActiveIssue, issueKey, readPromotedSet, markPromoted } from './lib/first-edit-scratch.mjs';
+import { pointerFilePath, writeSessionPointer } from './lib/session-pointer.mjs';
 
 function readStdin() {
   try {
@@ -138,6 +139,16 @@ async function handleFirstEdit(input, cwd, config) {
 async function main() {
   const input = readStdin();
   const cwd = input.cwd ?? process.cwd();
+
+  // ADR-0010: refresh the cwd -> session_id pointer the background
+  // monitors resolve their session from, BEFORE the board-config gate --
+  // pr-settlement (github-pull-requests) needs a live pointer even in a
+  // repo with no board: section at all. This hook fires on every
+  // Write/Edit/MultiEdit and add_sub_issue/update_issue, making it the
+  // natural mid-session heartbeat alongside the SessionStart entrypoint.
+  if (typeof input.session_id === 'string' && input.session_id !== '') {
+    writeSessionPointer(pointerFilePath(cwd), { sessionId: input.session_id, cwd, updatedAt: Date.now() });
+  }
 
   const config = readBoardConfig(cwd);
   if (!config) {

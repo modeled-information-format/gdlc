@@ -5,6 +5,45 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-07-17
+
+### Added
+
+- Session monitors (ADR-0010, #297): opt-in background watchers (new
+  `packs.monitors` toggle, fail-closed) that catch ticket-hygiene drift
+  *between* events — the gap the event-driven ADR-0007 hooks cannot see —
+  and nudge the acting model to the next lifecycle step via Claude Code's
+  experimental plugin-monitors component (`monitors/monitors.json`).
+  Advisory-only, one batched GraphQL query per 90 s ± 20 s cycle,
+  emit-once dedup with state-qualified keys and a 30-minute cooldown,
+  never-exit failure containment:
+  - `github-sdlc-planning`: `board-hygiene` — the session's active issue's
+    Status drift (still-Todo while worked, closed-but-not-Done,
+    Done-but-open, Blocked with no explaining comment, In Review with no
+    live PR) plus uncommitted work sitting unchanged ≥ 30 minutes.
+  - `github-pull-requests`: `pr-settlement` — session-opened PRs' failing
+    checks, CHANGES_REQUESTED reviews, unresolved-thread counts,
+    settled-ready-to-merge, and a one-time post-merge board check.
+  - `github-bug-capture`: `bug-triage` — bugs filed this session still
+    lacking a `Severity` triage after a 15-minute grace period; backed by
+    a new monitors-pack-gated `hooks/track-created-issues.mjs` +
+    `hooks/lib/session-issues.mjs` (the hygiene scratch is turn-scoped by
+    design and cannot serve as session-long memory).
+  - Shared infrastructure: `monitors/lib/monitor-core.mjs` (poll →
+    assess → emit-once harness) and a cwd→session_id pointer bridge
+    (`hooks/lib/session-pointer.mjs` + a SessionStart entrypoint in all
+    three hook-bearing plugins) — byte-copy family #2, guarded by a second
+    loop in the `hygiene-hook-drift-check` CI job.
+
+### Changed
+
+- `github-pull-requests`: `track-opened-prs.mjs` now also records PRs when
+  only the monitors pack is enabled (previously required the prLifecycle
+  thread gate), so `pr-settlement`'s data source populates for
+  monitors-only configurations (ADR-0010 AD-7).
+- `configure-gdlc` (agent + config schema/docs) now knows the `monitors`
+  pack, including when an enable/disable actually takes effect.
+
 ## [0.10.4] - 2026-07-17
 
 ### Fixed

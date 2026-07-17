@@ -1,5 +1,5 @@
 {
-  "description": "Claude Code progressive-enhancement layer: session bootstrap, MIF-body validation, a legible confirmation prompt before any board mutation, a non-blocking ticket-hygiene reminder (ADR-0007) covering a plugin's own MCP tools, the generic github MCP server, and raw gh CLI calls, and a non-blocking gdlc config-drift check (ADR-0009) at session start. Every behavior here is additive — the portable MCP core (get_session_context, get_agent_capabilities, format_mif_issue_body, get_gdlc_config, write_gdlc_config) is the floor a hook-less host uses instead.",
+  "description": "Claude Code progressive-enhancement layer: session bootstrap, MIF-body validation, a legible confirmation prompt before any board mutation, a non-blocking ticket-hygiene reminder (ADR-0007) covering a plugin's own MCP tools, the generic github MCP server, and raw gh CLI calls, and a non-blocking gdlc config-drift check (ADR-0009) at session start, plus the ADR-0010 session-pointer bootstrap (cwd -> session_id, the bridge this plugin's background monitors resolve their session context from). Every behavior here is additive — the portable MCP core (get_session_context, get_agent_capabilities, format_mif_issue_body, get_gdlc_config, write_gdlc_config) is the floor a hook-less host uses instead.",
   "hooks": {
     "SessionStart": [
       {
@@ -15,6 +15,17 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/config-drift-check.mjs"],
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/session-pointer.mjs"],
             "timeout": 15
           }
         ]
