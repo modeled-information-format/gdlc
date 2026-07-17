@@ -93,14 +93,31 @@ const MERGE_SCHEMA = {
   },
 }
 
+// gdlc#307: a per-item guard, checked before the heavy Develop agent is ever
+// dispatched for an issue. Safe for a one-shot run either way, but without
+// it a recurring/scheduled invocation of the identical query can re-match an
+// issue a PRIOR run already moved to In Progress (its board Status is the
+// only signal a re-run has — GitHub search has no qualifier for a custom
+// Projects v2 field value, so this can't be pushed into the query string).
+const GUARD_SCHEMA = {
+  type: 'object',
+  required: ['alreadyInProgress', 'status'],
+  properties: {
+    alreadyInProgress: { type: 'boolean' },
+    status: { type: ['string', 'null'], description: 'the board Status value found, or null if unset/not on the board' },
+    notes: { type: 'string' },
+  },
+}
+
 const SHARED_RULES = `
 Ground rules (non-negotiable, they override any habit):
 - Compose the github-sdlc-plugins MCP tools (load via ToolSearch:
   create_pull_request, classify_pull_request, add_pull_request_to_project,
   get_linked_issues, check_pr_readiness, request_review,
   list_review_requests, set_field_value, sync_linked_issues_project_field,
-  update_issue). Hand-rolled gh api graphql is acceptable ONLY where no
-  plugin tool covers the operation (e.g. the resolveReviewThread mutation).
+  update_issue, get_project_status_profile, get_project_items). Hand-rolled
+  gh api graphql is acceptable ONLY where no plugin tool covers the
+  operation (e.g. the resolveReviewThread mutation).
 - Never gh pr create / curl for PR creation; use create_pull_request.
 - Move an issue's board Status forward WITH a comment at each transition,
   and read the current Status before writing — native Projects v2
@@ -184,13 +201,58 @@ if (items.length === 0) {
 }
 
 // ------------------------------------------------- Per-item pipeline stages
+
+// gdlc#307: read-only re-dispatch guard for issue-kind items. Runs on every
+// invocation, one-shot or recurring — for a one-shot run alreadyInProgress
+// is always false (nothing could have moved the issue yet) and this simply
+// costs one cheap extra agent call; for a recurring/scheduled sweep of the
+// same query it is what keeps a still-in-flight issue from being handed to
+// a second, independent Develop agent (duplicate worktrees/branches/PRs).
+const guardStage = (item) => agent(
+  `Before any implementation work, determine whether GitHub issue ${item.repo}#${item.number} ("${item.title}") is already mid-flight from an earlier run of this same query-pipeline sweep.
+
+This is a READ-ONLY check: do not comment on the issue, do not change its
+Status, do not open a pull request, do not clone or touch the repo.
+
+1. Call get_project_status_profile (github-sdlc-planning) for the board
+   this issue lives on, to learn its REAL Status options and which of them
+   count as "not started" (Backlog/Todo/Ready/an equivalent unset state) —
+   never assume a fixed pipeline shape; boards differ.
+2. Call get_project_items (github-sdlc-planning) and find this issue's
+   item; read its current Status field value.
+3. If the issue is not on the board at all, or its Status is unset or
+   matches one of the board's real "not started" options, report
+   alreadyInProgress=false.
+4. Otherwise — Status is anything further along the board's real pipeline
+   than "not started" (In Progress, In Review, Blocked, Done, or whatever
+   that board actually calls it) — report alreadyInProgress=true. Board
+   Status is the only signal used here; do not also search for an existing
+   linked PR — if none exists despite an in-progress Status, that is
+   exactly the unsafe re-dispatch case this guard exists to catch.
+
+Return alreadyInProgress, status (the real Status value found, or null),
+and notes (which option matched and why).`,
+  { label: `guard:${item.repo}#${item.number}`, phase: 'Develop', schema: GUARD_SCHEMA },
+)
+
 const developStage = (item) => {
   if (item.kind === 'pr') {
     // Existing PRs enter the pipeline at Review.
     return { ok: true, prNumber: item.number, prUrl: item.url, branch: null, notes: 'existing PR — entered at review stage' }
   }
-  return agent(
-    `Develop GitHub issue ${item.repo}#${item.number} ("${item.title}", ${item.url}) into an open pull request.
+  return guardStage(item).then((guard) => {
+    if (guard && guard.alreadyInProgress) {
+      log(`skip ${item.repo}#${item.number}: already "${guard.status}" on the board with no PR yet — re-dispatch guard (gdlc#307)`)
+      return {
+        ok: true,
+        prNumber: null,
+        prUrl: null,
+        branch: null,
+        notes: `skipped — already "${guard.status}" on the board with no linked PR yet; a previous run appears to still be mid-flight on this issue (re-dispatch guard, gdlc#307)${guard.notes ? `: ${guard.notes}` : ''}`,
+      }
+    }
+    return agent(
+      `Develop GitHub issue ${item.repo}#${item.number} ("${item.title}", ${item.url}) into an open pull request.
 ${SHARED_RULES}
 
 Steps:
@@ -218,8 +280,9 @@ Steps:
 7. Remove the temporary worktree (the branch lives on the remote now).
 
 Return ok, prNumber, prUrl, branch, and notes.`,
-    { label: `develop:${item.repo}#${item.number}`, phase: 'Develop', schema: DEVELOP_SCHEMA },
-  )
+      { label: `develop:${item.repo}#${item.number}`, phase: 'Develop', schema: DEVELOP_SCHEMA },
+    )
+  })
 }
 
 const reviewStage = (dev, item) => {
