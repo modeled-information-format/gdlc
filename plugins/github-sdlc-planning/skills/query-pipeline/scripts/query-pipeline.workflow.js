@@ -13,7 +13,7 @@ export const meta = {
 // args: { query, automerge, maxItems, defaultRepo, reviewModel }
 // The launching skill (SKILL.md Phase 0) resolves every one of these before
 // this script runs — nothing here can ask the user anything.
-if (!args || typeof args.query !== 'string' || args.query.trim() === '') {
+if (typeof args === 'undefined' || !args || typeof args.query !== 'string' || args.query.trim() === '') {
   throw new Error('query-pipeline requires args.query — the launching skill must resolve the search query before starting the workflow')
 }
 const query = args.query.trim()
@@ -114,15 +114,24 @@ ${defaultRepo ? `If the query has no repo:/org: qualifier, scope it to ${default
 
 Use "gh search issues" and/or "gh search prs" (or "gh issue list --search" /
 "gh pr list --search" when the query is repo-scoped) with --json so you read
-real fields, not scraped text. If the query does not restrict type, search
-both issues and PRs and combine. For each result report repo as owner/repo,
+real fields, not scraped text. If the query does not restrict type, run both
+searches but keep them disjoint: gh search issues also matches PRs, so
+qualify it with is:issue (or --include-prs=false where supported) and let
+gh search prs own the PR side; then de-duplicate by repo+number before
+returning. For each result report repo as owner/repo,
 the number, kind ("issue" or "pr"), title, and url. Exclude closed/merged
 items unless the query explicitly asks for them. Return only what the
 search actually returned — do not invent or filter beyond the query.`,
   { label: 'discover', phase: 'Discover', schema: ITEMS_SCHEMA },
 )
 
-const allItems = (discovered && discovered.items) || []
+const seenKeys = new Set()
+const allItems = ((discovered && discovered.items) || []).filter((i) => {
+  const key = `${i.repo}#${i.number}`
+  if (seenKeys.has(key)) return false
+  seenKeys.add(key)
+  return true
+})
 const items = allItems.slice(0, maxItems)
 const dropped = allItems.slice(maxItems)
 if (dropped.length > 0) {
@@ -131,7 +140,15 @@ if (dropped.length > 0) {
 log(`processing ${items.length} item(s): ${items.map((i) => `${i.repo}#${i.number}(${i.kind})`).join(', ') || 'none'}`)
 
 if (items.length === 0) {
-  return { query, automerge, processed: [], dropped, summary: 'query returned no open items' }
+  return {
+    query,
+    automerge,
+    processed: [],
+    dropped: dropped.map((d) => `${d.repo}#${d.number}`),
+    settledCount: 0,
+    mergedCount: 0,
+    summary: 'query returned no open items',
+  }
 }
 
 // ------------------------------------------------- Per-item pipeline stages
@@ -288,4 +305,12 @@ const settledCount = processed.filter((p) => p.settled).length
 const mergedCount = processed.filter((p) => p.merged).length
 log(`done: ${processed.length} processed, ${settledCount} settled, ${mergedCount} merged, ${dropped.length} dropped over cap`)
 
-return { query, automerge, processed, dropped: dropped.map((d) => `${d.repo}#${d.number}`), settledCount, mergedCount }
+return {
+  query,
+  automerge,
+  processed,
+  dropped: dropped.map((d) => `${d.repo}#${d.number}`),
+  settledCount,
+  mergedCount,
+  summary: `${processed.length} processed, ${settledCount} settled, ${mergedCount} merged, ${dropped.length} dropped over cap`,
+}
