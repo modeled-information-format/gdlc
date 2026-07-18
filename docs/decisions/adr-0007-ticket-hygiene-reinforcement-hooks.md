@@ -555,6 +555,31 @@ AD-4.
 
 **Action Required:** None; issue #324 is resolved.
 
+### 2026-07-18 (PR #325 Copilot review follow-up)
+
+**Status:** Compliant
+
+**Findings:**
+
+| Finding | Files | Lines | Assessment |
+| --- | --- | --- | --- |
+| `checkRecentCommentViaGraphQL`'s query only fetched `repository.issue(number:)`. A Projects v2 tracked item's `content` can be a `PullRequest` (`resolveItemIdentity` already handles both), so a PR-backed item's `number` would resolve to a `null` `issue` field and the fallback could never live-confirm it -- reintroducing, for PR-backed items specifically, the exact blind spot this PR exists to close. Fixed by adding a sibling `pullRequest(number:)` field to the same query (GraphQL resolves whichever type the number actually is; the other side comes back `null`) and merging both `issue`/`pullRequest` `comments.nodes` arrays before the recency check. | plugins/*/hooks/lib/hygiene-check.mjs | - | fixed |
+
+**Summary:** Copilot's review of PR #325 caught that the live-fallback
+query addressed only Issue-backed tracked items, not PR-backed ones, even
+though `resolveItemIdentity` (the function that produces the `identity`
+this fallback consumes) already treats both as first-class. Both `issue`
+and `pullRequest` are now queried by number in the same request; response
+parsing merges whichever side actually returned comment nodes (the other
+is `null` by construction, never both at once). Three new regression tests
+cover: a recent comment surfacing only via `pullRequest.comments.nodes`; a
+too-old comment on the `pullRequest` side; and the fail-open path when both
+`issue` and `pullRequest` resolve to `null` (item not found by either
+type). Propagated identically to `github-pull-requests`/
+`github-bug-capture`'s byte-identical copies per AD-4.
+
+**Action Required:** None; the gap Copilot flagged on PR #325 is resolved.
+
 [adr-0003]: adr-0003-board-status-hygiene.md
 [adr-0004]: adr-0004-project-config-surface.md
 [adr-0005]: adr-0005-project-config-cwd-resolution.md

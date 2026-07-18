@@ -808,10 +808,22 @@ export function scanTranscriptForComment(transcriptPath, ref, readFn = readTrans
   return { resolved: true, found: false };
 }
 
+// gdlc#325 review: a tracked item's `content` can be either an Issue or a
+// PullRequest (resolveItemIdentity above explicitly resolves both), but this
+// fallback only has a bare `number` to go on -- it cannot know in advance
+// which type it is. Querying both `issue(number:)` and `pullRequest(number:)`
+// in one request lets GraphQL return whichever one actually exists (the
+// other resolves to `null`) instead of silently never confirming PR-backed
+// items, which would leave exactly the blind spot this PR exists to close.
 export const ISSUE_RECENT_COMMENTS_QUERY = `
   query($owner: String!, $repo: String!, $number: Int!) {
     repository(owner: $owner, name: $repo) {
       issue(number: $number) {
+        comments(last: 5) {
+          nodes { createdAt }
+        }
+      }
+      pullRequest(number: $number) {
         comments(last: 5) {
           nodes { createdAt }
         }
@@ -865,8 +877,15 @@ export async function checkRecentCommentViaGraphQL(identity, runGraphQL, { windo
   }
   try {
     const data = await runGraphQL(ISSUE_RECENT_COMMENTS_QUERY, { owner: identity.owner, repo: identity.repo, number: identity.number });
-    const nodes = data?.repository?.issue?.comments?.nodes;
-    if (!Array.isArray(nodes)) return false;
+    // gdlc#325 review: `number` may belong to either an Issue or a
+    // PullRequest -- whichever the tracked item actually is, the OTHER
+    // field resolves to `null` in the response, never both at once. Merge
+    // whichever side actually returned nodes so PR-backed items are
+    // live-confirmed exactly like issue-backed ones.
+    const issueNodes = data?.repository?.issue?.comments?.nodes;
+    const pullRequestNodes = data?.repository?.pullRequest?.comments?.nodes;
+    const nodes = [...(Array.isArray(issueNodes) ? issueNodes : []), ...(Array.isArray(pullRequestNodes) ? pullRequestNodes : [])];
+    if (!Array.isArray(issueNodes) && !Array.isArray(pullRequestNodes)) return false;
     return nodes.some((node) => {
       const createdAt = typeof node?.createdAt === 'string' ? Date.parse(node.createdAt) : NaN;
       return !Number.isNaN(createdAt) && Math.abs(nowMs - createdAt) <= windowMs;

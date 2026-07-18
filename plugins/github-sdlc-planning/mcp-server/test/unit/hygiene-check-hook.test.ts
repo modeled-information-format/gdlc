@@ -697,6 +697,25 @@ describe('checkRecentCommentViaGraphQL', () => {
     });
     expect(await checkRecentCommentViaGraphQL(identity, runGraphQL, { nowMs: NOW })).toBe(false);
   });
+
+  it('returns true for a recent comment on a PR-backed item, where `issue` resolves to null and only `pullRequest` has nodes (gdlc#325)', async () => {
+    const runGraphQL = async () => ({
+      repository: { issue: null, pullRequest: { comments: { nodes: [{ createdAt: '2026-07-18T11:58:00Z' }] } } }, // 2 minutes ago
+    });
+    expect(await checkRecentCommentViaGraphQL(identity, runGraphQL, { nowMs: NOW })).toBe(true);
+  });
+
+  it('returns false for a PR-backed item whose pullRequest comments are all outside the window', async () => {
+    const runGraphQL = async () => ({
+      repository: { issue: null, pullRequest: { comments: { nodes: [{ createdAt: '2026-07-18T11:00:00Z' }] } } }, // 60 minutes ago
+    });
+    expect(await checkRecentCommentViaGraphQL(identity, runGraphQL, { nowMs: NOW })).toBe(false);
+  });
+
+  it('fails open (returns false) when both issue and pullRequest resolve to null (item not found)', async () => {
+    const runGraphQL = async () => ({ repository: { issue: null, pullRequest: null } });
+    expect(await checkRecentCommentViaGraphQL(identity, runGraphQL, { nowMs: NOW })).toBe(false);
+  });
 });
 
 describe('checkLifecycleComment', () => {
