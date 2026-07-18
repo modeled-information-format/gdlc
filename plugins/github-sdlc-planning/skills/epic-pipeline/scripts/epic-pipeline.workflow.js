@@ -18,15 +18,27 @@ export const meta = {
 // either launch — this script runs in the background and can ask nothing.
 // Anything the old inline pipeline would have asked mid-flight comes back
 // in plan mode's `deferred` list for the skill to surface.
-if (typeof args === 'undefined' || !args || (args.mode !== 'plan' && args.mode !== 'execute')) {
+//
+// gdlc#321: the Workflow tool can deliver `args` as a JSON-encoded string
+// rather than an object (harness-dependent) -- coerce before the mode guard
+// so that delivery shape doesn't hard-fail the launch. Follows the same
+// convention as the sibling query-pipeline.workflow.js in this repo (gdlc#300's
+// sibling finding): parse into a fresh `resolvedArgs` binding rather than
+// reassigning the injected `args` binding in place.
+const resolvedArgs = typeof args === 'string'
+  ? (() => {
+      try { return JSON.parse(args) } catch (e) { throw new Error(`epic-pipeline received args as an unparsed string and it is not valid JSON: ${e.message}`) }
+    })()
+  : args
+if (typeof resolvedArgs === 'undefined' || !resolvedArgs || (resolvedArgs.mode !== 'plan' && resolvedArgs.mode !== 'execute')) {
   throw new Error("epic-pipeline requires args.mode of 'plan' or 'execute' — the launching skill resolves this before starting the workflow")
 }
-if (typeof args.owner !== 'string' || !args.owner || typeof args.repo !== 'string' || !args.repo) {
+if (typeof resolvedArgs.owner !== 'string' || !resolvedArgs.owner || typeof resolvedArgs.repo !== 'string' || !resolvedArgs.repo) {
   throw new Error('epic-pipeline requires args.owner and args.repo — resolve the target repo in the skill, never inside the workflow')
 }
-const mode = args.mode
-const owner = args.owner
-const repo = args.repo
+const mode = resolvedArgs.mode
+const owner = resolvedArgs.owner
+const repo = resolvedArgs.repo
 const repoFull = `${owner}/${repo}`
 
 const SHARED_RULES = `
@@ -54,10 +66,10 @@ Ground rules (non-negotiable, they override any habit):
 
 // ------------------------------------------------------------------ plan
 if (mode === 'plan') {
-  if (typeof args.seed !== 'string' || args.seed.trim() === '') {
+  if (typeof resolvedArgs.seed !== 'string' || resolvedArgs.seed.trim() === '') {
     throw new Error('plan mode requires args.seed (issue number/URL, plan-doc summary, or free-text goal)')
   }
-  const seed = args.seed.trim()
+  const seed = resolvedArgs.seed.trim()
 
   const GROUND_SCHEMA = {
     type: 'object',
@@ -213,13 +225,13 @@ Return ok, epic, children, buildOrder, milestone, deferred, notes.`,
 }
 
 // --------------------------------------------------------------- execute
-if (!Number.isInteger(args.epicNumber)) {
+if (!Number.isInteger(resolvedArgs.epicNumber)) {
   throw new Error('execute mode requires args.epicNumber')
 }
-if (!Array.isArray(args.tasks) || args.tasks.length === 0) {
+if (!Array.isArray(resolvedArgs.tasks) || resolvedArgs.tasks.length === 0) {
   throw new Error('execute mode requires args.tasks (build-order list of {number, title}) — pass the plan-mode hierarchy through')
 }
-for (const t of args.tasks) {
+for (const t of resolvedArgs.tasks) {
   if (!t || !Number.isInteger(t.number) || typeof t.title !== 'string' || t.title.trim() === '') {
     throw new Error('execute mode: every args.tasks entry needs an integer number and a non-empty string title')
   }
@@ -227,10 +239,10 @@ for (const t of args.tasks) {
     throw new Error(`execute mode: args.tasks entry #${t.number} has a non-string notes field`)
   }
 }
-const epicNumber = args.epicNumber
-const tasks = args.tasks
-const requiredChecks = Array.isArray(args.requiredChecks) ? args.requiredChecks : []
-const requestCopilot = args.requestCopilot === true
+const epicNumber = resolvedArgs.epicNumber
+const tasks = resolvedArgs.tasks
+const requiredChecks = Array.isArray(resolvedArgs.requiredChecks) ? resolvedArgs.requiredChecks : []
+const requestCopilot = resolvedArgs.requestCopilot === true
 
 const PREPARE_SCHEMA = {
   type: 'object',
