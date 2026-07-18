@@ -18,6 +18,18 @@ export const meta = {
 // either launch — this script runs in the background and can ask nothing.
 // Anything the old inline pipeline would have asked mid-flight comes back
 // in plan mode's `deferred` list for the skill to surface.
+//
+// gdlc#321: the Workflow tool can deliver `args` as a JSON-encoded string
+// rather than an object (harness-dependent) -- coerce before the mode guard
+// so that delivery shape doesn't hard-fail the launch. Same convention as
+// the sibling ticket-pipeline.js workflow's args coercion.
+if (typeof args === 'string') {
+  try {
+    args = JSON.parse(args)
+  } catch (e) {
+    throw new Error(`epic-pipeline received args as an unparsed string and it is not valid JSON: ${e.message}`)
+  }
+}
 if (typeof args === 'undefined' || !args || (args.mode !== 'plan' && args.mode !== 'execute')) {
   throw new Error("epic-pipeline requires args.mode of 'plan' or 'execute' — the launching skill resolves this before starting the workflow")
 }
