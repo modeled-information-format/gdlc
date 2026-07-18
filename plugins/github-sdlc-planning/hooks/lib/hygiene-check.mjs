@@ -636,11 +636,92 @@ function extractToolCallsFromEntry(entry) {
   if (Array.isArray(content)) {
     return content
       .filter((block) => block && block.type === 'tool_use' && typeof block.name === 'string' && block.input)
-      .map((block) => ({ toolName: block.name, toolInput: block.input }));
+      .map((block) => ({ toolName: block.name, toolInput: block.input, toolUseId: typeof block.id === 'string' ? block.id : undefined }));
   }
   const toolName = entry?.tool_name ?? entry?.message?.tool_name;
   const toolInput = entry?.tool_input ?? entry?.message?.tool_input;
-  return toolName && toolInput ? [{ toolName, toolInput }] : [];
+  return toolName && toolInput ? [{ toolName, toolInput, toolUseId: undefined }] : [];
+}
+
+// gdlc#320: matches ANY `gh issue comment` / `gh pr comment` invocation,
+// regardless of whether a literal issue number follows -- deliberately
+// broader than the digit-anchored regex used by the literal-number match
+// below. This one exists only to decide whether a Bash call is worth also
+// trying the output-based match (matchesCommentUrlInOutput) against; it
+// never resolves `sameIssue` by itself.
+const GH_COMMENT_BASH_RE = /\bgh\s+(?:issue|pr)\s+comment\b/;
+
+/** A `tool_result` block's own `content` field is either a bare string or
+ * an array of `{type:'text', text}` blocks -- the same two shapes
+ * `normalizeToolOutput` above already handles for a different caller
+ * (this scan is dependency-free and deliberately doesn't share code across
+ * that boundary, matching this file's existing per-caller normalization
+ * pattern). */
+function toolResultContentText(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content.filter((b) => typeof b?.text === 'string').map((b) => b.text).join('\n');
+  }
+  return '';
+}
+
+/** gdlc#320: a real transcript's `tool_result` block (the "user" role turn
+ * immediately following the assistant turn that made the call) carries the
+ * Bash/MCP tool's own stdout, keyed by `tool_use_id` back to the
+ * `tool_use` block that produced it -- on a LATER line than that
+ * `tool_use` block, never embedded on the same line (see
+ * extractToolCallsFromEntry's own doc comment for why this scan otherwise
+ * never reads tool output at all). Scans the whole (already tail-bounded)
+ * transcript text once, building an id-to-output map the main scan loop
+ * below can look up by `toolUseId`, rather than re-scanning per lookup. */
+function buildToolResultOutputs(text) {
+  const outputs = new Map();
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const content = entry?.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (block && block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
+        outputs.set(block.tool_use_id, toolResultContentText(block.content));
+      }
+    }
+  }
+  return outputs;
+}
+
+/** Escapes every regex-special character in a literal string segment
+ * before splicing it into a dynamically-built RegExp -- `owner`/`repo` are
+ * caller-controlled strings (GitHub logins/repo names), not regex source,
+ * and must never be interpreted as pattern syntax. */
+function escapeRegExpLiteral(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** gdlc#320: true if `output` (a Bash tool_result's stdout) contains the
+ * URL `gh issue comment` / `gh pr comment` prints on success for THIS
+ * specific owner/repo/number -- `.../issues/<number>#issuecomment-<id>` or
+ * `.../pull/<number>#issuecomment-<id>`. Unlike the literal-number regex
+ * below, this needs no `--repo`/`-R` flag heuristic at all: the URL itself
+ * already names the real owner/repo/number the comment landed on, so a
+ * same-numbered issue in a different repo can never false-match here the
+ * way it could from command text alone (see checkLifecycleComment's own
+ * gdlc#278 note on that heuristic). This is also the fix for the shape
+ * gdlc#320 was filed against: a shell `for` loop invoking the command
+ * several times in one Bash call (`for n in ...; do gh issue comment $n
+ * ...; done`) prints one URL per invocation, concatenated in `output` --
+ * this only needs ONE of them to match `ref`, and works identically
+ * whether the command's own text used a literal number, a variable, or a
+ * loop iterator, since it never has to statically resolve the command
+ * text at all. */
+function matchesCommentUrlInOutput(output, ref) {
+  const re = new RegExp(`github\\.com/${escapeRegExpLiteral(ref.owner)}/${escapeRegExpLiteral(ref.repo)}/(?:issues|pull)/${ref.number}#issuecomment-\\d+`);
+  return re.test(output);
 }
 
 /** Best-effort: scans the JSONL transcript for an `add_issue_comment` call
@@ -650,10 +731,16 @@ function extractToolCallsFromEntry(entry) {
  * call, referencing the same owner/repo/number anywhere in the
  * (tail-bounded) file. An unreadable/missing transcript is itself a
  * silent no-op for this check specifically -- it never suppresses the
- * other two checks (NFR-5). A variable-based gh invocation (e.g. `gh issue
- * comment $2` inside a loop) is statically unresolvable and will not match
- * this or any regex-based scan -- prefer literal issue numbers in comment
- * commands when that matters to this check. */
+ * other two checks (NFR-5). gdlc#320: a `gh issue comment` Bash call whose
+ * own command text has no literal issue number at all -- a shell variable
+ * or a `for`-loop iterator (`gh issue comment $n`) -- is statically
+ * unresolvable from the command string alone, so this also checks the
+ * call's own tool_result output (correlated by `tool_use_id`) for the
+ * comment URL `gh` prints on success, which always names the real issue
+ * number regardless of how the command computed it (see
+ * matchesCommentUrlInOutput). A transcript fixture with no `tool_result`
+ * blocks at all (every pre-#320 fixture) simply finds no output to match,
+ * falling back to the pre-existing literal-number behavior unchanged. */
 export function scanTranscriptForComment(transcriptPath, ref, readFn = readTranscriptTail) {
   if (!transcriptPath || !ref || typeof ref.owner !== 'string' || typeof ref.repo !== 'string') {
     return { resolved: false };
@@ -664,6 +751,7 @@ export function scanTranscriptForComment(transcriptPath, ref, readFn = readTrans
   } catch {
     return { resolved: false };
   }
+  const toolResultOutputs = buildToolResultOutputs(text);
 
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
@@ -673,15 +761,23 @@ export function scanTranscriptForComment(transcriptPath, ref, readFn = readTrans
     } catch {
       continue;
     }
-    for (const { toolName, toolInput } of extractToolCallsFromEntry(entry)) {
+    for (const { toolName, toolInput, toolUseId } of extractToolCallsFromEntry(entry)) {
       const action = toolName === 'Bash' ? null : mcpAction(toolName);
       const isCommentTool = action !== null && COMMENT_ACTIONS.has(action);
-      const ghCommentMatch = toolName === 'Bash' && typeof toolInput.command === 'string' ? /\bgh\s+(?:issue|pr)\s+comment\s+#?(\d+)\b/.exec(toolInput.command) : null;
-      const isGhComment = ghCommentMatch !== null;
-      if (!isCommentTool && !isGhComment) continue;
+      const isBashCommentCommand = toolName === 'Bash' && typeof toolInput.command === 'string' && GH_COMMENT_BASH_RE.test(toolInput.command);
+      if (!isCommentTool && !isBashCommentCommand) continue;
 
-      let sameIssue;
-      if (isGhComment) {
+      if (isCommentTool) {
+        const sameIssue = toolInput.owner === ref.owner && toolInput.repo === ref.repo && (toolInput.number === ref.number || toolInput.issue_number === ref.number);
+        if (sameIssue) return { resolved: true, found: true };
+        continue;
+      }
+
+      // isBashCommentCommand: try the literal-number match first (cheap,
+      // no output needed), then fall back to the output-based match for a
+      // variable/loop-iterator command the literal match can't resolve.
+      const ghCommentMatch = /\bgh\s+(?:issue|pr)\s+comment\s+#?(\d+)\b/.exec(toolInput.command);
+      if (ghCommentMatch !== null) {
         const sameNumber = Number(ghCommentMatch[1]) === ref.number;
         // gdlc#278 round-2 Copilot finding: this scan is now also called at
         // Stop time across a whole turn (not just narrowly at PostToolUse,
@@ -699,11 +795,14 @@ export function scanTranscriptForComment(transcriptPath, ref, readFn = readTrans
         // never-guess-when-ambiguous rationale `extractTouch` already
         // applies to this exact flag).
         const repoFlag = sameNumber ? parseGhRepoFlag(toolInput.command) : undefined;
-        sameIssue = sameNumber && (repoFlag == null || (repoFlag.owner === ref.owner && repoFlag.repo === ref.repo));
-      } else {
-        sameIssue = toolInput.owner === ref.owner && toolInput.repo === ref.repo && (toolInput.number === ref.number || toolInput.issue_number === ref.number);
+        const sameIssue = sameNumber && (repoFlag == null || (repoFlag.owner === ref.owner && repoFlag.repo === ref.repo));
+        if (sameIssue) return { resolved: true, found: true };
       }
-      if (sameIssue) return { resolved: true, found: true };
+
+      const output = toolUseId ? toolResultOutputs.get(toolUseId) : undefined;
+      if (typeof output === 'string' && matchesCommentUrlInOutput(output, ref)) {
+        return { resolved: true, found: true };
+      }
     }
   }
   return { resolved: true, found: false };
