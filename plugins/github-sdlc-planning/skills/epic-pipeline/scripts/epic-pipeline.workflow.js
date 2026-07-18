@@ -22,9 +22,9 @@ export const meta = {
 // gdlc#321: the Workflow tool can deliver `args` as a JSON-encoded string
 // rather than an object (harness-dependent) -- coerce before the mode guard
 // so that delivery shape doesn't hard-fail the launch. Follows the same
-// convention as the sibling query-pipeline.workflow.js (and the workspace
-// ticket-pipeline.js) coercion: parse into a fresh `resolvedArgs` binding
-// rather than reassigning the injected `args` binding in place.
+// convention as the sibling query-pipeline.workflow.js in this repo (gdlc#300's
+// sibling finding): parse into a fresh `resolvedArgs` binding rather than
+// reassigning the injected `args` binding in place.
 const resolvedArgs = typeof args === 'string'
   ? (() => {
       try { return JSON.parse(args) } catch (e) { throw new Error(`epic-pipeline received args as an unparsed string and it is not valid JSON: ${e.message}`) }
