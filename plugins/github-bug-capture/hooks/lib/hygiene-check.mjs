@@ -808,6 +808,93 @@ export function scanTranscriptForComment(transcriptPath, ref, readFn = readTrans
   return { resolved: true, found: false };
 }
 
+// gdlc#325 review: a tracked item's `content` can be either an Issue or a
+// PullRequest (resolveItemIdentity above explicitly resolves both), but this
+// fallback only has a bare `number` to go on -- it cannot know in advance
+// which type it is. Querying both `issue(number:)` and `pullRequest(number:)`
+// in one request lets GraphQL return whichever one actually exists (the
+// other resolves to `null`) instead of silently never confirming PR-backed
+// items, which would leave exactly the blind spot this PR exists to close.
+export const ISSUE_RECENT_COMMENTS_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) {
+        comments(last: 5) {
+          nodes { createdAt }
+        }
+      }
+      pullRequest(number: $number) {
+        comments(last: 5) {
+          nodes { createdAt }
+        }
+      }
+    }
+  }
+`;
+
+// gdlc#324: five minutes comfortably covers both blind spots this fallback
+// exists for -- a background subagent's own tool calls (which run to
+// completion, including its own GitHub API round trips, before control
+// returns to the parent) and a same-turn parallel-dispatch race (the two
+// calls' underlying network requests are rarely more than a few seconds
+// apart even when their transcript writes land out of order) -- without
+// being so wide that an unrelated, genuinely-later comment on a slow-moving
+// issue gets mistaken for "posted this turn".
+const RECENT_COMMENT_WINDOW_MS = 5 * 60 * 1000;
+
+/** gdlc#324: live fallback for `checkLifecycleComment` when the local
+ * transcript scan (`scanTranscriptForComment`) finds nothing. That scan is
+ * structurally blind to two real cases: (1) a lifecycle comment posted by a
+ * background workflow subagent -- a subagent's tool calls execute and are
+ * logged in ITS OWN transcript, never the parent session's, so no amount of
+ * parent-transcript scanning can ever see it; and (2) a same-turn parallel
+ * tool-call dispatch, where a comment call's own `tool_result` may not yet
+ * be flushed to the transcript file at the instant this check runs even
+ * though the underlying GitHub API call already completed. Querying GitHub
+ * directly sidesteps the transcript file entirely, closing both: case (1)
+ * because the subagent's own API call has, by definition, already completed
+ * by the time the parent resumes and makes its own transition call; case
+ * (2) to whatever extent the comment's underlying network request has
+ * already completed even if its local bookkeeping hasn't caught up yet --
+ * not a full guarantee under a truly simultaneous start, but strictly
+ * better than relying on the local transcript alone (see this issue's own
+ * discussion of "failing open more gracefully" under that race window).
+ *
+ * Deliberately over-inclusive: this counts ANY comment on the issue created
+ * within `windowMs` of `nowMs`, not just one from the acting user -- the
+ * same "advisory nudge" tolerance for false negatives over false positives
+ * `checkLifecycleComment` itself already documents. A coincidental,
+ * unrelated comment from someone else inside the window degrades this to a
+ * missed reminder (tolerable), never fabricates a match when the window
+ * genuinely has no comment in it at all. Fails open (returns `false`, i.e.
+ * "no live confirmation") on a missing `runGraphQL`, a malformed response,
+ * or any thrown error -- never a guess, matching every other check in this
+ * file; the caller's own pre-existing transcript-only finding stands
+ * whenever this fallback can't positively confirm otherwise. */
+export async function checkRecentCommentViaGraphQL(identity, runGraphQL, { windowMs = RECENT_COMMENT_WINDOW_MS, nowMs = Date.now() } = {}) {
+  if (typeof runGraphQL !== 'function' || typeof identity?.owner !== 'string' || typeof identity?.repo !== 'string' || typeof identity?.number !== 'number') {
+    return false;
+  }
+  try {
+    const data = await runGraphQL(ISSUE_RECENT_COMMENTS_QUERY, { owner: identity.owner, repo: identity.repo, number: identity.number });
+    // gdlc#325 review: `number` may belong to either an Issue or a
+    // PullRequest -- whichever the tracked item actually is, the OTHER
+    // field resolves to `null` in the response, never both at once. Merge
+    // whichever side actually returned nodes so PR-backed items are
+    // live-confirmed exactly like issue-backed ones.
+    const issueNodes = data?.repository?.issue?.comments?.nodes;
+    const pullRequestNodes = data?.repository?.pullRequest?.comments?.nodes;
+    const nodes = [...(Array.isArray(issueNodes) ? issueNodes : []), ...(Array.isArray(pullRequestNodes) ? pullRequestNodes : [])];
+    if (!Array.isArray(issueNodes) && !Array.isArray(pullRequestNodes)) return false;
+    return nodes.some((node) => {
+      const createdAt = typeof node?.createdAt === 'string' ? Date.parse(node.createdAt) : NaN;
+      return !Number.isNaN(createdAt) && Math.abs(nowMs - createdAt) <= windowMs;
+    });
+  } catch {
+    return false;
+  }
+}
+
 export const RESOLVE_PROJECT_ITEM_QUERY = `
   query($itemId: ID!) {
     node(id: $itemId) {
@@ -860,8 +947,17 @@ export async function resolveItemIdentity(itemId, runGraphQL) {
  * that artifact holding. Its `itemId` is resolved to real issue
  * coordinates via `resolveItemIdentity` first, failing open (no finding)
  * if resolution doesn't succeed, the same as every other unresolvable
- * case here. */
-export async function checkLifecycleComment(touch, transcriptPath, readFn, runGraphQL) {
+ * case here.
+ *
+ * gdlc#324: when the transcript scan resolves but finds nothing, that's
+ * exactly the signature of two blind spots the scan structurally cannot
+ * see (a background subagent's own comment, or a same-turn parallel-
+ * dispatch race -- see `checkRecentCommentViaGraphQL`'s own doc comment)
+ * -- so a live GraphQL check gets one more chance to confirm a comment
+ * really was posted before this concludes the transition has none. `options`
+ * (windowMs/nowMs) passes straight through to that fallback, purely for
+ * test injectability -- production callers never need to set it. */
+export async function checkLifecycleComment(touch, transcriptPath, readFn, runGraphQL, options) {
   const isTransition = touch && (STATUS_MUTATE_ACTIONS.has(touch.action) || ISSUE_CREATE_ACTIONS.has(touch.action));
   if (!isTransition) return { resolved: true, findings: [] };
 
@@ -877,6 +973,9 @@ export async function checkLifecycleComment(touch, transcriptPath, readFn, runGr
   const scan = scanTranscriptForComment(transcriptPath, identity, readFn);
   if (!scan.resolved) return { resolved: true, findings: [] }; // unreadable transcript: silent no-op for this check
   if (scan.found) return { resolved: true, findings: [] };
+  if (await checkRecentCommentViaGraphQL(identity, runGraphQL, options)) {
+    return { resolved: true, findings: [] };
+  }
   return { resolved: true, findings: [`${identity.owner}/${identity.repo}#${identity.number}: transitioned with no lifecycle comment found this turn -- consider posting one.`] };
 }
 

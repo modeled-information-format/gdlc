@@ -521,6 +521,65 @@ AD-4.
 
 **Action Required:** None; issue #289 is resolved.
 
+### 2026-07-18
+
+**Status:** Compliant
+
+**Findings:**
+
+| Finding | Files | Lines | Assessment |
+| --- | --- | --- | --- |
+| Issue #324 resolved (follow-up to #320/#323): `scanTranscriptForComment` is structurally blind to two cases no amount of parent-transcript scanning can fix -- (1) a lifecycle comment posted by a background workflow subagent, whose tool calls execute and are logged in its OWN transcript, never the parent session's; and (2) a same-turn parallel tool-call dispatch, where a comment call's own `tool_result` may not yet be flushed to the transcript file at the instant a sibling `set_field_value` call's `PostToolUse` hook fires and reads it, even though the underlying GitHub API call already completed. Fixed by adding `checkRecentCommentViaGraphQL`, a live GraphQL fallback `checkLifecycleComment` tries only when the transcript scan resolves but finds nothing: it queries the issue's own recent comments directly from GitHub (bypassing the transcript file entirely) and treats any comment created within a 5-minute window of "now" as satisfying the transition. Wired into both `checkLifecycleComment` (the `PostToolUse`-time check) and `isLifecycleFindingNowResolved` (the `Stop`-time aggregator's own re-validation, `hygiene-aggregate.mjs`'s lib) -- the aggregator needed the same fallback in its own right, since a subagent-posted comment can never resolve via a parent-transcript re-scan no matter how long the turn runs. Deliberately over-inclusive (any recent comment, not just the acting user's) per this hook's existing false-negative-over-false-positive tolerance for an advisory nudge; fails open (no live confirmation, the pre-existing transcript-only finding stands) on a missing `runGraphQL`, a malformed response, or any thrown error. | plugins/*/hooks/lib/hygiene-check.mjs, plugins/*/hooks/lib/hygiene-aggregate.mjs, plugins/*/hooks/hygiene-aggregate.mjs | - | fixed |
+
+**Summary:** Both gaps trace to the same structural limitation --
+`scanTranscriptForComment` can only ever see what's written to ONE
+transcript file, and neither a subagent's own transcript nor a
+not-yet-flushed same-turn write is guaranteed to be in it at the instant a
+check runs. Rather than attempting to read a subagent's transcript
+directly (no stable, discoverable path to it exists from the parent's own
+hook context) or forcing sequential tool-call dispatch (outside a hook's
+control), both gaps are closed with the one signal that doesn't depend on
+transcript timing at all: asking GitHub directly. `hygiene-aggregate.mjs`'s
+entrypoint gained the same `runGraphQL` wrapper `hygiene-check.mjs`'s
+entrypoint already had, and `buildConsolidatedContext`/
+`isLifecycleFindingNowResolved` became `async` to accommodate it -- the
+same kind of sync-to-async migration issue #172 already made to
+`checkLifecycleComment` itself. Regression tests cover: a comment invisible
+to the transcript scan but confirmed via a live GraphQL check (both the
+`PostToolUse`-time check and the `Stop`-time aggregator); no live comment
+found (finding still fires, unchanged from pre-#324 behavior); and the
+live check failing open (a thrown GraphQL error, a missing `runGraphQL`)
+without ever suppressing a genuine finding. Propagated identically to
+`github-pull-requests`/`github-bug-capture`'s byte-identical copies per
+AD-4.
+
+**Action Required:** None; issue #324 is resolved.
+
+### 2026-07-18 (PR #325 Copilot review follow-up)
+
+**Status:** Compliant
+
+**Findings:**
+
+| Finding | Files | Lines | Assessment |
+| --- | --- | --- | --- |
+| `checkRecentCommentViaGraphQL`'s query only fetched `repository.issue(number:)`. A Projects v2 tracked item's `content` can be a `PullRequest` (`resolveItemIdentity` already handles both), so a PR-backed item's `number` would resolve to a `null` `issue` field and the fallback could never live-confirm it -- reintroducing, for PR-backed items specifically, the exact blind spot this PR exists to close. Fixed by adding a sibling `pullRequest(number:)` field to the same query (GraphQL resolves whichever type the number actually is; the other side comes back `null`) and merging both `issue`/`pullRequest` `comments.nodes` arrays before the recency check. | plugins/*/hooks/lib/hygiene-check.mjs | - | fixed |
+
+**Summary:** Copilot's review of PR #325 caught that the live-fallback
+query addressed only Issue-backed tracked items, not PR-backed ones, even
+though `resolveItemIdentity` (the function that produces the `identity`
+this fallback consumes) already treats both as first-class. Both `issue`
+and `pullRequest` are now queried by number in the same request; response
+parsing merges whichever side actually returned comment nodes (the other
+is `null` by construction, never both at once). Three new regression tests
+cover: a recent comment surfacing only via `pullRequest.comments.nodes`; a
+too-old comment on the `pullRequest` side; and the fail-open path when both
+`issue` and `pullRequest` resolve to `null` (item not found by either
+type). Propagated identically to `github-pull-requests`/
+`github-bug-capture`'s byte-identical copies per AD-4.
+
+**Action Required:** None; the gap Copilot flagged on PR #325 is resolved.
+
 [adr-0003]: adr-0003-board-status-hygiene.md
 [adr-0004]: adr-0004-project-config-surface.md
 [adr-0005]: adr-0005-project-config-cwd-resolution.md

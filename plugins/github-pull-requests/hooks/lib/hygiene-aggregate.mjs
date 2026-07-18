@@ -11,10 +11,22 @@
  * re-runs hygiene-check.mjs's own `scanTranscriptForComment` against the
  * turn's transcript file -- reading that file's logged `tool_name`/
  * `tool_input` history is how that scan works, distinct from this hook's
- * own input envelope (which still carries none). No network call is
- * involved either way.
+ * own input envelope (which still carries none).
+ *
+ * gdlc#324: a re-scan of the parent's OWN transcript can never resolve a
+ * lifecycle-comment finding whose comment was posted by a background
+ * workflow subagent -- that comment lives only in the subagent's own
+ * transcript, no matter how long the turn runs or how many times this
+ * re-scan repeats. `isLifecycleFindingNowResolved` now also tries
+ * `checkRecentCommentViaGraphQL` (the same live fallback
+ * `checkLifecycleComment` itself uses) when the transcript re-scan alone
+ * doesn't resolve it, so this aggregator no longer keeps reporting a
+ * finding forever for a comment that, in reality, GitHub already has. This
+ * is the one place in this file that can make a network call, and only
+ * when `runGraphQL` is supplied and the transcript re-scan alone wasn't
+ * enough.
  */
-import { scanTranscriptForComment } from './hygiene-check.mjs';
+import { scanTranscriptForComment, checkRecentCommentViaGraphQL } from './hygiene-check.mjs';
 
 /** Matches exactly the string `checkLifecycleComment` (hygiene-check.mjs)
  * emits, recovering the `owner`/`repo`/`number` identity it already embeds
@@ -36,16 +48,30 @@ const LIFECYCLE_FINDING_RE = /^([^/\s]+)\/([^#\s]+)#(\d+): transitioned with no 
  * scan now resolves as found -- the live end-of-turn truth wins over the
  * stale scratch-time snapshot. Only this one finding *kind* is re-checked:
  * it's the one cheap and unambiguous enough to revalidate purely from its
- * own message text (identity + a single deterministic, network-free
- * transcript scan), unlike e.g. a sub-issue-linkage finding, which would
- * need a fresh GraphQL round trip this backstop deliberately never makes.
- * `scanFn` is injectable for tests, defaulting to the real transcript scan. */
-function isLifecycleFindingNowResolved(finding, transcriptPath, scanFn) {
+ * own message text (identity + a single deterministic transcript scan,
+ * plus -- gdlc#324 -- one live GraphQL fallback), unlike e.g. a
+ * sub-issue-linkage finding, which would need a fresh GraphQL round trip of
+ * its own this backstop deliberately never makes for that kind.
+ * `scanFn` is injectable for tests, defaulting to the real transcript scan.
+ *
+ * gdlc#324: when the re-scan alone doesn't resolve the finding, this also
+ * tries `checkRecentCommentViaGraphQL` -- the same live fallback
+ * `checkLifecycleComment` itself uses -- before giving up. This is the
+ * fix for a comment posted by a background subagent: that comment can
+ * never appear in the PARENT transcript `scanFn` reads, no matter how many
+ * times this aggregator re-scans it, so without this fallback the
+ * end-of-turn reminder would report the same "gap" forever even though
+ * GitHub already has the comment. `runGraphQL` is optional; when absent
+ * (or the live check can't confirm anything) the finding stands, same as
+ * before this fix. */
+async function isLifecycleFindingNowResolved(finding, transcriptPath, scanFn, runGraphQL) {
   const match = LIFECYCLE_FINDING_RE.exec(finding);
   if (!match) return false;
   const [, owner, repo, numberStr] = match;
-  const scan = scanFn(transcriptPath, { owner, repo, number: Number(numberStr) });
-  return scan.resolved === true && scan.found === true;
+  const identity = { owner, repo, number: Number(numberStr) };
+  const scan = scanFn(transcriptPath, identity);
+  if (scan.resolved === true && scan.found === true) return true;
+  return checkRecentCommentViaGraphQL(identity, runGraphQL);
 }
 
 /** Build ONE consolidated reminder from a turn's scratch entries (NFR-6):
@@ -55,10 +81,19 @@ function isLifecycleFindingNowResolved(finding, transcriptPath, scanFn) {
  * de-duplicated verbatim (the same finding can legitimately recur across
  * multiple touches of the same issue in one turn). Returns `null` when
  * there is nothing to report -- no entries, no findings at all, or every
- * finding turned out to be already resolved (gdlc#278) -- so the caller
- * can stay silent rather than emit an empty-handed "everything is fine"
- * message no one asked for. */
-export function buildConsolidatedContext(entries, transcriptPath, scanFn = scanTranscriptForComment) {
+ * finding turned out to be already resolved (gdlc#278, plus gdlc#324's live
+ * GraphQL fallback) -- so the caller can stay silent rather than emit an
+ * empty-handed "everything is fine" message no one asked for.
+ *
+ * `runGraphQL` (gdlc#324, 4th param, appended rather than folded into
+ * `scanFn` as an options object to keep every existing positional call --
+ * production and test alike -- working unchanged) is optional and passed
+ * straight through to `isLifecycleFindingNowResolved`'s own live fallback;
+ * omitting it just means that fallback never fires, the pre-#324
+ * behavior. `async` since that fallback can make a network call --
+ * the same kind of sync-to-async migration issue #172 already made to
+ * `checkLifecycleComment` itself. */
+export async function buildConsolidatedContext(entries, transcriptPath, scanFn = scanTranscriptForComment, runGraphQL) {
   if (!Array.isArray(entries) || entries.length === 0) return null;
 
   const findings = [];
@@ -79,7 +114,8 @@ export function buildConsolidatedContext(entries, transcriptPath, scanFn = scanT
   }
   if (findings.length === 0) return null;
 
-  const liveFindings = findings.filter((finding) => !isLifecycleFindingNowResolved(finding, transcriptPath, scanFn));
+  const resolutions = await Promise.all(findings.map((finding) => isLifecycleFindingNowResolved(finding, transcriptPath, scanFn, runGraphQL)));
+  const liveFindings = findings.filter((_finding, index) => !resolutions[index]);
   if (liveFindings.length === 0) return null;
 
   const touchCount = entries.length;
