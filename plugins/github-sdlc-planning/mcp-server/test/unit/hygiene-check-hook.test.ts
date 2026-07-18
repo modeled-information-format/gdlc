@@ -16,6 +16,7 @@ import {
   checkSyncNotFoundOnBoard,
   scanTranscriptForComment,
   checkLifecycleComment,
+  checkRecentCommentViaGraphQL,
   resolveItemIdentity,
   checkSubIssueLinkage,
   runHygieneChecks,
@@ -636,6 +637,68 @@ describe('scanTranscriptForComment', () => {
   });
 });
 
+describe('checkRecentCommentViaGraphQL', () => {
+  const identity = { owner: 'acme', repo: 'widgets', number: 42 };
+  const NOW = Date.parse('2026-07-18T12:00:00Z');
+
+  it('returns false when runGraphQL is not a function (no live confirmation possible)', async () => {
+    expect(await checkRecentCommentViaGraphQL(identity, undefined)).toBe(false);
+    expect(await checkRecentCommentViaGraphQL(identity, null)).toBe(false);
+  });
+
+  it('returns false for an incomplete identity, never calling runGraphQL at all', async () => {
+    const runGraphQL = async () => {
+      throw new Error('should never be called');
+    };
+    expect(await checkRecentCommentViaGraphQL({ owner: 'acme', repo: null, number: 42 }, runGraphQL)).toBe(false);
+  });
+
+  it('returns true when a comment was created within the window', async () => {
+    const runGraphQL = async () => ({
+      repository: { issue: { comments: { nodes: [{ createdAt: '2026-07-18T11:58:00Z' }] } } }, // 2 minutes ago
+    });
+    expect(await checkRecentCommentViaGraphQL(identity, runGraphQL, { nowMs: NOW })).toBe(true);
+  });
+
+  it('returns false when every comment is older than the window', async () => {
+    const runGraphQL = async () => ({
+      repository: { issue: { comments: { nodes: [{ createdAt: '2026-07-18T11:00:00Z' }] } } }, // 60 minutes ago
+    });
+    expect(await checkRecentCommentViaGraphQL(identity, runGraphQL, { nowMs: NOW })).toBe(false);
+  });
+
+  it('respects a custom windowMs', async () => {
+    const runGraphQL = async () => ({
+      repository: { issue: { comments: { nodes: [{ createdAt: '2026-07-18T11:58:00Z' }] } } }, // 2 minutes ago
+    });
+    expect(await checkRecentCommentViaGraphQL(identity, runGraphQL, { nowMs: NOW, windowMs: 60_000 })).toBe(false);
+  });
+
+  it('returns false when there are no comments at all', async () => {
+    const runGraphQL = async () => ({ repository: { issue: { comments: { nodes: [] } } } });
+    expect(await checkRecentCommentViaGraphQL(identity, runGraphQL, { nowMs: NOW })).toBe(false);
+  });
+
+  it('fails open (returns false, never throws) on a malformed response', async () => {
+    const runGraphQL = async () => ({ repository: null });
+    expect(await checkRecentCommentViaGraphQL(identity, runGraphQL, { nowMs: NOW })).toBe(false);
+  });
+
+  it('fails open (returns false, never throws) when runGraphQL itself throws', async () => {
+    const runGraphQL = async () => {
+      throw new Error('rate limited');
+    };
+    await expect(checkRecentCommentViaGraphQL(identity, runGraphQL, { nowMs: NOW })).resolves.toBe(false);
+  });
+
+  it('ignores a comment with an unparseable createdAt rather than false-matching it', async () => {
+    const runGraphQL = async () => ({
+      repository: { issue: { comments: { nodes: [{ createdAt: 'not-a-date' }] } } },
+    });
+    expect(await checkRecentCommentViaGraphQL(identity, runGraphQL, { nowMs: NOW })).toBe(false);
+  });
+});
+
 describe('checkLifecycleComment', () => {
   it('resolves with no findings for a non-transition action', async () => {
     const result = await checkLifecycleComment({ action: 'gh_command', owner: 'acme', repo: 'widgets', number: 1 }, undefined);
@@ -718,6 +781,73 @@ describe('checkLifecycleComment', () => {
     const touch = { action: 'set_field_value', owner: null, repo: null, number: null, itemId: null };
     const result = await checkLifecycleComment(touch, path, undefined, runGraphQL);
     expect(result).toEqual({ resolved: true, findings: [] });
+  });
+
+  // gdlc#324: the transcript scan is structurally blind to a comment posted
+  // by a background subagent (never in the parent's own transcript at all)
+  // or to a same-turn parallel-dispatch race (the comment call's own
+  // tool_result not yet flushed when this runs) -- both look identical to
+  // this check: the local transcript scan resolves, but finds nothing. A
+  // live GraphQL check for a very recent comment is the fallback that
+  // closes both without needing to read a subagent's transcript or force
+  // sequential dispatch.
+  describe('gdlc#324: live GraphQL fallback when the transcript scan finds nothing', () => {
+    const NOW = Date.parse('2026-07-18T12:00:00Z');
+
+    it('does not flag when the transcript scan finds nothing but a live GraphQL check confirms a very recent comment (subagent-posted or same-turn-race case)', async () => {
+      const path = tmpTranscriptWith([]); // no comment tool call visible in THIS transcript at all
+      const runGraphQL = async () => ({
+        repository: { issue: { comments: { nodes: [{ createdAt: '2026-07-18T11:59:00Z' }] } } }, // 1 minute ago
+      });
+      const touch = { action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 };
+      const result = await checkLifecycleComment(touch, path, undefined, runGraphQL, { nowMs: NOW });
+      expect(result).toEqual({ resolved: true, findings: [] });
+    });
+
+    it('still flags when the transcript scan finds nothing AND the live GraphQL check finds no recent comment either', async () => {
+      const path = tmpTranscriptWith([]);
+      const runGraphQL = async () => ({ repository: { issue: { comments: { nodes: [] } } } });
+      const touch = { action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 };
+      const result = await checkLifecycleComment(touch, path, undefined, runGraphQL, { nowMs: NOW });
+      expect(result.findings).toHaveLength(1);
+      expect(result.findings[0]).toContain('acme/widgets#1');
+    });
+
+    it('still flags when the live GraphQL fallback itself throws (fails open toward the pre-existing transcript-only behavior, never suppresses a genuine finding on an error)', async () => {
+      const path = tmpTranscriptWith([]);
+      const runGraphQL = async () => {
+        throw new Error('rate limited');
+      };
+      const touch = { action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 };
+      const result = await checkLifecycleComment(touch, path, undefined, runGraphQL, { nowMs: NOW });
+      expect(result.findings).toHaveLength(1);
+      expect(result.findings[0]).toContain('acme/widgets#1');
+    });
+
+    it('never attempts the live fallback at all once the transcript scan itself already found a comment (no wasted network call)', async () => {
+      const path = tmpTranscriptWith([
+        { tool_name: 'mcp__github__add_issue_comment', tool_input: { owner: 'acme', repo: 'widgets', issue_number: 1 } },
+      ]);
+      const runGraphQL = async () => {
+        throw new Error('should never be called');
+      };
+      const touch = { action: 'update_issue', owner: 'acme', repo: 'widgets', number: 1 };
+      const result = await checkLifecycleComment(touch, path, undefined, runGraphQL, { nowMs: NOW });
+      expect(result).toEqual({ resolved: true, findings: [] });
+    });
+
+    it('resolves via the live fallback for a set_field_value touch too, after itemId resolution', async () => {
+      const path = tmpTranscriptWith([]);
+      const runGraphQL = async (query) => {
+        if (query.includes('ProjectV2Item')) {
+          return { node: { content: { number: 1, repository: { owner: { login: 'acme' }, name: 'widgets' } } } };
+        }
+        return { repository: { issue: { comments: { nodes: [{ createdAt: '2026-07-18T11:59:00Z' }] } } } };
+      };
+      const touch = { action: 'set_field_value', owner: null, repo: null, number: null, itemId: 'PVTI_abc123' };
+      const result = await checkLifecycleComment(touch, path, undefined, runGraphQL, { nowMs: NOW });
+      expect(result).toEqual({ resolved: true, findings: [] });
+    });
   });
 });
 
