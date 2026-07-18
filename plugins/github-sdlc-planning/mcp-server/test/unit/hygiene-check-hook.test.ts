@@ -409,6 +409,33 @@ function tmpRealTranscriptWith(turns: Array<Array<{ name: string; input: unknown
   return path;
 }
 
+// gdlc#320: a Bash `tool_use` block (given a real, distinct `id` this
+// time -- tmpRealTranscriptWith's shared 'toolu_x' can't disambiguate more
+// than one call) followed by its own `tool_result` on the NEXT line, the
+// real correlation shape a `gh issue comment` command's own stdout arrives
+// in. `results` is an array of `{ toolUseId, content }`, `content` being
+// either a bare string or the block-array shape, matching the two real
+// shapes `toolResultContentText` handles.
+function tmpTranscriptWithToolResult(
+  calls: Array<{ name: string; input: unknown; id: string }>,
+  results: Array<{ toolUseId: string; content: unknown }>,
+): string {
+  const dir = mkdtempSync(join(tmpdir(), 'gdlc-hygiene-tool-result-'));
+  const path = join(dir, 'transcript.jsonl');
+  const lines = [
+    JSON.stringify({
+      type: 'assistant',
+      message: { role: 'assistant', content: calls.map((c) => ({ type: 'tool_use', id: c.id, name: c.name, input: c.input })) },
+    }),
+    JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: results.map((r) => ({ type: 'tool_result', tool_use_id: r.toolUseId, content: r.content })) },
+    }),
+  ];
+  writeFileSync(path, lines.join('\n'));
+  return path;
+}
+
 describe('scanTranscriptForComment', () => {
   it('returns unresolved for a missing transcript path', () => {
     expect(scanTranscriptForComment(undefined, { owner: 'acme', repo: 'widgets', number: 1 })).toEqual({ resolved: false });
@@ -525,6 +552,87 @@ describe('scanTranscriptForComment', () => {
       ],
     ]);
     expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 1 })).toEqual({ resolved: true, found: false });
+  });
+
+  // gdlc#320: a shell `for` loop posting a comment to several issues in ONE
+  // Bash call (`for n in 545 546; do gh issue comment $n ...; done`) has no
+  // literal issue number in its command text at all -- statically
+  // unresolvable, per this scan's own pre-#320 doc comment. `gh issue
+  // comment`'s own stdout on success is the created comment's URL, printed
+  // once per loop iteration, and DOES name the real issue number -- this is
+  // the fix: correlate the Bash tool_use's `tool_result` output (by
+  // `tool_use_id`) and match the URL against `ref` instead of the command
+  // text.
+  it('finds a comment for each issue posted via a shell for-loop over a variable issue number (gdlc#320)', () => {
+    const command =
+      'for n in 545 546; do gh issue comment $n --repo acme/widgets --body "Status: Todo"; done';
+    const output = [
+      'https://github.com/acme/widgets/issues/545#issuecomment-1000000001',
+      'https://github.com/acme/widgets/issues/546#issuecomment-1000000002',
+    ].join('\n');
+    const path = tmpTranscriptWithToolResult(
+      [{ id: 'toolu_loop', name: 'Bash', input: { command } }],
+      [{ toolUseId: 'toolu_loop', content: output }],
+    );
+    expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 545 })).toEqual({ resolved: true, found: true });
+    expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 546 })).toEqual({ resolved: true, found: true });
+  });
+
+  it('does not find a comment for an issue never mentioned in the for-loop output, even though the command shape matches (gdlc#320)', () => {
+    const command = 'for n in 545 546; do gh issue comment $n --repo acme/widgets --body "Status: Todo"; done';
+    const output = [
+      'https://github.com/acme/widgets/issues/545#issuecomment-1000000001',
+      'https://github.com/acme/widgets/issues/546#issuecomment-1000000002',
+    ].join('\n');
+    const path = tmpTranscriptWithToolResult(
+      [{ id: 'toolu_loop', name: 'Bash', input: { command } }],
+      [{ toolUseId: 'toolu_loop', content: output }],
+    );
+    expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 547 })).toEqual({ resolved: true, found: false });
+  });
+
+  it('finds a comment posted via a single-variable gh issue comment invocation (gdlc#320)', () => {
+    const command = 'gh issue comment $ISSUE_NUM --repo acme/widgets --body "Status: In Review"';
+    const output = 'https://github.com/acme/widgets/issues/9#issuecomment-2000000001';
+    const path = tmpTranscriptWithToolResult(
+      [{ id: 'toolu_var', name: 'Bash', input: { command } }],
+      [{ toolUseId: 'toolu_var', content: output }],
+    );
+    expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 9 })).toEqual({ resolved: true, found: true });
+  });
+
+  it('matches output-based detection against a `gh pr comment` URL too (gdlc#320)', () => {
+    const command = 'gh pr comment $n --repo acme/widgets --body "hi"';
+    const output = 'https://github.com/acme/widgets/pull/12#issuecomment-3000000001';
+    const path = tmpTranscriptWithToolResult(
+      [{ id: 'toolu_pr', name: 'Bash', input: { command } }],
+      [{ toolUseId: 'toolu_pr', content: output }],
+    );
+    expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 12 })).toEqual({ resolved: true, found: true });
+  });
+
+  it('does not cross-match a for-loop output URL against a same-numbered issue in a different repo (gdlc#320)', () => {
+    const command = 'for n in 545; do gh issue comment $n --repo other/other-repo --body "hi"; done';
+    const output = 'https://github.com/other/other-repo/issues/545#issuecomment-4000000001';
+    const path = tmpTranscriptWithToolResult(
+      [{ id: 'toolu_other', name: 'Bash', input: { command } }],
+      [{ toolUseId: 'toolu_other', content: output }],
+    );
+    expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 545 })).toEqual({ resolved: true, found: false });
+  });
+
+  it('handles a tool_result content array (block shape) the same as a bare string (gdlc#320)', () => {
+    const command = 'gh issue comment $n --repo acme/widgets --body "hi"';
+    const path = tmpTranscriptWithToolResult(
+      [{ id: 'toolu_blocks', name: 'Bash', input: { command } }],
+      [{ toolUseId: 'toolu_blocks', content: [{ type: 'text', text: 'https://github.com/acme/widgets/issues/22#issuecomment-5000000001' }] }],
+    );
+    expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 22 })).toEqual({ resolved: true, found: true });
+  });
+
+  it('still returns not-found for a variable-based command when no tool_result output is present at all (fails open, no crash) (gdlc#320)', () => {
+    const path = tmpRealTranscriptWith([[{ name: 'Bash', input: { command: 'gh issue comment $n --repo acme/widgets --body "hi"' } }]]);
+    expect(scanTranscriptForComment(path, { owner: 'acme', repo: 'widgets', number: 545 })).toEqual({ resolved: true, found: false });
   });
 });
 
