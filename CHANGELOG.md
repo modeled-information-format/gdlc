@@ -5,6 +5,43 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.3] - 2026-07-19
+
+### Fixed
+
+- `github-sdlc-planning`: `query-pipeline`'s `mergeStage` guard could never
+  reach the merge agent (and #306's `--admin` retry authorization) when the
+  only reason a PR was unsettled was a missing approval — the exact,
+  common steady-state `check_pr_readiness` reports when checks are green,
+  threads are resolved, and Copilot's review can only COMMENT, never
+  APPROVE (#305). `settleStage` now derives a structured
+  `blockedOnApprovalOnly` field from its own `check_pr_readiness` read, and
+  `mergeStage` invokes the merge agent when either `settled` or
+  `blockedOnApprovalOnly` is true; every other unsettled reason still
+  skips the merge agent unchanged (#326).
+- `github-sdlc-planning`: `checkLifecycleComment`'s transcript scan was
+  structurally blind to a lifecycle comment posted by a background
+  workflow subagent, and to a same-turn parallel-dispatch race against a
+  sibling `set_field_value` call. Adds a live GraphQL fallback
+  (`checkRecentCommentViaGraphQL`), tried only when the local transcript
+  scan resolves but finds nothing, covering both issue- and
+  PR-backed Projects v2 items (#325).
+- `github-sdlc-planning`: `epic-pipeline.workflow.js`'s mode guard
+  hard-failed with zero agents run whenever the Workflow tool delivered
+  `args` as a JSON-encoded string rather than an object. `args` is now
+  coerced via `JSON.parse` before the guard, matching the sibling
+  `query-pipeline.workflow.js` convention (#322).
+- `github-sdlc-planning`: `scanTranscriptForComment` only matched a
+  `gh issue/pr comment` call by a literal digit immediately after
+  `comment`, so a shell variable or for-loop iterator
+  (`gh issue comment $n`) was statically unresolvable. Now also
+  correlates the Bash tool's own `tool_result` output against the
+  printed comment URL, which always names the real issue/PR number
+  regardless of how the command computed it (#323).
+- `github-pull-requests`, `github-bug-capture`: both fixes above are
+  propagated to their byte-identical copies of the affected hygiene-check
+  logic, per this repo's drift-check convention.
+
 ## [0.11.2] - 2026-07-17
 
 ### Fixed
