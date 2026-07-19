@@ -75,11 +75,20 @@ const REVIEW_SCHEMA = {
 
 const SETTLE_SCHEMA = {
   type: 'object',
-  required: ['settled', 'copilotReviewed', 'threadsResolved', 'notes'],
+  required: ['settled', 'copilotReviewed', 'threadsResolved', 'blockedOnApprovalOnly', 'notes'],
   properties: {
     settled: { type: 'boolean' },
     copilotReviewed: { type: 'boolean' },
     threadsResolved: { type: 'boolean' },
+    // gdlc#326: a structured, deterministic signal so mergeStage's JS guard
+    // can distinguish "settled:false purely because of a missing-approval
+    // blocker with everything else clean" from "settled:false for any other
+    // reason" WITHOUT string-matching notes. true only when settled is false
+    // AND check_pr_readiness's sole remaining blocker is a missing-approval
+    // reviewDecision (checks green, threads resolved, no open code-scanning
+    // alerts); false whenever settled is true (nothing to be blocked on) or
+    // any other/additional reason keeps it unsettled.
+    blockedOnApprovalOnly: { type: 'boolean' },
     notes: { type: 'string', description: 'the final check_pr_readiness verdict, or why it never settled' },
   },
 }
@@ -335,13 +344,26 @@ reviews first), do not request another — go straight to addressing it.
    mutation (no plugin tool covers it) — a pushed fix does not resolve a
    thread by itself. If a finding is genuinely wrong, reply tersely with
    the concrete reason and resolve the thread; never ignore one.
-4. Keep polling check_pr_readiness until it reports settled: true (its
-   verdict combines checks, review state, thread resolution, and
-   code-scanning alerts). Never declare settled from CI status alone.
-5. Do NOT merge. Do NOT re-request Copilot after pushing fixes.
+4. Keep polling check_pr_readiness until either it reports settled: true, or
+   its verdict stabilizes as settled: false with reviewDecision
+   REVIEW_REQUIRED and nothing else blocking (checks green, threads
+   resolved, no open code-scanning alerts) — the org's branch protection
+   requires 1 approving review and Copilot cannot supply one (it only ever
+   leaves COMMENTED, never APPROVED), so that specific shape is a
+   legitimate stopping point to report, not a bug to keep retrying against.
+   Never declare settled from CI status alone.
+5. Set blockedOnApprovalOnly deterministically from that same
+   check_pr_readiness read (gdlc#326): true ONLY when settled is false and
+   the sole remaining blocker is the missing-approval reviewDecision
+   (checks green, threads resolved, no open code-scanning alerts); false in
+   every other case, including whenever settled is true. Do not infer this
+   from your own notes text after the fact — read it directly off the
+   structured check_pr_readiness result.
+6. Do NOT merge. Do NOT re-request Copilot after pushing fixes.
 
 Return settled, copilotReviewed (a real review landed), threadsResolved,
-and notes (the final readiness verdict, or exactly why it never settled).`,
+blockedOnApprovalOnly, and notes (the final readiness verdict, or exactly
+why it never settled).`,
     { label: `settle:${item.repo}#${dev.prNumber}`, phase: 'Settle', schema: SETTLE_SCHEMA },
   ).then((settle) => ({ ...dev, settle }))
 }
@@ -351,15 +373,32 @@ const mergeStage = (dev, item) => {
   if (!automerge) {
     return { ...dev, merge: { merged: false, notes: 'automerge off — settled PR left for human review/merge' } }
   }
-  if (!dev.settle || dev.settle.settled !== true) {
+  // gdlc#326: settled:false is not always "nothing left to do here". Per
+  // #305, check_pr_readiness correctly reports settled:false when the ONLY
+  // blocker is a missing approval (checks green, threads resolved,
+  // reviewDecision REVIEW_REQUIRED, Copilot can only ever COMMENT). #306's
+  // merge agent carries explicit --admin-retry authorization for exactly
+  // that case, but this guard used to short-circuit on `settled !== true`
+  // alone, before the agent (and its --admin authorization) was ever
+  // reached — making the retry path structurally unreachable for the one
+  // case it exists to handle. Only skip the merge agent when settled is
+  // false AND the settle stage did not identify this specific
+  // approval-only shape.
+  const settled = !!(dev.settle && dev.settle.settled === true)
+  const blockedOnApprovalOnly = !!(dev.settle && dev.settle.blockedOnApprovalOnly === true)
+  if (!settled && !blockedOnApprovalOnly) {
     return { ...dev, merge: { merged: false, notes: 'not settled — automerge skipped' } }
   }
   return agent(
-    `Squash-merge the settled PR ${item.repo}#${dev.prNumber} (${dev.prUrl}) and close the loop.
+    `Squash-merge PR ${item.repo}#${dev.prNumber} (${dev.prUrl}) and close the loop.
 ${SHARED_RULES}
 
-The user explicitly enabled automerge for this run, and the PR's readiness
-verdict is settled — that is your merge authorization for THIS PR only.
+The user explicitly enabled automerge for this run. The settle stage
+reported: settled=${settled}, blockedOnApprovalOnly=${blockedOnApprovalOnly}.
+Either state is your merge authorization for THIS PR — settled means
+everything is clean; blockedOnApprovalOnly means everything else is clean
+except a missing approval, which is the specific case this authorization
+exists for (gdlc#306, gdlc#326).
 
 That authorization explicitly COVERS one specific --admin retry and no
 other: if the plain merge in step 2 is rejected and the rejection reason is
@@ -368,14 +407,22 @@ own review does not count as an approval, and the PR author cannot
 self-approve), retrying with --admin is already-granted automerge
 authorization for this PR — do not stop, do not treat it as needing
 separate sign-off, do not file a bug about it. Any OTHER blocking reason
-(failing or pending checks, merge conflicts, an unresolved review thread,
-anything not literally the required-approval rejection) is NOT covered by
-this authorization: do not retry with --admin for those — stop and return
-merged=false with the real reason instead.
+(failing or pending checks, merge conflicts, an unresolved review thread, an
+open code-scanning alert, CHANGES_REQUESTED, anything not literally the
+required-approval rejection) is NOT covered by this authorization: do not
+retry with --admin for those — stop and return merged=false with the real
+reason instead.
 
-1. Re-verify freshly (state can change between stages): the PR is still
-   open and check_pr_readiness still reports settled: true. If not, stop
-   and return merged=false with the current verdict.
+1. Re-verify freshly (state can change between stages) — call
+   check_pr_readiness yourself: the PR must still be open, all checks
+   green, all review threads resolved, no open code-scanning alerts. If it
+   now reports settled: true, proceed to step 2. If settled is still false,
+   proceed to step 2 ONLY if the sole remaining blocker is still the
+   missing-approval reviewDecision with everything else clean (the same
+   condition blockedOnApprovalOnly names) — that is exactly the case this
+   authorization covers. For any other unsettled reason (failing/pending
+   checks, unresolved threads, CHANGES_REQUESTED, an open code-scanning
+   alert), stop now and return merged=false with the current verdict.
 2. gh pr merge ${dev.prNumber} --repo ${item.repo} --squash --delete-branch
 3. If step 2 fails, read the actual rejection reason before doing anything
    else:
