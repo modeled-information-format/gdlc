@@ -47,7 +47,7 @@ via AskUserQuestion for anything missing or ambiguous — never guess:
 
 Then launch **one** Workflow call:
 
-```
+```js
 Workflow({
   scriptPath: "${CLAUDE_PLUGIN_ROOT}/skills/query-pipeline/scripts/query-pipeline.workflow.js",
   args: { query, automerge, maxItems, defaultRepo, reviewModel }
@@ -86,14 +86,24 @@ names one.
   review to land against the PR's current head SHA, fix every finding,
   resolve every review thread, then poll `check_pr_readiness` until it
   reports `settled: true` (its verdict already combines checks, review
-  state, thread resolution, and code-scanning alerts). **One Copilot round
-  is the hard cap** — after its findings are fixed and threads resolved, a
-  second request is never issued.
+  state, thread resolution, and code-scanning alerts) — or, per gdlc#305,
+  stabilizes `settled: false` for the single reason that branch protection
+  requires an approving review Copilot cannot supply (it can only COMMENT,
+  never APPROVE). That specific shape is reported as a structured
+  `blockedOnApprovalOnly: true` alongside `settled: false`, distinct from
+  every other unsettled reason, so the Merge stage below can tell the two
+  apart (gdlc#326). **One Copilot round is the hard cap** — after its
+  findings are fixed and threads resolved, a second request is never
+  issued.
 - **Merge** (only when `automerge` was resolved on in Phase 0): squash-merge
-  the settled PR, then `sync_linked_issues_project_field` for the
-  post-merge board fields and confirm linked-issue closure via
-  `get_linked_issues`. Without automerge, the settled PR is left open and
-  reported as ready for human merge.
+  a PR that is either fully `settled` or `blockedOnApprovalOnly` (the latter
+  carries pre-granted authorization for exactly one `--admin` retry when the
+  plain merge is rejected specifically for a missing approval — gdlc#306,
+  gdlc#326; any other rejection reason is never retried with `--admin`).
+  Then `sync_linked_issues_project_field` for the post-merge board fields
+  and confirm linked-issue closure via `get_linked_issues`. Without
+  automerge, or when unsettled for any other reason, the PR is left open
+  and reported as ready for human merge.
 
 ## Phase 1 — Report
 
