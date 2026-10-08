@@ -30,7 +30,7 @@
     "@github-sdlc-plugins/singleflight-cache": "file:../../../packages/singleflight-cache",
     "@modelcontextprotocol/sdk": "^1.31.0",
     "yaml": "^2.9.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
