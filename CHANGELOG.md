@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- Docs site: force `postcss-selector-parser` to `^7.1.6` via npm
+  `overrides` (GHSA-rj75-hqrm-r3gf; held back at 6.1.4 by
+  `@expressive-code/core`'s `postcss-nested ^6`), replacing the
+  osv-scanner waiver. The now-empty root `osv-scanner.toml` is removed.
+
 ## [0.11.3] - 2026-07-19
 
 ### Fixed
