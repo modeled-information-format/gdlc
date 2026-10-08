@@ -1,0 +1,20 @@
+# OSV-Scanner configuration for the root (Astro/Starlight docs site) lockfile.
+#
+# osv-scanner only auto-discovers this file next to the lockfile it scans, so
+# it applies to ./package-lock.json only; each plugin mcp-server lockfile is
+# currently clean and carries no config of its own.
+#
+# Accepted, justified vulnerability exceptions. Each entry is a deliberate risk
+# decision, not a silent suppression: no in-range fix, and no production
+# exposure. Revisit on each dependency bump of @astrojs/starlight.
+
+[[IgnoredVulns]]
+id = "GHSA-rj75-hqrm-r3gf"
+# postcss-selector-parser 6.1.4 (CVSS 5.9, quadratic-complexity CPU exhaustion
+# on a crafted flat selector). Dependency path:
+#   @astrojs/starlight -> astro-expressive-code -> @expressive-code/core 0.44.2
+#   -> postcss-nested ^6 -> postcss-selector-parser ^6.1.1
+# The fix (7.1.6) is reachable from postcss-nested >= 7.0.0 (which depends on
+# postcss-selector-parser ^7), so remove this entry once @expressive-code/core
+# accepts postcss-nested >= 7.
+reason = "No in-range fix: fixed only in postcss-selector-parser 7.1.6 (new major) and @expressive-code/core pins postcss-nested ^6. Build-time-only docs-site transitive that parses expressive-code's own generated CSS, never untrusted input; not in any MCP server bundle or the static site output."
