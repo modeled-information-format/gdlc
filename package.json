@@ -12,6 +12,7 @@
     "@astrojs/starlight": "0.41.11"
   },
   "overrides": {
-    "esbuild": "0.28.1"
+    "esbuild": "0.28.1",
+    "postcss-selector-parser": "^7.1.6"
   }
 }
